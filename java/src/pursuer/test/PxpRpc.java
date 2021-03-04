@@ -5,9 +5,12 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.PipedInputStream;
 import java.io.PipedOutputStream;
+import java.net.InetSocketAddress;
+import java.net.Socket;
 
 import pursuer.pxprpc.ServerContext;
 import pursuer.pxprpc.Utils;
+import pursuer.pxprpc_ex.TCPBackend;
 
 public class PxpRpc {
 	
@@ -30,35 +33,58 @@ public class PxpRpc {
 	public static void main(String[] args) {
 
 		try {
-			PipedInputStream pipe1in = new PipedInputStream();
-			PipedOutputStream pipe1out;
-			pipe1out = new PipedOutputStream(pipe1in);
-			PipedInputStream pipe2in = new PipedInputStream();
-			PipedOutputStream pipe2out = new PipedOutputStream(pipe2in);
-
-			ServerContext ctx = new ServerContext();
-			ctx.handlers.put("test1", new Handler1());
-			ctx.init(pipe1in, pipe2out);
+			TCPBackend pxptcp = new TCPBackend();
+			int listenPort=2064;
+			pxptcp.funcMap.put("test1", new Handler1());
+			pxptcp.bindAddr=new InetSocketAddress(listenPort);
 			Thread th=new Thread(new Runnable() {
 				@Override
 				public void run() {
 					try {
-						ctx.serve();
+						pxptcp.listenAndServe();
 					} catch (IOException e) {
 						e.printStackTrace();
 					}
+					System.out.println("server stoped");
 				}
 			});
 			th.setDaemon(true);
 			th.start();
+			
+			System.out.println("waiting for server start");
+			try {
+				Thread.sleep(1000);
+			} catch (InterruptedException e) {
+			}
+			
+			Socket soc=new Socket();
+			soc.connect(new InetSocketAddress("localhost",listenPort));
+			
 			ClientContext client = new ClientContext();
-			client.init(pipe2in,pipe1out);
+			client.init(soc.getInputStream(),soc.getOutputStream());
+			
+			// set *1101 = getFunc test1.print5678
 			client.getFunc(1101,"test1.print5678");
+			// set *1102 = call *1101
 			client.callIntFunc(1102, 1101, new Object[0]);
+			//set *1101 = getFunc test1.get1234
 			client.getFunc(1101, "test1.get1234");
+			// set *1102 = call *1101
 			client.callIntFunc(1102,1101,new Object[0]);
+			//set *1103 = getFunc test1.printString
 			client.getFunc(1103, "test1.printString");
+			//set *1104 = call *1103 (*1102)  
+			//currently, 1102 slot store the value return by test1.get1234
 			client.callIntFunc(1104,1103,new Object[] {1102});
+			
+			pxptcp.close();
+			System.out.println("close server...");
+			
+			try {
+				Thread.sleep(1000);
+			} catch (InterruptedException e) {
+			}
+			
 		} catch (IOException e) {
 			e.printStackTrace();
 		}

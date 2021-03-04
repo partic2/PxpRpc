@@ -1,5 +1,6 @@
 package pursuer.pxprpc;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -12,19 +13,19 @@ import java.util.Map;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
-public class ServerContext {
+public class ServerContext implements Closeable{
 	public InputStream in;
 	public OutputStream out;
-	protected boolean running=true;
+	public boolean running=true;
 	public Map<Integer,Object> refSlots=new HashMap<Integer,Object>();
-	public Map<String,Object> handlers=new HashMap<String,Object>();
+	public Map<String,Object> funcMap=new HashMap<String,Object>();
 	
 	private BuiltInFuncList builtIn;
 	public void init(InputStream in,OutputStream out) {
 		this.in=in;
 		this.out=out;
 		builtIn=new BuiltInFuncList();
-		handlers.put("builtin", builtIn);
+		funcMap.put("builtin", builtIn);
 	}
 	public void serve() throws IOException {
 		while(running) {
@@ -48,8 +49,13 @@ public class ServerContext {
 			case 6:
 				getFunc();
 				break;
+			case 7:
+				close();
+				running=false;
+				break;
 			}
 		}
+		running=false;
 	}
 	
 	public void push() throws IOException {
@@ -130,7 +136,7 @@ public class ServerContext {
 		int namespaceDelim=name.indexOf(".");
 		String namespace=name.substring(0,namespaceDelim);
 		String func=name.substring(namespaceDelim+1);
-		Object obj=handlers.get(namespace);
+		Object obj=funcMap.get(namespace);
 		Method found=builtIn.getMethod(obj, func);
 		writeLock().lock();
 		if(found==null) {
@@ -187,5 +193,17 @@ public class ServerContext {
 	}
 	public void writeFloat64(double d) throws IOException {
 		Utils.writeFloat64(out, d);
+	}
+	private void closeQuietly(Closeable c) {
+		try {
+			c.close();
+		}catch(Exception e) {};
+	}
+	@Override
+	public void close() throws IOException {
+		running=false;
+		closeQuietly(in);
+		closeQuietly(out);
+		refSlots.clear();
 	}
 }
