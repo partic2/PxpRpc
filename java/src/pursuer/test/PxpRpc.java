@@ -7,7 +7,12 @@ import java.io.PipedInputStream;
 import java.io.PipedOutputStream;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.util.Timer;
+import java.util.TimerTask;
 
+import pursuer.pxprpc.AbstractCallable;
+import pursuer.pxprpc.AsyncReturn;
+import pursuer.pxprpc.EventDispatcher;
 import pursuer.pxprpc.ServerContext;
 import pursuer.pxprpc.Utils;
 import pursuer.pxprpc_ex.TCPBackend;
@@ -27,6 +32,27 @@ public class PxpRpc {
 		}
 		public void print5678() {
 			System.out.println("5678");
+		}
+		public TickEvent onTick() {
+			TickEvent te = new TickEvent();
+			te.start();
+			return te;
+		}
+	}
+	public static class TickEvent extends EventDispatcher{
+		Timer tm=new Timer();
+		public TickEvent() {
+		}
+		public void start() {
+			tm.schedule(new TimerTask() {
+				@Override
+				public void run() {
+					TickEvent.this.fireEvent("tick");
+				}
+			}, 1000,1000);
+		}
+		public void stop() {
+			tm.cancel();
 		}
 	}
 
@@ -63,6 +89,7 @@ public class PxpRpc {
 			ClientContext client = new ClientContext();
 			client.init(soc.getInputStream(),soc.getOutputStream());
 			
+			
 			// set *1101 = getFunc test1.print5678
 			client.getFunc(1101,"test1.print5678");
 			// set *1102 = call *1101
@@ -76,6 +103,23 @@ public class PxpRpc {
 			//set *1104 = call *1103 (*1102)  
 			//currently, 1102 slot store the value return by test1.get1234
 			client.callIntFunc(1104,1103,new Object[] {1102});
+			
+			
+			//set *1101=getFunc test1.onTick
+			client.getFunc(1101, "test1.onTick");
+			//set *1102=test1.onTick()
+			System.out.println(client.callIntFunc(1102,1101,new Object[0]));
+			//set *1103=(*1102).next()
+			client.callIntFunc(1103,1102,new Object[0]);
+			System.out.println(new String(client.pull(1103),"utf-8"));
+			//set *1103=(*1102).next()
+			client.callIntFunc(1103,1102,new Object[0]);
+			System.out.println(new String(client.pull(1103),"utf-8"));
+			//set *1103=(*1102).next()
+			client.callIntFunc(1103,1102,new Object[0]);
+			System.out.println(new String(client.pull(1103),"utf-8"));
+			
+			
 			
 			pxptcp.close();
 			System.out.println("close server...");
@@ -99,6 +143,11 @@ public class PxpRpc {
 			this.in=in;
 			this.out=out;
 		}
+		public void assert2(boolean b) {
+			if(!b) {
+				throw new RuntimeException("assert error");
+			}
+		}
 		public int session=26769;
 		public void push(int addr,byte[] data) throws IOException {
 			out.write(1);
@@ -107,13 +156,13 @@ public class PxpRpc {
 			Utils.writeInt32(out, data.length);
 			out.write(data);
 			out.flush();
-			Utils.readInt32(in);
+			assert2(Utils.readInt32(in)==session);
 		}
 		public byte[] pull(int addr) throws IOException {
 			out.write(2);
 			Utils.writeInt32(out,session);
 			Utils.writeInt32(out,addr);
-			Utils.readInt32(in);
+			assert2(Utils.readInt32(in)==session);
 			out.flush();
 			int len=Utils.readInt32(in);
 			byte[] r=new byte[len];
@@ -134,7 +183,7 @@ public class PxpRpc {
 				}
 			}
 			out.flush();
-			Utils.readInt32(in);
+			assert2(Utils.readInt32(in)==session);
 			return Utils.readInt32(in);
 		}
 		public int getFunc(int assignAddr,String name) throws IOException {
@@ -144,7 +193,7 @@ public class PxpRpc {
 			Utils.writeInt32(out,assignAddr);
 			Utils.writeInt32(out, 1025);
 			out.flush();
-			Utils.readInt32(in);
+			assert2(Utils.readInt32(in)==session);
 			return Utils.readInt32(in);
 		}
 	}

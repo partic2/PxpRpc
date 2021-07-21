@@ -112,7 +112,7 @@ public class ServerContext implements Closeable{
 		final int session=readInt32();
 		final int retAddr=readInt32();
 		int funcAddr=readInt32();
-		PxpCallable callable=(PxpCallable) refSlots.get(funcAddr);
+		final PxpCallable callable=(PxpCallable) refSlots.get(funcAddr);
 		callable.context(this);
 		callable.call(new AsyncReturn<Object>() {
 			@Override
