@@ -148,21 +148,22 @@ public class PxpRpc {
 				throw new RuntimeException("assert error");
 			}
 		}
-		public int session=26769;
+		public int session=0x78593<<8;
 		public void push(int addr,byte[] data) throws IOException {
-			out.write(1);
-			Utils.writeInt32(out,session);
+			int op=session|0x1;
+			Utils.writeInt32(out,op);
 			Utils.writeInt32(out,addr);
 			Utils.writeInt32(out, data.length);
 			out.write(data);
 			out.flush();
-			assert2(Utils.readInt32(in)==session);
+			int op2=Utils.readInt32(in);
+			assert2(op2==op);
 		}
 		public byte[] pull(int addr) throws IOException {
-			out.write(2);
-			Utils.writeInt32(out,session);
+			int op=session|0x2;
+			Utils.writeInt32(out,op);
 			Utils.writeInt32(out,addr);
-			assert2(Utils.readInt32(in)==session);
+			assert2(Utils.readInt32(in)==op);
 			out.flush();
 			int len=Utils.readInt32(in);
 			byte[] r=new byte[len];
@@ -170,8 +171,8 @@ public class PxpRpc {
 			return r;
 		}
 		public int callIntFunc(int assignAddr,int addr,Object[] params) throws IOException {
-			out.write(5);
-			Utils.writeInt32(out,session);
+			int op=session|0x5;
+			Utils.writeInt32(out,op);
 			Utils.writeInt32(out,assignAddr);
 			Utils.writeInt32(out,addr);
 			for(Object p : params) {
@@ -183,17 +184,17 @@ public class PxpRpc {
 				}
 			}
 			out.flush();
-			assert2(Utils.readInt32(in)==session);
+			assert2(Utils.readInt32(in)==op);
 			return Utils.readInt32(in);
 		}
 		public int getFunc(int assignAddr,String name) throws IOException {
+			int op=session|0x6;
 			push(1025, name.getBytes());
-			out.write(6);
-			Utils.writeInt32(out,session);
+			Utils.writeInt32(out,op);
 			Utils.writeInt32(out,assignAddr);
 			Utils.writeInt32(out, 1025);
 			out.flush();
-			assert2(Utils.readInt32(in)==session);
+			assert2(Utils.readInt32(in)==op);
 			return Utils.readInt32(in);
 		}
 	}

@@ -29,25 +29,27 @@ public class ServerContext implements Closeable{
 	}
 	public void serve() throws IOException {
 		while(running) {
-			int opcode=in.read();
+			int oper=readInt32();
+			int opcode=oper&0xff;
+			int session=oper;
 			switch(opcode) {
 			case 1:
-				push();
+				push(session);
 				break;
 			case 2:
-				pull();
+				pull(session);
 				break;
 			case 3:
-				assign();
+				assign(session);
 				break;
 			case 4:
-				unlink();
+				unlink(session);
 				break;
 			case 5:
-				call();
+				call(session);
 				break;
 			case 6:
-				getFunc();
+				getFunc(session);
 				break;
 			case 7:
 				close();
@@ -58,8 +60,7 @@ public class ServerContext implements Closeable{
 		running=false;
 	}
 	
-	public void push() throws IOException {
-		int session=readInt32();
+	public void push(final int session) throws IOException {
 		int addr=readInt32();
 		int len=readInt32();
 		byte[] buf=new byte[len];
@@ -70,8 +71,7 @@ public class ServerContext implements Closeable{
 		writeLock().unlock();
 		out.flush();
 	}
-	public void pull() throws IOException {
-		int session=readInt32();
+	public void pull(final int session) throws IOException {
 		int addr=readInt32();
 		Object o=refSlots.get(addr);
 		writeLock().lock();
@@ -90,8 +90,7 @@ public class ServerContext implements Closeable{
 		writeLock().unlock();
 		out.flush();
 	}
-	public void assign() throws IOException {
-		int session=readInt32();
+	public void assign(final int session) throws IOException {
 		int addr=readInt32();
 		int srcAddr=readInt32();
 		refSlots.put(addr, refSlots.get(srcAddr));
@@ -99,8 +98,7 @@ public class ServerContext implements Closeable{
 		writeInt32(session);
 		writeLock().unlock();
 	}
-	public void unlink() throws IOException {
-		int session = readInt32();
+	public void unlink(final int session) throws IOException {
 		int addr=readInt32();
 		refSlots.remove(addr);
 		writeLock().lock();
@@ -108,8 +106,7 @@ public class ServerContext implements Closeable{
 		writeLock().unlock();
 		out.flush();
 	}
-	public void call() throws IOException {
-		final int session=readInt32();
+	public void call(final int session) throws IOException {
 		final int retAddr=readInt32();
 		int funcAddr=readInt32();
 		final PxpCallable callable=(PxpCallable) refSlots.get(funcAddr);
@@ -129,8 +126,7 @@ public class ServerContext implements Closeable{
 			}
 		});
 	}
-	public void getFunc() throws IOException {
-		final int session=readInt32();
+	public void getFunc(final int session) throws IOException {
 		int retAddr=readInt32();
 		String name=this.readNextString();
 		int namespaceDelim=name.indexOf(".");
