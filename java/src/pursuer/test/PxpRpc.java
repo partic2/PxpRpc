@@ -22,7 +22,7 @@ public class PxpRpc {
 	//Just for test, will ignore session check.
 	
 
-	
+	//Rpc server handler demo.
 	public static class Handler1 {
 		public String get1234() {
 			return "1234";
@@ -37,6 +37,15 @@ public class PxpRpc {
 			TickEvent te = new TickEvent();
 			te.start();
 			return te;
+		}
+		public void waitOneTick(AsyncReturn<Object> asyncRet) {
+			Timer tm=new Timer();
+			tm.schedule(new TimerTask() {
+				@Override
+				public void run() {
+					asyncRet.result("one tick done");
+				}
+			}, 1000);
 		}
 	}
 	public static class TickEvent extends EventDispatcher{
@@ -69,7 +78,9 @@ public class PxpRpc {
 					try {
 						pxptcp.listenAndServe();
 					} catch (IOException e) {
-						e.printStackTrace();
+						if(!e.getMessage().contains("Interrupted function call")) {
+							e.printStackTrace();
+						}
 					}
 					System.out.println("server stoped");
 				}
@@ -104,6 +115,12 @@ public class PxpRpc {
 			//currently, 1102 slot store the value return by test1.get1234
 			client.callIntFunc(1104,1103,new Object[] {1102});
 			
+			System.out.println("sleep 1 tick");
+			//set *1101=getFunc test1.waitOneTick
+			client.getFunc(1101, "test1.waitOneTick");
+			//set *1102=call *1101
+			client.callIntFunc(1102, 1101, new Object[0]);
+			System.out.println(new String(client.pull(1102),"utf-8"));
 			
 			//set *1101=getFunc test1.onTick
 			client.getFunc(1101, "test1.onTick");

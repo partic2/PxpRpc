@@ -15,16 +15,20 @@ public class BoundMethodCallable extends MethodCallable{
 	@Override
 	public void call(AsyncReturn<Object> asyncRet) throws IOException {
 		Object[] args=new Object[argList.length];
-		for(int i=0;i<argList.length;i++) {
+		if(firstInputParamIndex>=1) {
+			args[0]=asyncRet;
+		}
+		for(int i=firstInputParamIndex;i<argList.length;i++) {
 			args[i]=readNext(argList[i]);
 		}
 		Object result=null;
 		try {
 			result=method.invoke(boundObj, args);
 		} catch (IllegalAccessException | IllegalArgumentException | InvocationTargetException e) {
-			e.printStackTrace();
 		}
-		asyncRet.result(result);
+		if(firstInputParamIndex==0) {
+			asyncRet.result(result);
+		}
 	}
 
 }
