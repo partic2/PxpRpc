@@ -12,13 +12,17 @@ the message format is defined like below.
 #include <stdint.h>
 
 #pragma pack(1)
-//push (push bytes data into slot address dest_addr)
+
+//function:push (push bytes data to server and put the reference into slot addressed by dest_addr.)
+//Explain in C, *dest_addr=&data
 struct push_request{
     struct{
-        uint8_t opcode;  // 1
+        uint8_t opcode;  // "opcode" identify the type of the request. for push_request,this value is 1
         uint8_t id1;
         uint16_t id2;
-    } session;
+    } session;   /* "session" is an identifier established by the client.
+	The Server MUST reply "session" with the same value in the Response struct for ALL request types */
+	
     uint32_t dest_addr;
     uint32_t length;
     char data[length];
@@ -28,9 +32,11 @@ struct push_response{
         uint8_t opcode;  // 1
         uint8_t id1;
         uint16_t id2;
-    } session;
+    } session;  // MUST be the same as the value of "session" in request
 };
-//pull (pull bytes data from slot address src_addr)
+
+//function:pull (pull bytes data refered by the reference in slot addressed by src_addr.)
+//Explain in C, return **src_addr
 struct pull_request{
     struct{
         uint8_t opcode;  // 2
@@ -49,7 +55,8 @@ struct pull_response{
     uint32_t length; // 0XFFFFFFFF(-1) if data can't be transfered,In this case, sizeof(data)==0
     char data[length];   
 };
-//assign (set *dest_addr=*src_addr)
+//function:assign (set slot value.)
+//Explain in C, *dest_addr=*src_addr
 struct assign_request{
     struct{
         uint8_t opcode;  // 3
@@ -59,14 +66,17 @@ struct assign_request{
     uint32_t dest_addr;
     uint32_t src_addr;
 };
-struct aassign_response{
+struct assign_response{
     struct{
         uint8_t opcode;  // 3
         uint8_t id1;
         uint16_t id2;
     } session;
 };
-//unlink (set *dest_addr=NULL)
+
+//function:unlink (set slot to NULL.)
+// Explain in C, *dest_addr=NULL
+//server may decide if the resources can be free.
 struct unlink_request{
     struct{
         uint8_t opcode;  // 4
@@ -82,7 +92,11 @@ struct unlink_response{
         uint16_t id2;
     } session;
 };
-//call (*dest_addr=(*func_addr)(param1,param2...))
+
+//function:call (invoke function stored in func_addr.)
+//Explain in C, *dest_addr=(*func_addr)(param1,param2...)
+//PxpRpc assume the client always know the definition of the function.
+//So wrong parameter may BREAK the PxpRpc connection permanently.
 struct call_request{
     struct{
         uint8_t opcode;  // 5
@@ -110,8 +124,10 @@ struct call_response{
     uint64_t returnValue;
     #endif
 };
-//getFunc (*dest_addr=getFunction(*func_name_addr)) 
-//func_name_addr encode as utf8
+
+//function:getFunc (get builtin function named by string refered by func_name_addr.) 
+//Explain in C,*dest_addr=getFunction(*func_name_addr)
+//func_name_addr can be a slot where stored the reference to a utf8 encode string pushed previously.
 struct getFunc_request{
     struct{
         uint8_t opcode;  // 6
@@ -130,7 +146,7 @@ struct getFunc_response{
     uint32_t dest_addr; // 0 if function not found
 };
 
-//close (free the resource and prepare to disconnect)
+//function:close (free the resource and prepare to disconnect)
 struct close_request{
     struct{
         uint8_t opcode;  // 7
@@ -143,7 +159,7 @@ struct close_request{
 
 
 
-See java test file for usage.
+See java test file for detail usage.
 
 Feel free to PR and issue
 
