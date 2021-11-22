@@ -104,6 +104,7 @@ public class PxpRpc {
 			// set *1101 = getFunc test1.print5678
 			client.getFunc(1101,"test1.print5678");
 			// set *1102 = call *1101
+			System.out.println("expect print 5678");
 			client.callIntFunc(1102, 1101, new Object[0]);
 			//set *1101 = getFunc test1.get1234
 			client.getFunc(1101, "test1.get1234");
@@ -113,6 +114,12 @@ public class PxpRpc {
 			client.getFunc(1103, "test1.printString");
 			//set *1104 = call *1103 (*1102)  
 			//currently, 1102 slot store the value return by test1.get1234
+			System.out.println("expect print 1234");
+			client.callIntFunc(1104,1103,new Object[] {1102});
+			//set *1102="pxprpc"
+			client.push(1102, "pxprpc".getBytes("utf-8"));
+			//should print pxprpc
+			System.out.println("expect print pxprpc");
 			client.callIntFunc(1104,1103,new Object[] {1102});
 			
 			System.out.println("sleep 1 tick");

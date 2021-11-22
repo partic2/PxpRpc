@@ -8,6 +8,7 @@ import java.lang.reflect.Method;
 import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.charset.Charset;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.locks.Lock;
@@ -29,9 +30,9 @@ public class ServerContext implements Closeable{
 	}
 	public void serve() throws IOException {
 		while(running) {
-			int oper=readInt32();
-			int opcode=oper&0xff;
-			int session=oper;
+			byte[] session=new byte[4];
+			this.in.read(session);
+			int opcode=session[0];
 			switch(opcode) {
 			case 1:
 				push(session);
@@ -60,22 +61,22 @@ public class ServerContext implements Closeable{
 		running=false;
 	}
 	
-	public void push(final int session) throws IOException {
+	public void push(final byte[] session) throws IOException {
 		int addr=readInt32();
 		int len=readInt32();
 		byte[] buf=new byte[len];
 		in.read(buf);
 		refSlots.put(addr,buf);
 		writeLock().lock();
-		writeInt32(session);
+		this.out.write(session);
 		writeLock().unlock();
 		out.flush();
 	}
-	public void pull(final int session) throws IOException {
+	public void pull(final byte[] session) throws IOException {
 		int addr=readInt32();
 		Object o=refSlots.get(addr);
 		writeLock().lock();
-		writeInt32(session);
+		this.out.write(session);
 		if(o instanceof byte[]) {
 			byte[] b=(byte[]) o;
 			writeInt32(b.length);
@@ -90,23 +91,24 @@ public class ServerContext implements Closeable{
 		writeLock().unlock();
 		out.flush();
 	}
-	public void assign(final int session) throws IOException {
+	public void assign(final byte[] session) throws IOException {
 		int addr=readInt32();
 		int srcAddr=readInt32();
 		refSlots.put(addr, refSlots.get(srcAddr));
 		writeLock().lock();
-		writeInt32(session);
-		writeLock().unlock();
-	}
-	public void unlink(final int session) throws IOException {
-		int addr=readInt32();
-		refSlots.remove(addr);
-		writeLock().lock();
-		writeInt32(session);
+		this.out.write(session);
 		writeLock().unlock();
 		out.flush();
 	}
-	public void call(final int session) throws IOException {
+	public void unlink(final byte[] session) throws IOException {
+		int addr=readInt32();
+		refSlots.remove(addr);
+		writeLock().lock();
+		this.out.write(session);
+		writeLock().unlock();
+		out.flush();
+	}
+	public void call(final byte[] session) throws IOException {
 		final int retAddr=readInt32();
 		int funcAddr=readInt32();
 		final PxpCallable callable=(PxpCallable) refSlots.get(funcAddr);
@@ -117,7 +119,7 @@ public class ServerContext implements Closeable{
 				try {
 					refSlots.put(retAddr, result);
 					writeLock().lock();
-					writeInt32(session);
+					ServerContext.this.out.write(session);
 					callable.writeResult(result, retAddr);
 					writeLock().unlock();
 					out.flush();
@@ -126,7 +128,7 @@ public class ServerContext implements Closeable{
 			}
 		});
 	}
-	public void getFunc(final int session) throws IOException {
+	public void getFunc(final byte[] session) throws IOException {
 		int retAddr=readInt32();
 		String name=this.readNextString();
 		int namespaceDelim=name.indexOf(".");
@@ -136,11 +138,11 @@ public class ServerContext implements Closeable{
 		Method found=builtIn.getMethod(obj, func);
 		writeLock().lock();
 		if(found==null) {
-			writeInt32(session);
+			this.out.write(session);
 			writeInt32(0);
 		}else {
 			refSlots.put(retAddr, new BoundMethodCallable(found, obj));
-			writeInt32(session);
+			this.out.write(session);
 			writeInt32(retAddr);
 		}
 		writeLock().unlock();
@@ -168,11 +170,13 @@ public class ServerContext implements Closeable{
 		int addr=readInt32();
 		return (byte[])refSlots.get(addr);
 	}
+	public static final Charset charset=Charset.forName("utf-8");
+	
 	public String readNextString() throws IOException {
 		int addr=readInt32();
 		Object o=refSlots.get(addr);
 		if(o instanceof byte[]) {
-			return new String((byte[])o,"utf-8");
+			return new String((byte[])o,charset);
 		}else {
 			return o.toString();
 		}

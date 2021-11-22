@@ -63,6 +63,9 @@ public abstract class AbstractCallable implements PxpCallable{
 				return 8;
 			}
 		}else{
+			if(jtype.equals(String.class)) {
+				return 9;
+			}
 			return 8;		
 		}
 	}
@@ -95,6 +98,9 @@ public abstract class AbstractCallable implements PxpCallable{
 		case 8:
 			int addr=readInt32();
 			return ctx.refSlots.get(addr);
+		case 9:
+		//string type
+			return readNextString();
 		default :
 			throw new UnsupportedOperationException();
 		}
@@ -133,6 +139,7 @@ public abstract class AbstractCallable implements PxpCallable{
 			break;
 		//reference type
 		case 8:
+		case 9:
 			ctx.writeInt32(addrIfRefType);
 			break;
 		default :
