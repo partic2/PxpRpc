@@ -5,11 +5,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.lang.reflect.Method;
-import java.nio.Buffer;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.nio.charset.Charset;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
@@ -30,6 +30,8 @@ public class ServerContext implements Closeable{
 		builtIn=new BuiltInFuncList();
 		funcMap.put("builtin", builtIn);
 	}
+	protected List<PxpRequest> requests=new ArrayList<PxpRequest>();
+	
 	public void serve() throws IOException {
 		while(running) {
 			byte[] session=new byte[4];
@@ -114,15 +116,24 @@ public class ServerContext implements Closeable{
 		final int retAddr=readInt32();
 		int funcAddr=readInt32();
 		final PxpCallable callable=(PxpCallable) refSlots.get(funcAddr);
-		callable.context(this);
-		callable.call(new AsyncReturn<Object>() {
+		final PxpRequest r1 = new PxpRequest();
+		r1.context=this;
+		r1.opcode=5;
+		r1.session=session;
+		r1.destAddr=retAddr;
+		r1.srcAddr=funcAddr;
+		callable.readParameter(r1);
+		r1.pending=true;
+		callable.call(r1,new AsyncReturn<Object>() {
 			@Override
 			public void result(Object result) {
 				try {
+					r1.result=result;
 					refSlots.put(retAddr, result);
+					r1.pending=false;
 					writeLock().lock();
 					ServerContext.this.out.write(session);
-					callable.writeResult(result, retAddr);
+					callable.writeResult(r1);
 					writeLock().unlock();
 					out.flush();
 				} catch (IOException e) {
@@ -150,9 +161,9 @@ public class ServerContext implements Closeable{
 		writeLock().unlock();
 		out.flush();
 	}
-	private ReentrantLock lock=new ReentrantLock();
+	private ReentrantLock writeLock=new ReentrantLock();
 	public Lock writeLock() {
-		return lock;
+		return writeLock;
 	}
 	
 

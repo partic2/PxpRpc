@@ -12,28 +12,34 @@ public class BoundMethodCallable extends MethodCallable{
 	}
 	
 	@Override
-	public void call(final AsyncReturn<Object> asyncRet) throws IOException {
+	public void readParameter(PxpRequest req) throws IOException {
+		ServerContext c = req.context;
 		final Object[] args=new Object[argList.length];
 		if(firstInputParamIndex>=1) {
-			args[0]=asyncRet;
+			args[0]=null;
 		}
 		for(int i=firstInputParamIndex;i<argList.length;i++) {
-			args[i]=readNext(argList[i]);
+			args[i]=readNext(c,argList[i]);
 		}
-		ctx.executor.execute(new Runnable() {
-			@Override
-			public void run() {
-				try {
-					Object result=null;
-					result=method.invoke(boundObj, args);
-					if(firstInputParamIndex==0) {
-						asyncRet.result(result);
-					}
-				} catch (Exception e) {
-					asyncRet.result(e);
-				} 
+		req.parameter=new Object[] {null,args};
+	}
+
+	@Override
+	public void call(PxpRequest req,AsyncReturn<Object> asyncRet) throws IOException {
+		ServerContext ctx = req.context;
+		try {
+			Object result=null;
+			Object[] args = (Object[])((Object[])req.parameter)[1];
+			if(firstInputParamIndex>=1) {
+				args[0]=asyncRet;
 			}
-		});
+			result=method.invoke(this.boundObj,args);
+			if(firstInputParamIndex==0) {
+				asyncRet.result(result);
+			}
+		} catch (Exception e) {
+			asyncRet.result(e);
+		} 
 	}
 
 }

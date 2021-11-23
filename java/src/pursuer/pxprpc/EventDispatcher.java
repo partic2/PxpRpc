@@ -24,8 +24,13 @@ public class EventDispatcher extends AbstractCallable {
 		receivers.clear();
 	}
 
+
 	@Override
-	public void call(AsyncReturn<Object> asyncRet) throws IOException {
+	public void readParameter(PxpRequest req) throws IOException {
+	}
+
+	@Override
+	public void call(PxpRequest req, AsyncReturn<Object> asyncRet) throws IOException {
 		receivers.offer(asyncRet);
 	}
 }

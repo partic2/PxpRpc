@@ -27,30 +27,37 @@ public class MethodCallable extends AbstractCallable{
 		
 	}
 	
+
 	@Override
-	public void call(final AsyncReturn<Object> asyncRet) throws IOException {
-		final int thisObj=readInt32();
+	public void readParameter(PxpRequest req) throws IOException {
+		ServerContext c = req.context;
+		final int thisObj=c.readInt32();
 		final Object[] args=new Object[argList.length];
 		if(firstInputParamIndex>=1) {
-			args[0]=asyncRet;
+			args[0]=null;
 		}
 		for(int i=firstInputParamIndex;i<argList.length;i++) {
-			args[i]=readNext(argList[i]);
+			args[i]=readNext(c,argList[i]);
 		}
-		ctx.executor.execute(new Runnable() {
-			@Override
-			public void run() {
-				try {
-					Object result=null;
-					result=method.invoke(ctx.refSlots.get(thisObj), args);
-					if(firstInputParamIndex==0) {
-						asyncRet.result(result);
-					}
-				} catch (Exception e) {
-					asyncRet.result(e);
-				} 
+		req.parameter=new Object[] {thisObj,args};
+	}
+
+	@Override
+	public void call(PxpRequest req,AsyncReturn<Object> asyncRet) throws IOException {
+		ServerContext ctx = req.context;
+		try {
+			Object result=null;
+			Object[] args = (Object[])((Object[])req.parameter)[1];
+			if(firstInputParamIndex>=1) {
+				args[0]=asyncRet;
 			}
-		});
+			result=method.invoke(ctx.refSlots.get(((Object[])req.parameter)[0]),args);
+			if(firstInputParamIndex==0) {
+				asyncRet.result(result);
+			}
+		} catch (Exception e) {
+			asyncRet.result(e);
+		} 
 	}
 
 }

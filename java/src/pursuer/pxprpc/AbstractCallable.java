@@ -8,37 +8,14 @@ import java.nio.ByteOrder;
 
 public abstract class AbstractCallable implements PxpCallable{
 
-	protected ServerContext ctx;
-	@Override
-	public void context(ServerContext ctx) {
-		this.ctx=ctx;
-	}
-	
-	public int readInt32() throws IOException {
-		return ctx.readInt32();
-	}
-	public long readInt64() throws IOException {
-		return ctx.readInt64();
-	}
-	public float readFloat32() throws IOException {
-		return ctx.readFloat32();
-	}
-	public double readFloat64() throws IOException {
-		return ctx.readFloat64();
-	}
-	public byte[] readNextRaw() throws IOException {
-		return ctx.readNextRaw();
-	}
-	public String readNextString() throws IOException {
-		return ctx.readNextString();
-	}
 	
 	@Override
-	public void writeResult(Object result, int resultAddr) throws IOException {
-		if(result==null) {
+	public void writeResult(PxpRequest req) throws IOException{
+		ServerContext ctx = req.context;
+		if(req.result==null) {
 			ctx.writeInt32(0);
 		}else {
-			writeNext(javaTypeToSwitchId(result.getClass()), result, resultAddr);
+			writeNext(req.context,javaTypeToSwitchId(req.result.getClass()), req.result, req.destAddr);
 		}
 	}
 
@@ -70,43 +47,43 @@ public abstract class AbstractCallable implements PxpCallable{
 		}
 	}
 	
-	public Object readNext(int switchId) throws IOException {
+	public Object readNext(ServerContext ctx,int switchId) throws IOException {
 		switch(switchId) {
 		//primitive type 
 			//boolean
 		case 1:
-			return readInt32()!=0;
+			return ctx.readInt32()!=0;
 			//byte
 		case 2:
-			return (byte)readInt32();
+			return (byte)ctx.readInt32();
 			//short
 		case 3:
-			return (short)readInt32();
+			return (short)ctx.readInt32();
 			//int
 		case 4:
-			return readInt32();
+			return ctx.readInt32();
 			//long
 		case 5:
-			return readInt64();
+			return ctx.readInt64();
 			//float
 		case 6:
-			return readFloat32();
+			return ctx.readFloat32();
 			//double
 		case 7:
-			return readFloat64();
+			return ctx.readFloat64();
 		//reference type
 		case 8:
-			int addr=readInt32();
+			int addr=ctx.readInt32();
 			return ctx.refSlots.get(addr);
 		case 9:
 		//string type
-			return readNextString();
+			return ctx.readNextString();
 		default :
 			throw new UnsupportedOperationException();
 		}
 	}
 
-	public void writeNext(int switchId,Object obj,int addrIfRefType) throws IOException {
+	public void writeNext(ServerContext ctx,int switchId,Object obj,int addrIfRefType) throws IOException {
 		switch(switchId) {
 		//primitive type 
 			//boolean
