@@ -1,9 +1,7 @@
 package pursuer.pxprpc;
 
 import java.io.IOException;
-import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.util.concurrent.Future;
 
 public class MethodCallable extends AbstractCallable{
 	
@@ -30,23 +28,29 @@ public class MethodCallable extends AbstractCallable{
 	}
 	
 	@Override
-	public void call(AsyncReturn<Object> asyncRet) throws IOException {
-		int thisObj=readInt32();
-		Object[] args=new Object[argList.length];
+	public void call(final AsyncReturn<Object> asyncRet) throws IOException {
+		final int thisObj=readInt32();
+		final Object[] args=new Object[argList.length];
 		if(firstInputParamIndex>=1) {
 			args[0]=asyncRet;
 		}
 		for(int i=firstInputParamIndex;i<argList.length;i++) {
 			args[i]=readNext(argList[i]);
 		}
-		Object result=null;
-		try {
-			result=method.invoke(ctx.refSlots.get(thisObj), args);
-		} catch (IllegalAccessException | IllegalArgumentException | InvocationTargetException e) {
-		}
-		if(firstInputParamIndex==0) {
-			asyncRet.result(result);
-		}
+		ctx.executor.execute(new Runnable() {
+			@Override
+			public void run() {
+				try {
+					Object result=null;
+					result=method.invoke(ctx.refSlots.get(thisObj), args);
+					if(firstInputParamIndex==0) {
+						asyncRet.result(result);
+					}
+				} catch (Exception e) {
+					asyncRet.result(e);
+				} 
+			}
+		});
 	}
 
 }

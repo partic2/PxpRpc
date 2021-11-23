@@ -11,6 +11,8 @@ import java.nio.ByteOrder;
 import java.nio.charset.Charset;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -20,8 +22,8 @@ public class ServerContext implements Closeable{
 	public boolean running=true;
 	public Map<Integer,Object> refSlots=new HashMap<Integer,Object>();
 	public Map<String,Object> funcMap=new HashMap<String,Object>();
-	
-	private BuiltInFuncList builtIn;
+	public Executor executor=Executors.newCachedThreadPool();
+	protected BuiltInFuncList builtIn;
 	public void init(InputStream in,OutputStream out) {
 		this.in=in;
 		this.out=out;

@@ -38,7 +38,7 @@ public class PxpRpc {
 			te.start();
 			return te;
 		}
-		public void waitOneTick(AsyncReturn<Object> asyncRet) {
+		public void waitOneTick(final AsyncReturn<Object> asyncRet) {
 			Timer tm=new Timer();
 			tm.schedule(new TimerTask() {
 				@Override
@@ -68,7 +68,7 @@ public class PxpRpc {
 	public static void main(String[] args) {
 
 		try {
-			TCPBackend pxptcp = new TCPBackend();
+			final TCPBackend pxptcp = new TCPBackend();
 			int listenPort=2064;
 			pxptcp.funcMap.put("test1", new Handler1());
 			pxptcp.bindAddr=new InetSocketAddress(listenPort);
