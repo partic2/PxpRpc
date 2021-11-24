@@ -8,5 +8,6 @@ public class PxpRequest {
 	public int srcAddr;
 	public Object parameter;
 	public Object result;
+	public PxpCallable callable;
 	public boolean pending=false;
 }

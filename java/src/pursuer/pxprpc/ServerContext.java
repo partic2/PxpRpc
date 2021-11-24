@@ -9,6 +9,7 @@ import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executor;
@@ -34,27 +35,45 @@ public class ServerContext implements Closeable{
 	
 	public void serve() throws IOException {
 		while(running) {
+			PxpRequest r=new PxpRequest();
+			r.context=this;
 			byte[] session=new byte[4];
 			this.in.read(session);
-			int opcode=session[0];
-			switch(opcode) {
+			r.session=session;
+			r.opcode=session[0];
+			switch(r.opcode) {
 			case 1:
-				push(session);
+				r.destAddr=readInt32();
+				int len=readInt32();
+				byte[] buf=new byte[len];
+				in.read(buf);
+				r.parameter=buf;
+				push(r);
 				break;
 			case 2:
-				pull(session);
+				r.srcAddr=readInt32();
+				pull(r);
 				break;
 			case 3:
-				assign(session);
+				r.destAddr=readInt32();
+				r.srcAddr=readInt32();
+				assign(r);
 				break;
 			case 4:
-				unlink(session);
+				r.destAddr=readInt32();
+				unlink(r);
 				break;
 			case 5:
-				call(session);
+				r.destAddr=readInt32();
+				r.srcAddr=readInt32();
+				r.callable=(PxpCallable) refSlots.get(r.srcAddr);
+				r.callable.readParameter(r);
+				call(r);
 				break;
 			case 6:
-				getFunc(session);
+				r.destAddr=readInt32();
+				r.srcAddr=readInt32();
+				getFunc(r);
 				break;
 			case 7:
 				close();
@@ -65,22 +84,17 @@ public class ServerContext implements Closeable{
 		running=false;
 	}
 	
-	public void push(final byte[] session) throws IOException {
-		int addr=readInt32();
-		int len=readInt32();
-		byte[] buf=new byte[len];
-		in.read(buf);
-		refSlots.put(addr,buf);
+	public void push(final PxpRequest r) throws IOException {
+		refSlots.put(r.destAddr,r.parameter);
 		writeLock().lock();
-		this.out.write(session);
+		this.out.write(r.session);
 		writeLock().unlock();
 		out.flush();
 	}
-	public void pull(final byte[] session) throws IOException {
-		int addr=readInt32();
-		Object o=refSlots.get(addr);
+	public void pull(final PxpRequest r) throws IOException {
+		Object o=refSlots.get(r.srcAddr);
 		writeLock().lock();
-		this.out.write(session);
+		this.out.write(r.session);
 		if(o instanceof byte[]) {
 			byte[] b=(byte[]) o;
 			writeInt32(b.length);
@@ -95,45 +109,32 @@ public class ServerContext implements Closeable{
 		writeLock().unlock();
 		out.flush();
 	}
-	public void assign(final byte[] session) throws IOException {
-		int addr=readInt32();
-		int srcAddr=readInt32();
-		refSlots.put(addr, refSlots.get(srcAddr));
+	public void assign(final PxpRequest r) throws IOException {
+		refSlots.put(r.destAddr, refSlots.get(r.srcAddr));
 		writeLock().lock();
-		this.out.write(session);
+		this.out.write(r.session);
 		writeLock().unlock();
 		out.flush();
 	}
-	public void unlink(final byte[] session) throws IOException {
-		int addr=readInt32();
-		refSlots.remove(addr);
+	public void unlink(final PxpRequest r) throws IOException {
+		refSlots.remove(r.destAddr);
 		writeLock().lock();
-		this.out.write(session);
+		this.out.write(r.session);
 		writeLock().unlock();
 		out.flush();
 	}
-	public void call(final byte[] session) throws IOException {
-		final int retAddr=readInt32();
-		int funcAddr=readInt32();
-		final PxpCallable callable=(PxpCallable) refSlots.get(funcAddr);
-		final PxpRequest r1 = new PxpRequest();
-		r1.context=this;
-		r1.opcode=5;
-		r1.session=session;
-		r1.destAddr=retAddr;
-		r1.srcAddr=funcAddr;
-		callable.readParameter(r1);
-		r1.pending=true;
-		callable.call(r1,new AsyncReturn<Object>() {
+	public void call(final PxpRequest r) throws IOException {
+		r.pending=true;
+		r.callable.call(r,new AsyncReturn<Object>() {
 			@Override
 			public void result(Object result) {
 				try {
-					r1.result=result;
-					refSlots.put(retAddr, result);
-					r1.pending=false;
+					r.result=result;
+					refSlots.put(r.destAddr, result);
+					r.pending=false;
 					writeLock().lock();
-					ServerContext.this.out.write(session);
-					callable.writeResult(r1);
+					ServerContext.this.out.write(r.session);
+					r.callable.writeResult(r);
 					writeLock().unlock();
 					out.flush();
 				} catch (IOException e) {
@@ -141,9 +142,8 @@ public class ServerContext implements Closeable{
 			}
 		});
 	}
-	public void getFunc(final byte[] session) throws IOException {
-		int retAddr=readInt32();
-		String name=this.readNextString();
+	public void getFunc(final PxpRequest r) throws IOException {
+		String name=getStringAt(r.srcAddr);
 		int namespaceDelim=name.indexOf(".");
 		String namespace=name.substring(0,namespaceDelim);
 		String func=name.substring(namespaceDelim+1);
@@ -151,16 +151,83 @@ public class ServerContext implements Closeable{
 		Method found=builtIn.getMethod(obj, func);
 		writeLock().lock();
 		if(found==null) {
-			this.out.write(session);
+			this.out.write(r.session);
 			writeInt32(0);
 		}else {
-			refSlots.put(retAddr, new BoundMethodCallable(found, obj));
-			this.out.write(session);
-			writeInt32(retAddr);
+			refSlots.put(r.destAddr, new BoundMethodCallable(found, obj));
+			this.out.write(r.session);
+			writeInt32(r.destAddr);
 		}
 		writeLock().unlock();
 		out.flush();
 	}
+	
+	//TODO: try to implement feature that same session executed in sequence.
+	//WIP
+	public void requestHandler()throws IOException {
+		ArrayList<byte[]> pendingSession=new ArrayList<byte[]>();
+		int size=requests.size();
+		int i1;
+		while(running) {
+			PxpRequest r=null;
+			synchronized (requests) {
+				for(i1=0;i1<size;i1++) {
+					PxpRequest elem = requests.get(i1);
+					if(elem.pending) {
+						pendingSession.add(elem.session);
+					}else {
+						boolean pending=false;
+						for(byte[] elem2:pendingSession) {
+							if(elem2[1]==elem.session[1]&&elem2[2]==elem.session[2]&&elem2[3]==elem.session[3]) {
+								pending=true;
+								break;
+							}
+						}
+						if(!pending) {
+							break;
+						}
+					}
+				}
+				if(i1<size) {
+					r=requests.get(i1);
+				}
+			}
+			if(r!=null) {
+				switch(r.opcode) {
+				case 1:
+					push(r);
+					break;
+				case 2:
+					pull(r);
+					break;
+				case 3:
+					assign(r);
+					break;
+				case 4:
+					unlink(r);
+					break;
+				case 5:
+					//TODO: We need custom 'call' to get return status of callable.
+					break;
+				case 6:
+					getFunc(r);
+					break;
+				case 7:
+					close();
+					running=false;
+					break;
+				}
+				if(r.opcode!=5) {
+					synchronized (requests) {
+						requests.remove(i1);
+					}
+				}
+			}
+		}
+		
+		
+	}
+	
 	private ReentrantLock writeLock=new ReentrantLock();
 	public Lock writeLock() {
 		return writeLock;
@@ -187,6 +254,10 @@ public class ServerContext implements Closeable{
 	
 	public String readNextString() throws IOException {
 		int addr=readInt32();
+		return getStringAt(addr);
+	}
+	
+	public String getStringAt(int addr) {
 		Object o=refSlots.get(addr);
 		if(o instanceof byte[]) {
 			return new String((byte[])o,charset);
