@@ -7,9 +7,7 @@ import java.io.OutputStream;
 import java.lang.reflect.Method;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executor;
@@ -18,10 +16,11 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class ServerContext implements Closeable{
+	public static int DefaultRefSlotsCap=256;
 	public InputStream in;
 	public OutputStream out;
 	public boolean running=true;
-	public Map<Integer,Object> refSlots=new HashMap<Integer,Object>();
+	public Object[] refSlots=new Object[DefaultRefSlotsCap];
 	public Map<String,Object> funcMap=new HashMap<String,Object>();
 	public Executor executor=Executors.newCachedThreadPool();
 	protected BuiltInFuncList builtIn;
@@ -66,7 +65,7 @@ public class ServerContext implements Closeable{
 			case 5:
 				r.destAddr=readInt32();
 				r.srcAddr=readInt32();
-				r.callable=(PxpCallable) refSlots.get(r.srcAddr);
+				r.callable=(PxpCallable) refSlots[r.srcAddr];
 				r.callable.readParameter(r);
 				call(r);
 				break;
@@ -79,20 +78,23 @@ public class ServerContext implements Closeable{
 				close();
 				running=false;
 				break;
+			case 8:
+				getInfo(r);
+				break;
 			}
 		}
 		running=false;
 	}
 	
 	public void push(final PxpRequest r) throws IOException {
-		refSlots.put(r.destAddr,r.parameter);
+		refSlots[r.destAddr]=r.parameter;
 		writeLock().lock();
 		this.out.write(r.session);
 		writeLock().unlock();
 		out.flush();
 	}
 	public void pull(final PxpRequest r) throws IOException {
-		Object o=refSlots.get(r.srcAddr);
+		Object o=refSlots[r.srcAddr];
 		writeLock().lock();
 		this.out.write(r.session);
 		if(o instanceof byte[]) {
@@ -110,14 +112,14 @@ public class ServerContext implements Closeable{
 		out.flush();
 	}
 	public void assign(final PxpRequest r) throws IOException {
-		refSlots.put(r.destAddr, refSlots.get(r.srcAddr));
+		refSlots[r.destAddr]=refSlots[r.srcAddr];
 		writeLock().lock();
 		this.out.write(r.session);
 		writeLock().unlock();
 		out.flush();
 	}
 	public void unlink(final PxpRequest r) throws IOException {
-		refSlots.remove(r.destAddr);
+		refSlots[r.destAddr]=null;
 		writeLock().lock();
 		this.out.write(r.session);
 		writeLock().unlock();
@@ -130,7 +132,7 @@ public class ServerContext implements Closeable{
 			public void result(Object result) {
 				try {
 					r.result=result;
-					refSlots.put(r.destAddr, result);
+					refSlots[r.destAddr]=result;
 					r.pending=false;
 					writeLock().lock();
 					ServerContext.this.out.write(r.session);
@@ -154,10 +156,23 @@ public class ServerContext implements Closeable{
 			this.out.write(r.session);
 			writeInt32(0);
 		}else {
-			refSlots.put(r.destAddr, new BoundMethodCallable(found, obj));
+			refSlots[r.destAddr]= new BoundMethodCallable(found, obj);
 			this.out.write(r.session);
 			writeInt32(r.destAddr);
 		}
+		writeLock().unlock();
+		out.flush();
+	}
+	public void getInfo(final PxpRequest r)throws IOException{
+		writeLock().lock();
+		this.out.write(r.session);
+		byte[] b=(
+		"server name:pxprpc for java\n"+
+		"version:1.0\n"+
+		"reference slots capacity:"+this.refSlots.length+"\n"
+		).getBytes("utf-8");
+		writeInt32(b.length);
+		out.write(b);
 		writeLock().unlock();
 		out.flush();
 	}
@@ -248,7 +263,7 @@ public class ServerContext implements Closeable{
 	}
 	public byte[] readNextRaw() throws IOException {
 		int addr=readInt32();
-		return (byte[])refSlots.get(addr);
+		return (byte[])refSlots[addr];
 	}
 	public static final Charset charset=Charset.forName("utf-8");
 	
@@ -258,7 +273,7 @@ public class ServerContext implements Closeable{
 	}
 	
 	public String getStringAt(int addr) {
-		Object o=refSlots.get(addr);
+		Object o=refSlots[addr];
 		if(o instanceof byte[]) {
 			return new String((byte[])o,charset);
 		}else {
@@ -288,6 +303,6 @@ public class ServerContext implements Closeable{
 		running=false;
 		closeQuietly(in);
 		closeQuietly(out);
-		refSlots.clear();
+		refSlots=null;
 	}
 }

@@ -155,6 +155,35 @@ struct close_request{
     } session;
 };
 //closed, No response.
+
+//function:getInfo (get string encoded in utf8 indicate the information about the server.)
+struct getInfo_request{
+    struct{
+        uint8_t opcode;  // 8
+        uint8_t id1;
+        uint16_t id2;
+    } session;
+};
+struct getInfo_response{
+    struct{
+        uint8_t opcode;  // 8
+        uint8_t id1;
+        uint16_t id2;
+    } session;
+    uint32_t length; // 0XFFFFFFFF(-1) if data can't be transfered,In this case, sizeof(data)==0
+    char data[length];
+};
+/*
+"data" stored the information about the server (as utf8). An example "data" show below
+-----------------------------
+server name:pxprpc for java
+version:1.0
+reference slots size:256
+-------------------------------
+"server name" indicate the server name.
+"version" indicate the pxprpc protocol version. Currently only 1.0 is valid.
+"reference slots capacity" indicate how many slots can client use. Client should ensure that the slot address is less than this value.
+*/
 ```
 
 

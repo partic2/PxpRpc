@@ -100,48 +100,48 @@ public class PxpRpc {
 			ClientContext client = new ClientContext();
 			client.init(soc.getInputStream(),soc.getOutputStream());
 			
-			
-			// set *1101 = getFunc test1.print5678
-			client.getFunc(1101,"test1.print5678");
-			// set *1102 = call *1101
+			System.out.println("##connected server info:\n"+client.getInfo());
+			// set *11 = getFunc test1.print5678
+			client.getFunc(11,"test1.print5678");
 			System.out.println("expect print 5678");
-			client.callIntFunc(1102, 1101, new Object[0]);
-			//set *1101 = getFunc test1.get1234
-			client.getFunc(1101, "test1.get1234");
-			// set *1102 = call *1101
-			client.callIntFunc(1102,1101,new Object[0]);
-			//set *1103 = getFunc test1.printString
-			client.getFunc(1103, "test1.printString");
-			//set *1104 = call *1103 (*1102)  
-			//currently, 1102 slot store the value return by test1.get1234
+			// set *12 = call *11
+			client.callIntFunc(12, 11, new Object[0]);
+			//set *11 = getFunc test1.get1234
+			client.getFunc(11, "test1.get1234");
+			// set *12 = call *11
+			client.callIntFunc(12,11,new Object[0]);
+			//set *13 = getFunc test1.printString
+			client.getFunc(13, "test1.printString");
+			//set *14 = call *13 (*12)  
+			//currently, 12 slot store the value return by test1.get1234
 			System.out.println("expect print 1234");
-			client.callIntFunc(1104,1103,new Object[] {1102});
-			//set *1102="pxprpc"
-			client.push(1102, "pxprpc".getBytes("utf-8"));
+			client.callIntFunc(14,13,new Object[] {12});
+			//set *12="pxprpc"
+			client.push(12, "pxprpc".getBytes("utf-8"));
 			//should print pxprpc
 			System.out.println("expect print pxprpc");
-			client.callIntFunc(1104,1103,new Object[] {1102});
+			client.callIntFunc(14,13,new Object[] {12});
 			
 			System.out.println("sleep 1 tick");
-			//set *1101=getFunc test1.waitOneTick
-			client.getFunc(1101, "test1.waitOneTick");
-			//set *1102=call *1101
-			client.callIntFunc(1102, 1101, new Object[0]);
-			System.out.println(new String(client.pull(1102),"utf-8"));
+			//set *11=getFunc test1.waitOneTick
+			client.getFunc(11, "test1.waitOneTick");
+			//set *12=call *11
+			client.callIntFunc(12, 11, new Object[0]);
+			System.out.println(new String(client.pull(12),"utf-8"));
 			
-			//set *1101=getFunc test1.onTick
-			client.getFunc(1101, "test1.onTick");
-			//set *1102=test1.onTick()
-			System.out.println(client.callIntFunc(1102,1101,new Object[0]));
-			//set *1103=(*1102).next()
-			client.callIntFunc(1103,1102,new Object[0]);
-			System.out.println(new String(client.pull(1103),"utf-8"));
-			//set *1103=(*1102).next()
-			client.callIntFunc(1103,1102,new Object[0]);
-			System.out.println(new String(client.pull(1103),"utf-8"));
-			//set *1103=(*1102).next()
-			client.callIntFunc(1103,1102,new Object[0]);
-			System.out.println(new String(client.pull(1103),"utf-8"));
+			//set *11=getFunc test1.onTick
+			client.getFunc(11, "test1.onTick");
+			//set *12=test1.onTick()
+			System.out.println(client.callIntFunc(12,11,new Object[0]));
+			//set *13=(*12).next()
+			client.callIntFunc(13,12,new Object[0]);
+			System.out.println(new String(client.pull(13),"utf-8"));
+			//set *13=(*12).next()
+			client.callIntFunc(13,12,new Object[0]);
+			System.out.println(new String(client.pull(13),"utf-8"));
+			//set *13=(*12).next()
+			client.callIntFunc(13,12,new Object[0]);
+			System.out.println(new String(client.pull(13),"utf-8"));
 			
 			
 			
@@ -173,6 +173,7 @@ public class PxpRpc {
 			}
 		}
 		public int session=0x78593<<8;
+		
 		public void push(int addr,byte[] data) throws IOException {
 			int op=session|0x1;
 			Utils.writeInt32(out,op);
@@ -213,13 +214,23 @@ public class PxpRpc {
 		}
 		public int getFunc(int assignAddr,String name) throws IOException {
 			int op=session|0x6;
-			push(1025, name.getBytes());
+			push(1, name.getBytes());
 			Utils.writeInt32(out,op);
 			Utils.writeInt32(out,assignAddr);
-			Utils.writeInt32(out, 1025);
+			Utils.writeInt32(out, 1);
 			out.flush();
 			assert2(Utils.readInt32(in)==op);
 			return Utils.readInt32(in);
+		}
+		public String getInfo()throws IOException{
+			int op=session|0x8;
+			Utils.writeInt32(out,op);
+			assert2(Utils.readInt32(in)==op);
+			out.flush();
+			int len=Utils.readInt32(in);
+			byte[] r=new byte[len];
+			in.read(r);
+			return new String(r,"utf-8");
 		}
 	}
 }

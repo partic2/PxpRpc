@@ -51,7 +51,7 @@ public class MethodCallable extends AbstractCallable{
 			if(firstInputParamIndex>=1) {
 				args[0]=asyncRet;
 			}
-			result=method.invoke(ctx.refSlots.get(((Object[])req.parameter)[0]),args);
+			result=method.invoke(ctx.refSlots[(Integer)((Object[])req.parameter)[0]],args);
 			if(firstInputParamIndex==0) {
 				asyncRet.result(result);
 			}
