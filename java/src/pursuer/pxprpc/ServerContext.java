@@ -20,7 +20,7 @@ public class ServerContext implements Closeable{
 	public InputStream in;
 	public OutputStream out;
 	public boolean running=true;
-	public Object[] refSlots=new Object[DefaultRefSlotsCap];
+	public Ref[] refSlots=new Ref[DefaultRefSlotsCap];
 	public Map<String,Object> funcMap=new HashMap<String,Object>();
 	public Executor executor=Executors.newCachedThreadPool();
 	protected BuiltInFuncList builtIn;
@@ -31,6 +31,7 @@ public class ServerContext implements Closeable{
 		funcMap.put("builtin", builtIn);
 	}
 	protected List<PxpRequest> requests=new ArrayList<PxpRequest>();
+	
 	
 	public void serve() throws IOException {
 		while(running) {
@@ -65,7 +66,7 @@ public class ServerContext implements Closeable{
 			case 5:
 				r.destAddr=readInt32();
 				r.srcAddr=readInt32();
-				r.callable=(PxpCallable) refSlots[r.srcAddr];
+				r.callable=(PxpCallable) refSlots[r.srcAddr].get();
 				r.callable.readParameter(r);
 				call(r);
 				break;
@@ -86,15 +87,26 @@ public class ServerContext implements Closeable{
 		running=false;
 	}
 	
+	protected void putRefSlots(int addr,Ref r) {
+		if(refSlots[addr]!=null) 
+			refSlots[addr].release();
+		if(r!=null)
+			r.addRef();
+		refSlots[addr]=r;
+	}
+	
 	public void push(final PxpRequest r) throws IOException {
-		refSlots[r.destAddr]=r.parameter;
+		putRefSlots(r.destAddr,new Ref(r.parameter));
 		writeLock().lock();
 		this.out.write(r.session);
 		writeLock().unlock();
 		out.flush();
 	}
 	public void pull(final PxpRequest r) throws IOException {
-		Object o=refSlots[r.srcAddr];
+		Object o=null;
+		if(refSlots[r.srcAddr]!=null) {
+			o=refSlots[r.srcAddr].get();
+		}
 		writeLock().lock();
 		this.out.write(r.session);
 		if(o instanceof byte[]) {
@@ -112,14 +124,14 @@ public class ServerContext implements Closeable{
 		out.flush();
 	}
 	public void assign(final PxpRequest r) throws IOException {
-		refSlots[r.destAddr]=refSlots[r.srcAddr];
+		putRefSlots(r.destAddr, this.refSlots[r.srcAddr]);
 		writeLock().lock();
 		this.out.write(r.session);
 		writeLock().unlock();
 		out.flush();
 	}
 	public void unlink(final PxpRequest r) throws IOException {
-		refSlots[r.destAddr]=null;
+		putRefSlots(r.destAddr, null);
 		writeLock().lock();
 		this.out.write(r.session);
 		writeLock().unlock();
@@ -132,7 +144,7 @@ public class ServerContext implements Closeable{
 			public void result(Object result) {
 				try {
 					r.result=result;
-					refSlots[r.destAddr]=result;
+					ServerContext.this.putRefSlots(r.destAddr,new Ref(result));
 					r.pending=false;
 					writeLock().lock();
 					ServerContext.this.out.write(r.session);
@@ -156,7 +168,7 @@ public class ServerContext implements Closeable{
 			this.out.write(r.session);
 			writeInt32(0);
 		}else {
-			refSlots[r.destAddr]= new BoundMethodCallable(found, obj);
+			putRefSlots(r.destAddr, new Ref(new BoundMethodCallable(found, obj)));
 			this.out.write(r.session);
 			writeInt32(r.destAddr);
 		}
@@ -263,7 +275,7 @@ public class ServerContext implements Closeable{
 	}
 	public byte[] readNextRaw() throws IOException {
 		int addr=readInt32();
-		return (byte[])refSlots[addr];
+		return (byte[])refSlots[addr].get();
 	}
 	public static final Charset charset=Charset.forName("utf-8");
 	
@@ -273,7 +285,10 @@ public class ServerContext implements Closeable{
 	}
 	
 	public String getStringAt(int addr) {
-		Object o=refSlots[addr];
+		if(refSlots[addr]==null) {
+			return "";
+		}
+		Object o=refSlots[addr].get();
 		if(o instanceof byte[]) {
 			return new String((byte[])o,charset);
 		}else {
@@ -303,6 +318,11 @@ public class ServerContext implements Closeable{
 		running=false;
 		closeQuietly(in);
 		closeQuietly(out);
-		refSlots=null;
+		for(int i1=0;i1<refSlots.length;i1++) {
+			if(refSlots[i1]!=null) {
+				refSlots[i1].release();
+			}
+		}
+		System.gc();
 	}
 }

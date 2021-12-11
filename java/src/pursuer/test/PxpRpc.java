@@ -1,5 +1,6 @@
 package pursuer.test;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -32,6 +33,14 @@ public class PxpRpc {
 		}
 		public void print5678() {
 			System.out.println("5678");
+		}
+		public Closeable printWhenFree() {
+			return new Closeable() {
+				@Override
+				public void close() throws IOException {
+					System.out.println("free by server gc");
+				}
+			};
 		}
 		public TickEvent onTick() {
 			TickEvent te = new TickEvent();
@@ -143,8 +152,16 @@ public class PxpRpc {
 			client.callIntFunc(13,12,new Object[0]);
 			System.out.println(new String(client.pull(13),"utf-8"));
 			
+			//set *11 = getFunc test1.printString
+			client.getFunc(11,"test1.printWhenFree");
+			//set *12 = call *11
+			client.callIntFunc(12, 11, new Object[0]);
+			//push to 12, so *11 should be free if server support.
+			System.out.println("expect print 'free by server gc' if server support");
+			client.push(12, new byte[0]);
 			
-			
+			//should be free if server support when connection close.
+			client.callIntFunc(12, 11, new Object[0]);
 			pxptcp.close();
 			System.out.println("close server...");
 			

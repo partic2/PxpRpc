@@ -74,7 +74,7 @@ public abstract class AbstractCallable implements PxpCallable{
 		//reference type
 		case 8:
 			int addr=ctx.readInt32();
-			return ctx.refSlots[addr];
+			return ctx.refSlots[addr].get();
 		case 9:
 		//string type
 			return ctx.readNextString();

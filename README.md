@@ -184,6 +184,11 @@ reference slots size:256
 "version" indicate the pxprpc protocol version. Currently only 1.0 is valid.
 "reference slots capacity" indicate how many slots can client use. Client should ensure that the slot address is less than this value.
 */
+
+/* 
+the server should take responsibility for the lifecycle manager of object refer by references slots.  
+When a object have no reference refer to, server should free it.
+*/
 ```
 
 
