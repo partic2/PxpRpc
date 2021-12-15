@@ -10,4 +10,10 @@ struct pxprpc_abstract_io{
     void *reserved;
 };
 
+struct pxprpc_bytes{
+    uint32_t length;
+    //variable length array
+    char data[1];
+};
+
 #endif
