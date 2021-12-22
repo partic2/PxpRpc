@@ -10,7 +10,7 @@
 
 
 
-static int _pxprpc___ref_AddRef(struct pxprpc_object *ref){
+static int _pxprpc__ref_AddRef(struct pxprpc_object *ref){
     ref->count++;
     return ref->count;
 }
@@ -35,7 +35,7 @@ static int _pxprpc__ref_bytes_Release(struct pxprpc_object *ref){
 
 extern struct pxprpc_object *pxprpc_new_object(void *obj){
     struct pxprpc_object *ref=pxprpc__malloc(sizeof(struct pxprpc_object));
-    ref->addRef=&_pxprpc___ref_AddRef;
+    ref->addRef=&_pxprpc__ref_AddRef;
     ref->release=&_pxprpc__ref_Release;
     ref->count=0;
     ref->object1=obj;
@@ -52,9 +52,13 @@ extern struct pxprpc_object *pxprpc_new_bytes_object(uint32_t size){
 
 struct _pxprpc__ServCo{
     void (*next)(struct _pxprpc__ServCo *self);
-    uint8_t *buf;
     uint32_t session;
-    int readLength;
+    uint8_t buf[16];
+    uint32_t addr1;
+    union{
+        uint32_t length1;
+        uint32_t addr2;
+    };
     struct pxprpc_abstract_io *io1;
     struct pxprpc_object **refSlots;
     int slotMaxHashOffset;
@@ -63,7 +67,6 @@ struct _pxprpc__ServCo{
 };
 
 static void _pxprpc__ServCoStart(struct _pxprpc__ServCo *self){
-    self->buf=pxprpc__malloc(256); 
     self->slotsSize=MAX_REFSLOTS_COUNT;
     self->refSlots=pxprpc__malloc(sizeof(struct pxprpc_object)*MAX_REFSLOTS_COUNT);
     memset(self->refSlots,0,sizeof(struct pxprpc_object)*MAX_REFSLOTS_COUNT);
@@ -80,35 +83,95 @@ static void _pxprpc__RefSlotsPut(struct _pxprpc__ServCo *self,uint32_t addr, str
     self->refSlots[addr]=ref2;
 }
 
+
+//Push handler
+static void _pxprpc__stepPush1(struct _pxprpc__ServCo *self){
+    self->io1->read(self->io1,8,&self->buf,_pxprpc__stepPush2,self);
+}
+static void _pxprpc__stepPush2(struct _pxprpc__ServCo *self){
+    //XXX: limit to Little-Endian
+    self->addr1=*((uint32_t *)&self->buf);
+    self->length1=*((uint32_t *)&self->buf+1);
+    self->t1=pxprpc_new_bytes_object(self->length1);
+
+    self->io1->read(self->io1,4,&((struct pxprpc_bytes *)self->t1->object1)->data,
+      _pxprpc__stepPush3,self);
+}
+static void _pxprpc__stepPush3(struct _pxprpc__ServCo *self){
+    _pxprpc__RefSlotsPut(self,self->addr1,self->t1);
+    self->io1->write(self->io1,4,&self->buf);
+}
+
+//Pull handler
+static void _pxprpc__stepPull1(struct _pxprpc__ServCo *self){
+    self->io1->read(self->io1,4,&self->buf+4,_pxprpc__stepPull2,self);
+}
+static void _pxprpc__stepPull2(struct _pxprpc__ServCo *self){
+    //XXX: limit to Little-Endian
+    int destAddr=*((uint32_t *)&self->buf+2);
+    
+    struct pxprpc_bytes *bytes=self->refSlots[destAddr];
+
+    //XXX: limit to Little-Endian
+    self->io1->write(self->io1,4,&bytes->length);
+    self->io1->write(self->io1,4,&bytes->length);
+    self->io1->write(self->io1,bytes->length,&bytes->data);
+
+}
+
+//Assign handler
+static void _pxprpc__stepAssign1(struct _pxprpc__ServCo *self){
+    self->io1->read(self->io1,8,self->buf+4,_pxprpc__stepAssign2,self);
+}
+static void _pxprpc__stepAssign2(struct _pxprpc__ServCo *self){
+    //XXX: limit to Little-Endian
+    int destAddr=*((uint32_t *)self->buf+2);
+    int srcAddr=*((uint32_t *)self->buf+3);
+    
+    _pxprpc__RefSlotsPut(self,destAddr,self->refSlots[srcAddr]);
+}
+
+//Unlink handler
+static void _pxprpc__stepUnlink1(struct _pxprpc__ServCo *self){
+    self->io1->read(self->io1,4,self->buf+4,_pxprpc__stepUnlink2,self);
+}
+static void _pxprpc__stepUnlink2(struct _pxprpc__ServCo *self){
+    //XXX: limit to Little-Endian
+    int destAddr=*((uint32_t *)self->buf+2);
+    int srcAddr=*((uint32_t *)self->buf+3);
+    
+    _pxprpc__RefSlotsPut(self,destAddr,NULL);
+}
+
+//Unlink handler
+static void _pxprpc__stepCall1(struct _pxprpc__ServCo *self){
+    self->io1->read(self->io1,8,self->buf+4,_pxprpc__stepCall2,self);
+}
+static void _pxprpc__stepCall2(struct _pxprpc__ServCo *self){
+    //XXX: limit to Little-Endian
+    int destAddr=*((uint32_t *)self->buf+2);
+    int funcAddr=*((uint32_t *)self->buf+3);
+    
+    struct pxprpc_request *req=pxprpc__malloc(sizeof(struct pxprpc_request));
+    req->context=self;
+    req->io1=self->io1;
+    req->refSlots=self->refSlots;
+    struct pxprpc_callable *func=(struct pxprpc_callable *)((struct pxprpc_object *)self->refSlots[funcAddr])->object1;
+
+}
+
+
 static void _pxprpc__step1(struct _pxprpc__ServCo *self){
     self->io1->read(self->io1,4,self->buf,&_pxprpc__step2,self);
 }
 
 static void _pxprpc__step2(struct _pxprpc__ServCo *self){
-    self->session=*(uint32_t *)self->buf;
     int opcode=self->buf[0];
+    self->session=*((uint32_t *)&self->buf);
     switch(opcode){
         case 1:
         self->next=&_pxprpc__stepPush1;
         return;
         case 2:
     }
-}
-
-//Push handler
-static void _pxprpc__stepPush1(struct _pxprpc__ServCo *self){
-    self->io1->read(self->io1,8,self->buf+4,_pxprpc__stepPush2,self);
-}
-static void _pxprpc__stepPush2(struct _pxprpc__ServCo *self){
-    //XXX: limit to Little-Endian
-    int length=*((uint32_t *)self->buf+2);
-    self->t1=pxprpc_new_bytes_object(length);
-
-    self->io1->read(self->io1,4,&((struct pxprpc_bytes *)self->t1->object1)->data,
-      _pxprpc__stepPush3,self);
-}
-static void _pxprpc__stepPush3(struct _pxprpc__ServCo *self){
-    int destAddr=*((uint32_t *)self->buf+3);
-    _pxprpc__RefSlotsPut(self,destAddr,self->t1);
-    self->io1->write(self->io1,4,self->buf);
 }
