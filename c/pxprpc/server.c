@@ -294,3 +294,23 @@ extern struct pxprpc_object *pxprpc_new_bytes_object(uint32_t size){
     ref->release=_pxprpc__ref_bytes_Release;
     return ref;
 }
+
+extern int pxprpc_new_server_context(pxprpc_server_context *server_context,struct pxprpc_abstract_io *io1,struct pxprpc_namedfunc *namedfuncs,int len_namedfuncs){
+    struct _pxprpc__ServCo *ctx=pxprpc__malloc(sizeof(struct _pxprpc__ServCo));
+    ctx->io1=io1;
+    ctx->namedfuncs=namedfuncs;
+    ctx->lengthOfNamedFuncs=len_namedfuncs;
+}
+
+extern int pxprpc_start_serve(pxprpc_server_context server_context){
+    struct _pxprpc__ServCo *ctx=server_context;
+    _pxprpc__ServCoStart(ctx);
+}
+
+extern int pxprpc_free_context(pxprpc_server_context *server_context){
+    struct _pxprpc__ServCo *ctx=server_context;
+    if(!_pxprpc__ServCoIsClosed(ctx)){
+        pxprpc_close(ctx);
+    }
+    pxprpc__free(server_context);
+}
