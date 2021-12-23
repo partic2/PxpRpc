@@ -3,25 +3,41 @@
 
 #include "def.h"
 
+#include "config.h"
+
 #pragma pack(1)
 
 struct pxprpc_object{
     void *object1;
     uint16_t size_of_struct;
     uint16_t count;
-    uint16_t (*addRef)(struct pxprpc_object *ref);
-    uint16_t (*release)(struct pxprpc_object *ref);
+    uint32_t (*addRef)(struct pxprpc_object *ref);
+    uint32_t (*release)(struct pxprpc_object *ref);
 };
 
 struct pxprpc_request{
-    void *context;
     struct pxprpc_abstract_io *io1;
-    struct pxprpc_object **refSlots;
+    struct pxprpc_object **ref_slots;
+    uint32_t dest_addr;
+    uint32_t session;
+    struct pxprpc_callable *callable;
+    void *callable_data;
+    void *server_context_data;
+    struct pxprpc_object *result;
 };
 
 
 struct pxprpc_callable{
-    void (*readParameter)(struct pxprpc_callable *self,struct pxprpc_request *r);
-    void (*call)(struct pxprpc_request r,void(*onResult)(struct pxprpc_request r,struct pxprpc_object *result));
+    void (*readParameter)(struct pxprpc_callable *self,struct pxprpc_request *r,void (*doneCallback)(struct pxprpc_request *r));
+    void (*call)(struct pxprpc_callable *self,struct pxprpc_request *r,void (*onResult)(struct pxprpc_request *r,struct pxprpc_object *result));
     void (*writeResult)(struct pxprpc_callable *self,struct pxprpc_request *r);
 };
+
+struct pxprpc_namedfunc{
+    char *name;
+    struct pxprpc_callable *callable;
+};
+
+extern void pxprpc_close(void *server_context);
+extern struct pxprpc_object *pxprpc_new_object(void *obj);
+extern struct pxprpc_object *pxprpc_new_bytes_object(uint32_t size);
