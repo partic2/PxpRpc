@@ -308,7 +308,7 @@ extern int pxprpc_start_serve(pxprpc_server_context server_context){
 }
 
 extern int pxprpc_free_context(pxprpc_server_context *server_context){
-    struct _pxprpc__ServCo *ctx=server_context;
+    struct _pxprpc__ServCo *ctx=(struct _pxprpc__ServCo *)*server_context;
     if(!_pxprpc__ServCoIsClosed(ctx)){
         pxprpc_close(ctx);
     }
