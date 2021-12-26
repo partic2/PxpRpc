@@ -43,12 +43,13 @@ struct pxprpc_namedfunc{
     struct pxprpc_callable *callable;
 };
 
-extern void pxprpc_close(pxprpc_server_context server_context);
+
 extern struct pxprpc_object *pxprpc_new_object(void *obj);
 extern struct pxprpc_object *pxprpc_new_bytes_object(uint32_t size);
 extern int pxprpc_new_server_context(pxprpc_server_context *server_context,struct pxprpc_abstract_io *io1,
                                      struct pxprpc_namedfunc *namedfuncs,int len_namedfuncs);
 extern int pxprpc_start_serve(pxprpc_server_context server_context);
+extern void pxprpc_close(pxprpc_server_context server_context);
 extern int pxprpc_free_context(pxprpc_server_context *server_context);
 
 #endif

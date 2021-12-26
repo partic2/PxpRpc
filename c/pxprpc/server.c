@@ -197,15 +197,18 @@ static void _pxprpc__stepGetFunc2(struct _pxprpc__ServCo *self){
     if(bs->data[bs->length-1]!=0){
         bs->data[bs->length-1]=0;
     }
+    int returnAddr=0;
     for(int i=0;i<self->lengthOfNamedFuncs;i++){
         if(strcmp(self->namedfuncs[i].name,bs->data)){
             _pxprpc__RefSlotsPut(self,self->hdr.addr1,
               pxprpc_new_object(self->namedfuncs->callable));
+            returnAddr=self->hdr.addr1;
         }
         break;
     }
     pthread_mutex_lock(&self->writeMutex);
     self->io1->write(self->io1,4,(uint8_t *)&self->hdr.session);
+    self->io1->write(self->io1,4,(uint8_t *)&returnAddr);
     pthread_mutex_unlock(&self->writeMutex);
 
     _pxprpc__step1(self);
