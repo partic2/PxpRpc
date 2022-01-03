@@ -21,6 +21,8 @@ static const char *ServerInfo="server name:pxprpc for c\n"
 "version:1.0\n"
 "reference slots size:" MACRO_TO_STR2(MAX_REFSLOTS_COUNT)"\n";
 
+
+
 static uint32_t _pxprpc__ref_AddRef(struct pxprpc_object *ref){
     ref->count++;
     return ref->count;
@@ -43,7 +45,22 @@ static uint32_t _pxprpc__ref_bytes_Release(struct pxprpc_object *ref){
     }
 }
 
+static struct pxprpc_object *pxprpc_new_object(void *obj){
+    struct pxprpc_object *ref=pxprpc__malloc(sizeof(struct pxprpc_object));
+    ref->addRef=&_pxprpc__ref_AddRef;
+    ref->release=&_pxprpc__ref_Release;
+    ref->count=0;
+    ref->object1=obj;
+    ref->size_of_struct=sizeof(struct pxprpc_object);
+    return ref;
+}
 
+static struct pxprpc_object *pxprpc_new_bytes_object(uint32_t size){
+    struct pxprpc_object *ref=pxprpc_new_object(pxprpc__malloc(size+4));
+    *((int *)(ref->object1))=size;
+    ref->release=_pxprpc__ref_bytes_Release;
+    return ref;
+}
 
 struct _pxprpc__ServCo{
     void (*next)(struct _pxprpc__ServCo *self);
@@ -71,6 +88,25 @@ struct _pxprpc__ServCo{
 
 #define _pxprpc__ServCoIsClosed(self) self->status&0x1
 
+static int pxprpc_closed(void *server_context){
+    return _pxprpc__ServCoIsClosed(((struct _pxprpc__ServCo*)server_context));
+}
+
+static int pxprpc_close(pxprpc_server_context server_context){
+    if(pxprpc_closed(server_context)){
+        return 0;
+    }
+    struct _pxprpc__ServCo *self=server_context;
+    for(int i=0;i<MAX_REFSLOTS_COUNT;i++){
+        if(self->refSlots[i]!=NULL){
+            self->refSlots[i]->release(self->refSlots[i]);
+        }
+    }
+    self->status|=0x1;
+    return 0;
+}
+
+
 static void _pxprpc__step1(struct _pxprpc__ServCo *self);
 
 static void _pxprpc__ServCoStart(struct _pxprpc__ServCo *self){
@@ -79,6 +115,7 @@ static void _pxprpc__ServCoStart(struct _pxprpc__ServCo *self){
     memset(self->refSlots,0,sizeof(struct pxprpc_object)*MAX_REFSLOTS_COUNT);
     pthread_mutex_init(&self->writeMutex,NULL);
     self->status=0;
+    _pxprpc__step1(self);
 }
 
 static void _pxprpc__RefSlotsPut(struct _pxprpc__ServCo *self,uint32_t addr, struct pxprpc_object *ref2){
@@ -219,7 +256,7 @@ static void _pxprpc__stepGetFunc1(struct _pxprpc__ServCo *self){
 
 
 //Close handler
-static void _pxprpc__stepClose1(struct _pxprpc__ServCo *self){
+static int _pxprpc__stepClose1(struct _pxprpc__ServCo *self){
     pxprpc_close(self);
 }
 
@@ -270,50 +307,36 @@ static void _pxprpc__step1(struct _pxprpc__ServCo *self){
 }
 
 
-extern void pxprpc_close(void *server_context){
-    struct _pxprpc__ServCo *self=server_context;
-    for(int i=0;i<MAX_REFSLOTS_COUNT;i++){
-        if(self->refSlots[i]!=NULL){
-            self->refSlots[i]->release(self->refSlots[i]);
-        }
-    }
-    self->status|=0x1;
-}
 
 
-extern struct pxprpc_object *pxprpc_new_object(void *obj){
-    struct pxprpc_object *ref=pxprpc__malloc(sizeof(struct pxprpc_object));
-    ref->addRef=&_pxprpc__ref_AddRef;
-    ref->release=&_pxprpc__ref_Release;
-    ref->count=0;
-    ref->object1=obj;
-    ref->size_of_struct=sizeof(struct pxprpc_object);
-    return ref;
-}
 
-extern struct pxprpc_object *pxprpc_new_bytes_object(uint32_t size){
-    struct pxprpc_object *ref=pxprpc_new_object(pxprpc__malloc(size+4));
-    *((int *)(ref->object1))=size;
-    ref->release=_pxprpc__ref_bytes_Release;
-    return ref;
-}
-
-extern int pxprpc_new_server_context(pxprpc_server_context *server_context,struct pxprpc_abstract_io *io1,struct pxprpc_namedfunc *namedfuncs,int len_namedfuncs){
+static int pxprpc_new_server_context(pxprpc_server_context *server_context,struct pxprpc_abstract_io *io1,struct pxprpc_namedfunc *namedfuncs,int len_namedfuncs){
     struct _pxprpc__ServCo *ctx=pxprpc__malloc(sizeof(struct _pxprpc__ServCo));
     ctx->io1=io1;
     ctx->namedfuncs=namedfuncs;
     ctx->lengthOfNamedFuncs=len_namedfuncs;
+    return 0;
 }
 
-extern int pxprpc_start_serve(pxprpc_server_context server_context){
+static int pxprpc_start_serve(pxprpc_server_context server_context){
     struct _pxprpc__ServCo *ctx=server_context;
     _pxprpc__ServCoStart(ctx);
+    return 0;
 }
 
-extern int pxprpc_free_context(pxprpc_server_context *server_context){
+static int pxprpc_free_context(pxprpc_server_context *server_context){
     struct _pxprpc__ServCo *ctx=(struct _pxprpc__ServCo *)*server_context;
-    if(!_pxprpc__ServCoIsClosed(ctx)){
-        pxprpc_close(ctx);
-    }
+    pxprpc_close(ctx);
     pxprpc__free(server_context);
+    return 0;
+}
+
+extern int pxprpc_query_interface(pxprpc_server_api *api,int size_of_api){
+    api->context_new=&pxprpc_new_server_context;
+    api->context_start=&pxprpc_start_serve;
+    api->context_close=&pxprpc_close;
+    api->context_closed=&pxprpc_closed;
+    api->context_delete=&pxprpc_free_context;
+    api->new_object=&pxprpc_new_object;
+    api->new_bytes_object=&pxprpc_new_bytes_object;
 }

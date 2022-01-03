@@ -7,5 +7,3 @@
 #define USE_PTHREAD_HEADER
 
 #define MAX_REFSLOTS_COUNT 256
-
-
