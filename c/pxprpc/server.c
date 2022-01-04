@@ -331,12 +331,11 @@ static int pxprpc_free_context(pxprpc_server_context *server_context){
     return 0;
 }
 
-extern int pxprpc_query_interface(pxprpc_server_api *api,int size_of_api){
-    api->context_new=&pxprpc_new_server_context;
-    api->context_start=&pxprpc_start_serve;
-    api->context_close=&pxprpc_close;
-    api->context_closed=&pxprpc_closed;
-    api->context_delete=&pxprpc_free_context;
-    api->new_object=&pxprpc_new_object;
-    api->new_bytes_object=&pxprpc_new_bytes_object;
+pxprpc_server_api exports={
+    &pxprpc_new_server_context,&pxprpc_start_serve,&pxprpc_closed,&pxprpc_close,&pxprpc_free_context,
+    &pxprpc_new_object,&pxprpc_new_bytes_object
+};
+
+extern int pxprpc_query_interface(pxprpc_server_api **outapi){
+    *outapi=&exports;
 }

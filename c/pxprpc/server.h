@@ -54,6 +54,6 @@ typedef struct pxprpc_server_api{
     struct pxprpc_object *(*new_bytes_object)(uint32_t size);
 }pxprpc_server_api;
 
-extern int pxprpc_query_interface(pxprpc_server_api *api,int size_of_api);
+extern int pxprpc_query_interface(pxprpc_server_api **outapi);
 
 #endif
