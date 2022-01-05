@@ -51,7 +51,6 @@ static struct pxprpc_object *pxprpc_new_object(void *obj){
     ref->release=&_pxprpc__ref_Release;
     ref->count=0;
     ref->object1=obj;
-    ref->size_of_struct=sizeof(struct pxprpc_object);
     return ref;
 }
 
@@ -331,11 +330,12 @@ static int pxprpc_free_context(pxprpc_server_context *server_context){
     return 0;
 }
 
+
 pxprpc_server_api exports={
     &pxprpc_new_server_context,&pxprpc_start_serve,&pxprpc_closed,&pxprpc_close,&pxprpc_free_context,
     &pxprpc_new_object,&pxprpc_new_bytes_object
 };
 
-extern int pxprpc_query_interface(pxprpc_server_api **outapi){
+extern int pxprpc_server_query_interface(pxprpc_server_api **outapi){
     *outapi=&exports;
 }

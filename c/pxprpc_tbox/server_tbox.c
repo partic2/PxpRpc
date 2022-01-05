@@ -22,10 +22,10 @@ int inited=0;
 #define status_RUNNING 2
 
 
-static pxprpc_server_tbox pxprpc_new_tboxsocket(tb_socket_ref_t sock,const struct pxprpc_namedfunc *namedFunc,int lenOfNamedFunc){
+static pxprpc_server_tbox pxprpc_new_tboxsocket(tb_socket_ref_t sock,struct pxprpc_namedfunc *namedFunc,int lenOfNamedFunc){
     if(inited==0){
         inited=1;
-        pxprpc_query_interface(&servapi);
+        pxprpc_server_query_interface(&servapi);
     }
     struct _pxprpc_tbox *self=(struct _pxprpc_tbox *)pxprpc__malloc(sizeof(struct _pxprpc_tbox));
     self->sock=sock;
@@ -47,21 +47,21 @@ struct _pxprpc_tbox_sockconn{
 
 
 static void __sockAbsIo1Read(struct pxprpc_abstract_io *self1,uint32_t length,uint8_t *buf,void (*onCompleted)(void *p),void *p){
-    struct _pxprpc_tbox_sockconn *self=(struct _pxprpc_tbox_sockconn *)self1->reserved;
+    struct _pxprpc_tbox_sockconn *self=(struct _pxprpc_tbox_sockconn *)self1->userData;
     if(tb_socket_brecv(self->sock,buf,length)==tb_true){
         self->nextFn=onCompleted;
         self->nextFnArg0=p;
     }
     
 }
-static void __sockAbsIo1Write(struct pxprpc_abstract_io *self1,uint32_t length,uint8_t *buf,void (*onCompleted)(void *p),void *p){
-    struct _pxprpc_tbox_sockconn *self=(struct _pxprpc_tbox_sockconn *)self1->reserved;
+static void __sockAbsIo1Write(struct pxprpc_abstract_io *self1,uint32_t length,const uint8_t *buf){
+    struct _pxprpc_tbox_sockconn *self=(struct _pxprpc_tbox_sockconn *)self1->userData;
     tb_socket_bsend(self->sock,buf,length); 
 }
 
 static struct _pxprpc_tbox_sockconn * __buildTboxSockconn(tb_socket_ref_t sock,struct _pxprpc_tbox *sCtx){
     struct _pxprpc_tbox_sockconn *sockconn=pxprpc__malloc(sizeof(struct _pxprpc_tbox_sockconn));
-    sockconn->io1.reserved=&sockconn;
+    sockconn->io1.userData=&sockconn;
     sockconn->io1.read=&__sockAbsIo1Read;
     sockconn->io1.write=&__sockAbsIo1Write;
     sockconn->nextFn=NULL;
@@ -93,7 +93,8 @@ static void __freeTboxSockconn(struct _pxprpc_tbox_sockconn *sc){
     pxprpc__free(sc);
 }
 
-static void __serveTboxSockconn(struct _pxprpc_tbox_sockconn *s1){
+static tb_int_t __serveTboxSockconn(tb_cpointer_t arg0){
+    struct _pxprpc_tbox_sockconn *s1=(struct _pxprpc_tbox_sockconn *)arg0;
     servapi->context_start(s1->rpcCtx);
     while(s1->nextFn!=NULL){
         void (*fn)(void *);
@@ -110,7 +111,7 @@ static void pxprpc_serve_block(pxprpc_server_tbox serv){
     tb_socket_listen(self->sock,8);
     tb_ipaddr_ref_t remoteAddr;
     while(self->status&status_RUNNING){
-        tb_socket_ref_t connSock=tb_socket_accept(self->sock,&remoteAddr);
+        tb_socket_ref_t connSock=tb_socket_accept(self->sock,remoteAddr);
         if(connSock==NULL){
             break;
         }

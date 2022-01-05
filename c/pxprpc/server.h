@@ -14,10 +14,9 @@ typedef void *pxprpc_server_context;
 
 struct pxprpc_object{
     void *object1;
-    uint16_t size_of_struct;
     uint16_t count;
-    uint32_t (*addRef)(struct pxprpc_object *ref);
-    uint32_t (*release)(struct pxprpc_object *ref);
+    uint32_t (*addRef)(struct pxprpc_object *self);
+    uint32_t (*release)(struct pxprpc_object *self);
 };
 
 struct pxprpc_request{
@@ -36,10 +35,11 @@ struct pxprpc_callable{
     void (*readParameter)(struct pxprpc_callable *self,struct pxprpc_request *r,void (*doneCallback)(struct pxprpc_request *r));
     void (*call)(struct pxprpc_callable *self,struct pxprpc_request *r,void (*onResult)(struct pxprpc_request *r,struct pxprpc_object *result));
     void (*writeResult)(struct pxprpc_callable *self,struct pxprpc_request *r);
+    void *userData;
 };
 
 struct pxprpc_namedfunc{
-    char *name;
+    const char *name;
     struct pxprpc_callable *callable;
 };
 
@@ -54,6 +54,6 @@ typedef struct pxprpc_server_api{
     struct pxprpc_object *(*new_bytes_object)(uint32_t size);
 }pxprpc_server_api;
 
-extern int pxprpc_query_interface(pxprpc_server_api **outapi);
+extern int pxprpc_server_query_interface(pxprpc_server_api **outapi);
 
 #endif
