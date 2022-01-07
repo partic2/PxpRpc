@@ -40,9 +40,10 @@ static uint32_t _pxprpc__ref_Release(struct pxprpc_object *ref){
 
 static uint32_t _pxprpc__ref_bytes_Release(struct pxprpc_object *ref){
     void *bytes=ref->object1;
-    if(_pxprpc__ref_Release(ref)==0){
+    if(ref->count==1){
         pxprpc__free(bytes);
     }
+    return _pxprpc__ref_Release(ref);
 }
 
 static struct pxprpc_object *pxprpc_new_object(void *obj){
@@ -61,8 +62,15 @@ static struct pxprpc_object *pxprpc_new_bytes_object(uint32_t size){
     return ref;
 }
 
+static void pxprpc_fill_bytes_object(struct pxprpc_object *obj,uint8_t *data,int size){
+    struct pxprpc_bytes * bytes=(struct pxprpc_bytes *)obj->object1;
+    if(size>bytes->length){
+        size=bytes->length;
+    }
+    memcpy(&bytes->data,data,size);
+}
+
 struct _pxprpc__ServCo{
-    void (*next)(struct _pxprpc__ServCo *self);
     union{
         struct{
             uint32_t session;
@@ -102,6 +110,7 @@ static int pxprpc_close(pxprpc_server_context server_context){
         }
     }
     self->status|=0x1;
+    pxprpc__free(self->refSlots);
     return 0;
 }
 
@@ -131,6 +140,7 @@ static void _pxprpc__RefSlotsPut(struct _pxprpc__ServCo *self,uint32_t addr, str
 
 //Push handler
 static void _pxprpc__stepPush3(struct _pxprpc__ServCo *self){
+    if(self->io1->get_error(self->io1,self->io1->read)!=NULL)return;
     _pxprpc__RefSlotsPut(self,self->hdr.addr1,self->t1);
     pthread_mutex_lock(&self->writeMutex);
     self->io1->write(self->io1,4,(uint8_t *)&self->hdr.session);
@@ -139,6 +149,7 @@ static void _pxprpc__stepPush3(struct _pxprpc__ServCo *self){
     _pxprpc__step1(self);
 }
 static void _pxprpc__stepPush2(struct _pxprpc__ServCo *self){
+    if(self->io1->get_error(self->io1,self->io1->read)!=NULL)return;
     self->t1=pxprpc_new_bytes_object(self->hdr.length1);
 
     self->io1->read(self->io1,self->hdr.length1,((struct pxprpc_bytes *)self->t1->object1)->data,
@@ -150,6 +161,7 @@ static void _pxprpc__stepPush1(struct _pxprpc__ServCo *self){
 
 //Pull handler
 static void _pxprpc__stepPull2(struct _pxprpc__ServCo *self){
+    if(self->io1->get_error(self->io1,self->io1->read)!=NULL)return;
     int destAddr=self->hdr.addr1;
     
     struct pxprpc_bytes *bytes=self->refSlots[destAddr]->object1;
@@ -168,6 +180,7 @@ static void _pxprpc__stepPull1(struct _pxprpc__ServCo *self){
 
 //Assign handler
 static void _pxprpc__stepAssign2(struct _pxprpc__ServCo *self){
+    if(self->io1->get_error(self->io1,self->io1->read)!=NULL)return;
     _pxprpc__RefSlotsPut(self,self->hdr.addr1,self->refSlots[self->hdr.addr2]);
     pthread_mutex_lock(&self->writeMutex);
     self->io1->write(self->io1,4,(uint8_t *)&self->hdr.session);
@@ -182,6 +195,7 @@ static void _pxprpc__stepAssign1(struct _pxprpc__ServCo *self){
 
 //Unlink handler
 static void _pxprpc__stepUnlink2(struct _pxprpc__ServCo *self){
+    if(self->io1->get_error(self->io1,self->io1->read)!=NULL)return;
     _pxprpc__RefSlotsPut(self,self->hdr.addr1,NULL);
     pthread_mutex_lock(&self->writeMutex);
     self->io1->write(self->io1,4,(uint8_t *)&self->hdr.session);
@@ -196,9 +210,9 @@ static void _pxprpc__stepUnlink1(struct _pxprpc__ServCo *self){
 
 //Call handler
 static void _pxprpc__stepCall4(struct pxprpc_request *r, struct pxprpc_object *result){
-    _pxprpc__RefSlotsPut(r->server_context_data,r->dest_addr,result);
+    struct _pxprpc__ServCo *self=r->server_context;
+    _pxprpc__RefSlotsPut(r->server_context,r->dest_addr,result);
     r->result=result;
-    struct _pxprpc__ServCo *self=r->server_context_data;
     pthread_mutex_lock(&self->writeMutex);
     self->io1->write(self->io1,4,(uint8_t *)&self->hdr.session);
     r->callable->writeResult(r->callable,r);
@@ -207,18 +221,20 @@ static void _pxprpc__stepCall4(struct pxprpc_request *r, struct pxprpc_object *r
 }
 
 static void _pxprpc__stepCall3(struct pxprpc_request *r){
+    struct _pxprpc__ServCo *self=(struct _pxprpc__ServCo *)r->server_context;
     r->callable->call(r->callable,r,&_pxprpc__stepCall4);
-    struct _pxprpc__ServCo *self=r->server_context_data;
     _pxprpc__step1(self);
 }
 static void _pxprpc__stepCall2(struct _pxprpc__ServCo *self){
-    struct pxprpc_request *req=pxprpc__malloc(sizeof(struct pxprpc_request));
+    if(self->io1->get_error(self->io1,self->io1->read)!=NULL)return;
+    struct pxprpc_request *req=(struct pxprpc_request *)pxprpc__malloc(sizeof(struct pxprpc_request));
     req->session=self->hdr.session;
     req->io1=self->io1;
     req->ref_slots=self->refSlots;
     req->dest_addr=self->hdr.addr1;
-    req->server_context_data=self;
+    req->server_context=self;
     struct pxprpc_callable *func=(struct pxprpc_callable *)((struct pxprpc_object *)self->refSlots[self->hdr.addr2])->object1;
+    req->callable=func;
     func->readParameter(func,req,&_pxprpc__stepCall3);
 }
 static void _pxprpc__stepCall1(struct _pxprpc__ServCo *self){
@@ -228,14 +244,15 @@ static void _pxprpc__stepCall1(struct _pxprpc__ServCo *self){
 
 //GetFunc handler
 static void _pxprpc__stepGetFunc2(struct _pxprpc__ServCo *self){
-    struct pxprpc_bytes *bs=self->refSlots[self->hdr.addr2]->object1;
+    if(self->io1->get_error(self->io1,self->io1->read)!=NULL)return;
+    struct pxprpc_bytes *bs=(struct pxprpc_bytes *)self->refSlots[self->hdr.addr2]->object1;
     //Avoid buffer overflow
     if(bs->data[bs->length-1]!=0){
         bs->data[bs->length-1]=0;
     }
     int returnAddr=0;
     for(int i=0;i<self->lengthOfNamedFuncs;i++){
-        if(strcmp(self->namedfuncs[i].name,bs->data)){
+        if(strcmp(self->namedfuncs[i].name,(const char *)bs->data)){
             _pxprpc__RefSlotsPut(self,self->hdr.addr1,
               pxprpc_new_object(self->namedfuncs->callable));
             returnAddr=self->hdr.addr1;
@@ -265,17 +282,16 @@ static int _pxprpc__stepClose1(struct _pxprpc__ServCo *self){
 static void _pxprpc__stepGetInfo1(struct _pxprpc__ServCo *self){
     pthread_mutex_lock(&self->writeMutex);
     uint32_t length=strlen(ServerInfo);
+    self->io1->write(self->io1,4,(uint8_t *)&self->hdr.session);
     self->io1->write(self->io1,4,(uint8_t *)&length);
     self->io1->write(self->io1,length,ServerInfo);
     pthread_mutex_unlock(&self->writeMutex);
+    _pxprpc__step1(self);
 }
 
-
-
-static void _pxprpc__step1(struct _pxprpc__ServCo *self){
-    if(_pxprpc__ServCoIsClosed(self)){
-        return;
-    }
+#include <stdio.h>
+static void _pxprpc__step2(struct _pxprpc__ServCo *self){
+    if(self->io1->get_error(self->io1,self->io1->read)!=NULL)return;
     int opcode=self->hdrbuf[0];
     switch(opcode){
         case 1:
@@ -305,20 +321,27 @@ static void _pxprpc__step1(struct _pxprpc__ServCo *self){
     }
 }
 
-
+static void _pxprpc__step1(struct _pxprpc__ServCo *self){
+    if(_pxprpc__ServCoIsClosed(self)){
+        return;
+    }
+    self->io1->read(self->io1,4,self->hdrbuf,(void(*)(void *))_pxprpc__step2,self);
+}
 
 
 
 static int pxprpc_new_server_context(pxprpc_server_context *server_context,struct pxprpc_abstract_io *io1,struct pxprpc_namedfunc *namedfuncs,int len_namedfuncs){
-    struct _pxprpc__ServCo *ctx=pxprpc__malloc(sizeof(struct _pxprpc__ServCo));
+    struct _pxprpc__ServCo *ctx=(struct _pxprpc__ServCo *)pxprpc__malloc(sizeof(struct _pxprpc__ServCo));
+    memset(ctx,0,sizeof(struct _pxprpc__ServCo));
     ctx->io1=io1;
     ctx->namedfuncs=namedfuncs;
     ctx->lengthOfNamedFuncs=len_namedfuncs;
+    *server_context=ctx;
     return 0;
 }
 
 static int pxprpc_start_serve(pxprpc_server_context server_context){
-    struct _pxprpc__ServCo *ctx=server_context;
+    struct _pxprpc__ServCo *ctx=(struct _pxprpc__ServCo *)server_context;
     _pxprpc__ServCoStart(ctx);
     return 0;
 }
@@ -326,14 +349,14 @@ static int pxprpc_start_serve(pxprpc_server_context server_context){
 static int pxprpc_free_context(pxprpc_server_context *server_context){
     struct _pxprpc__ServCo *ctx=(struct _pxprpc__ServCo *)*server_context;
     pxprpc_close(ctx);
-    pxprpc__free(server_context);
+    pxprpc__free(*server_context);
     return 0;
 }
 
 
-pxprpc_server_api exports={
+static pxprpc_server_api exports={
     &pxprpc_new_server_context,&pxprpc_start_serve,&pxprpc_closed,&pxprpc_close,&pxprpc_free_context,
-    &pxprpc_new_object,&pxprpc_new_bytes_object
+    &pxprpc_new_object,&pxprpc_new_bytes_object,&pxprpc_fill_bytes_object
 };
 
 extern int pxprpc_server_query_interface(pxprpc_server_api **outapi){

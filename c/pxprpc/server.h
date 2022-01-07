@@ -26,7 +26,7 @@ struct pxprpc_request{
     uint32_t session;
     struct pxprpc_callable *callable;
     void *callable_data;
-    void *server_context_data;
+    pxprpc_server_context server_context;
     struct pxprpc_object *result;
 };
 
@@ -52,6 +52,7 @@ typedef struct pxprpc_server_api{
     int (*context_delete)(pxprpc_server_context *);
     struct pxprpc_object *(*new_object)(void *obj);
     struct pxprpc_object *(*new_bytes_object)(uint32_t size);
+    void (*fill_bytes_object)(struct pxprpc_object *obj,uint8_t *data,int size);
 }pxprpc_server_api;
 
 extern int pxprpc_server_query_interface(pxprpc_server_api **outapi);
