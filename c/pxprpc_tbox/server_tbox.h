@@ -2,7 +2,7 @@
 #ifndef _PXPRPC_SERVER_LIBUV_H
 #define _PXPRPC_SERVER_LIBUV_H
 
-#include "../pxprpc/server.h"
+#include <pxprpc/server.h>
 #include <tbox/tbox.h>
 
 typedef void *pxprpc_server_tbox;

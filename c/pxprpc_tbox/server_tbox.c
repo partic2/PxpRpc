@@ -3,8 +3,8 @@
 #include "server_tbox.h"
 
 
-#include "../pxprpc/server.h"
-#include "../pxprpc/def.h"
+#include <pxprpc/server.h>
+#include <pxprpc/def.h>
 
 struct _pxprpc_tbox{
     tb_socket_ref_t sock;
@@ -112,8 +112,8 @@ static void __freeTboxSockconn(struct _pxprpc_tbox_sockconn *sc){
     if(sc->prev!=NULL){
         sc->prev->next=sc->next;
     }
-    if((sc->prev==NULL)&&(sc->next==NULL)){
-        sc->serv->acceptedConn=NULL;
+    if(sc->serv->acceptedConn==sc){
+        sc->serv->acceptedConn=sc->next;
     }
     pxprpc__free(sc);
 }

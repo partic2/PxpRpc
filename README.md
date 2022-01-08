@@ -1,10 +1,20 @@
 # Pxp RPC 
 
+### Introduce
+
 PxpRpc(pursuer cross platform remote procedure call) is a very tiny rpc library aim to call and interchange data cross platform and language with high performance and little load.
 
-Currently , This project is in early state and only implement server and test on Java(>=1.6) platform
+Currently , This project is in early state, and implemented on below platform
 
-the message format is defined like below.
+server on java(>=1.6)
+server on c
+tcp server on c with tbox
+
+
+
+### rpc message format
+
+The rpc message format is defined like below.
 
 
 ```c
