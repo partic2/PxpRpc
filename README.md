@@ -6,11 +6,13 @@ PxpRpc(pursuer cross platform remote procedure call) is a very tiny rpc library 
 
 Currently , This project is in early state, and implemented on below platform
 
-server on java(>=1.6)
+rpc server on java (>=1.6)
 
-server on c
+rpc server on c
 
-tcp server on c with tbox
+rpc server over tcp on c with tbox
+
+rpc server and client on python(>=3.8)
 
 
 
