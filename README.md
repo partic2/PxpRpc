@@ -14,6 +14,8 @@ rpc server over tcp on c with tbox
 
 rpc server and client on python(>=3.8)
 
+rpc client on typescript(websocket)
+
 
 
 ### rpc message format
