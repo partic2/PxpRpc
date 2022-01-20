@@ -21,7 +21,7 @@ then build like below
 
 
 
-See alse pxprpc_tbox/make-config.mk, which contains a build target for test.
+See also pxprpc_tbox/make-config.mk, which contains a build example.
 
 
 You may need set `$(TBOX_CFLAGS)` and `$(TBOX_LDFLAGS)` variable if use pxprpc_tbox backend. 

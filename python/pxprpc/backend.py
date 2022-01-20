@@ -33,7 +33,7 @@ try:
         async def stop(self):
             for t1 in self.ctxs:
                 t1.running=False
-                t1.out2.close()
+                await t1.out2.close()
             self.srv1.close()
 
 except ImportError:
@@ -59,7 +59,7 @@ try:
                 self.rpcconn.running=False
                 self.runtask.cancel()
                 self.__running=False
-                self.rpcconn.close()
+                await self.rpcconn.close()
 
 except ImportError:
     traceback.print_exc()

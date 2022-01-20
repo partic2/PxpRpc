@@ -202,8 +202,8 @@ reference slots size:256
 */
 
 /* 
-the server should take responsibility for the lifecycle manager of object refer by references slots.  
-When a object have no reference refer to, server should free it.
+the server should take responsibility for the lifecycle manager of the objects referred by references slots.  
+When an object have no reference refer to, server should free it.
 */
 ```
 

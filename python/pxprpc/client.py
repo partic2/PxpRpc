@@ -122,7 +122,9 @@ class RpcConnection(object):
         finally:
             self.__writeLock.release()
         await respFut
+        t1=struct.unpack('<I',await self.in2.readexactly(4))[0]
         self.__readingResp.set_result(None)
+        return t1
 
     async def getInfo(self):
         sid=await self.__newSession(8)
@@ -150,3 +152,70 @@ class RpcConnection(object):
         finally:
             self.__writeLock.release()
             self.out2.close()
+
+
+class RpcExtendClientObject():
+    def __init__(self,client:'RpcExtendClient1'):
+        self.value=None
+        self.client=client
+
+    def tryPull(self):
+        return self.conn.pull(self.value)
+
+class RpcExtendClientCallable(RpcExtendClientObject):
+    def __init__(self,client):
+        super().__init__(client)
+
+    def signature(self,sign:str):
+        ''' function signature
+format: 'parameters type->return type' 
+eg:
+a function defined in c:
+    bool fn(uin32_t,uint64_t,float64_t,struct pxprpc_object *)
+defined in java:
+    boolean fn(int,int,double,Object)
+    ...
+it's pxprpc signature: 
+    iido->z
+
+available type signature characters:
+  i  int(32bit integer)
+  l  long(64bit integer)
+  f  float(32bit float)
+  d  double(64bit float)
+  o  object(32bit reference address)
+  f  function(32bit address refer to a function/callable object)
+  b  bytes(32bit address refer to a bytes buffer)
+
+  z  boolean(pxprpc use 32bit to store boolean value)
+  s  string(bytes will be decode to string)
+        '''
+        self.signature=sign
+
+    async def __call__(self,*args)->typing.Any:
+        sign=self.signature
+        t1=0
+        fmtstr=''
+        args2=[]
+        for t1 in range(0,len(sign)):
+            if sign[t1]=='l':
+                fmtstr+='q'
+                args2.append(args[t1])
+            elif sign[t1]=='o':
+                fmtstr+='i'
+                args2.append(args[t1].value)
+            elif sign[t1]=='z':
+                fmtstr+='i'
+                args2.append(args[t1]!=0)
+            elif sign[t1] in('s','b'):
+                fmtstr+='i'
+                args2.append((await self.client.newTempVariable(args[t1])).value)
+
+
+class RpcExtendClient1:
+    def __init__(self,conn:RpcConnection):
+        self.conn=conn
+
+    async def newTempVariable(self,value,type:str='auto')->RpcExtendClientObject:
+        #TODO: create temporary variable, manager lifecycle
+        pass

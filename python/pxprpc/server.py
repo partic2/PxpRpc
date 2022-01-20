@@ -9,14 +9,15 @@ from dataclasses import dataclass
 
 @dataclass
 class PxpRequest(object):
-    context:'ServerContext'=None
-    session:bytes=None
+    context:typing.Union['ServerContext',None]=None
+    session:typing.Union[bytes,None]=None
     opcode:int=0
     destAddr:int=0
     srcAddr:int=0
+    funcAddr:int=0
     parameter:typing.Any=None
     result:typing.Any=None
-    callable:'PxpCallable'=None
+    callable:typing.Union['PxpCallable',None]=None
     
 class PxpCallable():
         
@@ -123,11 +124,17 @@ class ServerContext(object):
                 funcName=self.refSlots.get(req.srcAddr,None)
                 if type(funcName)==bytes or type(funcName)==bytearray:
                     funcName=funcName.decode('utf-8')
-                self.refSlots[req.destAddr]=PyCallableWrap(self.funcMap.get(funcName,None))
+                t1=self.funcMap.get(funcName,None)
+                if t1==None:
+                    req.result=0
+                else:
+                    req.result=req.destAddr
+                    self.refSlots[req.destAddr]=PyCallableWrap(t1)
                 log1.debug('server get request:%s',req)
                 await self.writeLock.acquire()
                 try:
                     self.out2.write(session)
+                    self.out2.write(struct.pack('<I',req.result))
                 finally:
                     self.writeLock.release()
             elif session[0]==7:
