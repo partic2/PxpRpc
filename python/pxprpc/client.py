@@ -1,5 +1,6 @@
 
 import asyncio
+from asyncio.tasks import create_task
 import logging
 import struct
 import random
@@ -33,8 +34,8 @@ class RpcConnection(object):
                 self.__readingResp=asyncio.Future()
                 fut.set_result(None)
                 await self.__readingResp
-        except Exception:
-            log1.debug('client error:%s',traceback.format_exc())
+        except Exception as exc:
+            log1.debug('client error:%s',repr(exc))
             self.running=False
 
     
@@ -85,7 +86,7 @@ class RpcConnection(object):
         await respFut
         self.__readingResp.set_result(None)
 
-    async def unlink(self,destAddr:int,srcAddr:int):
+    async def unlink(self,destAddr:int):
         sid=await self.__newSession(4)
         respFut=asyncio.Future()
         self.__waitingSession[sid]=respFut
@@ -155,16 +156,23 @@ class RpcConnection(object):
 
 
 class RpcExtendClientObject():
-    def __init__(self,client:'RpcExtendClient1'):
-        self.value=None
+    def __init__(self,client:'RpcExtendClient1',value=None):
+        self.value=value
         self.client=client
 
-    def tryPull(self):
-        return self.conn.pull(self.value)
+    def tryPull(self)->bytes:
+        return self.client.conn.pull(self.value)
+
+    async def free(self):
+        if self.value!=None:
+            await self.client.freeSlot(self.value)
+            self.value=None
+
+    def __del__(self):
+        create_task(self.free())
+            
 
 class RpcExtendClientCallable(RpcExtendClientObject):
-    def __init__(self,client):
-        super().__init__(client)
 
     def signature(self,sign:str):
         ''' function signature
@@ -184,38 +192,125 @@ available type signature characters:
   f  float(32bit float)
   d  double(64bit float)
   o  object(32bit reference address)
-  f  function(32bit address refer to a function/callable object)
   b  bytes(32bit address refer to a bytes buffer)
+  v  void(32bit 0)
 
   z  boolean(pxprpc use 32bit to store boolean value)
   s  string(bytes will be decode to string)
         '''
-        self.signature=sign
+        self.sign=sign
+
 
     async def __call__(self,*args)->typing.Any:
-        sign=self.signature
+        sign=self.sign
+        freeBeforeReturn=[]
         t1=0
         fmtstr=''
         args2=[]
-        for t1 in range(0,len(sign)):
-            if sign[t1]=='l':
-                fmtstr+='q'
-                args2.append(args[t1])
-            elif sign[t1]=='o':
-                fmtstr+='i'
-                args2.append(args[t1].value)
-            elif sign[t1]=='z':
-                fmtstr+='i'
-                args2.append(args[t1]!=0)
-            elif sign[t1] in('s','b'):
-                fmtstr+='i'
-                args2.append((await self.client.newTempVariable(args[t1])).value)
+        retType='v'
+        try:
+            for t1 in range(0,len(sign)):
+                if sign[t1]=='l':
+                    fmtstr+='q'
+                    args2.append(args[t1])
+                elif sign[t1]=='o':
+                    fmtstr+='i'
+                    args2.append(args[t1].value)
+                elif sign[t1]=='z':
+                    fmtstr+='i'
+                    args2.append(1 if args[t1] else 0)
+                elif sign[t1] in('b','s'):
+                    fmtstr+='i'
+                    t2=await self.client.allocSlot()
+                    freeBeforeReturn.append(t2)
+                    if sign[t1]=='s':
+                        await self.client.conn.push(t2,args[t1].encode('utf-8'))
+                    else:
+                        await self.client.conn.push(t2,args[t1])
+                    args2.append(t2)
+                elif sign[t1]=='-':
+                    if sign[t1+1]=='>':
+                        if len(sign)>t1+2:
+                            retType=sign[t1+2]
+                        break
+                elif sign[t1] == 'v':
+                    raise RpcExtendError('Unsupport input argument')
+                else:
+                    fmtstr+=sign[t1]
+            
+            packed=struct.pack('<'+fmtstr,*args2) if len(fmtstr)>0 else bytes()
 
+            if retType in 'ilfdvz':
+                result=await self.client.conn.call(0,self.value,packed,4 if retType in 'ifvz' else 6)
+                if retType=='l':
+                    return struct.unpack('<q',result)
+                elif retType=='z':
+                    return result!=bytes((0,0,0,0))
+                elif retType in 'v':
+                    return None
+                else:
+                    return struct.unpack('<'+retType,result)
+            else:
+                t1=await self.client.allocSlot()
+                await self.client.conn.call(t1,self.value,packed,4)
+                if retType=='s':
+                    t2=(await self.client.conn.pull(t1)).decode('utf8')
+                    self.client.freeSlot(t1)
+                    return t2
+                elif retType=='b':
+                    t2=await self.client.conn.pull(t1)
+                    self.client.freeSlot(t1)
+                    return t2
+                else:
+                    return RpcExtendClientObject(self.client,value=t1)
+        finally:
+            for t1 in freeBeforeReturn:
+                await self.client.freeSlot(t1)
+
+
+
+
+class RpcExtendError(Exception):
+    pass
 
 class RpcExtendClient1:
     def __init__(self,conn:RpcConnection):
         self.conn=conn
+        self.__usedSlots:typing.Set[int]=set()
+        self.__slotStart=1
+        self.__slotEnd=64
+        self.__nextSlots=self.__slotStart
 
-    async def newTempVariable(self,value,type:str='auto')->RpcExtendClientObject:
-        #TODO: create temporary variable, manager lifecycle
-        pass
+    async def start(self):
+        self.conn.run()
+
+    async def allocSlot(self)->int:
+        reachEnd=False
+        while self.__nextSlots in self.__usedSlots:
+            # interuptable
+            await asyncio.sleep(0)
+            self.__nextSlots+=1
+            if self.__nextSlots>=self.__slotEnd:
+                if reachEnd:
+                    raise RpcExtendError('No slot available')
+                else:
+                    reachEnd=True
+                    self.__nextSlots=self.__slotStart
+
+        t1=self.__nextSlots
+        self.__nextSlots+=1
+        self.__usedSlots.add(t1)
+        return t1
+
+    async def freeSlot(self,index:int):
+        if self.conn.running:
+            await self.conn.unlink(index)
+        self.__usedSlots.remove(index)
+
+    async def getFunc(self,name:str)->RpcExtendClientCallable:
+        t1=await self.allocSlot()
+        await self.conn.push(t1,name.encode('utf8'))
+        t2=await self.allocSlot()
+        await self.conn.getFunc(t2,t1)
+        self.freeSlot(t1)
+        return RpcExtendClientCallable(self,value=t2)

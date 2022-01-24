@@ -33,6 +33,9 @@ export class Client{
             await respReadingDone;
         }
     }
+    public isRunning():boolean{
+        return this.running;
+    }
     public async readUint32(){
         let buf=await this.io1.read(4);
         return new DataView(buf).getUint32(0,true);
@@ -136,7 +139,9 @@ export class Client{
         });
         await this.io1.write(hdr);
         await respFut;
+        let data1=await this.readUint32()
         this.respReadingCb(null);
+        return data1
     }
     public async getInfo(){
         let hdr=new ArrayBuffer(4);

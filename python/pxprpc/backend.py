@@ -5,6 +5,9 @@ import asyncio
 import typing
 import traceback
 
+import logging
+log1=logging.getLogger(__name__)
+
 try:
     from . import server
     class TcpServer:
@@ -22,6 +25,8 @@ try:
                     ctx.backend1(r,w)
                     ctx.funcMap.update(self.funcMap)
                     await ctx.handle()
+                except Exception as exc:
+                    log1.debug('server exception:%s',repr(exc))
                 finally:
                     self.ctxs.remove(ctx)
             finally:
@@ -33,7 +38,7 @@ try:
         async def stop(self):
             for t1 in self.ctxs:
                 t1.running=False
-                await t1.out2.close()
+                t1.out2.close()
             self.srv1.close()
 
 except ImportError:
