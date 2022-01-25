@@ -255,11 +255,11 @@ available type signature characters:
                 await self.client.conn.call(t1,self.value,packed,4)
                 if retType=='s':
                     t2=(await self.client.conn.pull(t1)).decode('utf8')
-                    self.client.freeSlot(t1)
+                    await self.client.freeSlot(t1)
                     return t2
                 elif retType=='b':
                     t2=await self.client.conn.pull(t1)
-                    self.client.freeSlot(t1)
+                    await self.client.freeSlot(t1)
                     return t2
                 else:
                     return RpcExtendClientObject(self.client,value=t1)
@@ -312,5 +312,5 @@ class RpcExtendClient1:
         await self.conn.push(t1,name.encode('utf8'))
         t2=await self.allocSlot()
         await self.conn.getFunc(t2,t1)
-        self.freeSlot(t1)
+        await self.freeSlot(t1)
         return RpcExtendClientCallable(self,value=t2)

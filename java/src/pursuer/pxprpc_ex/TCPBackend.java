@@ -33,7 +33,11 @@ public class TCPBackend implements Closeable{
 			try {
 				sc.init(s.getInputStream(), s.getOutputStream());
 				sc.serve();
-			} catch (IOException e) {
+			} catch (Exception e) {
+				//catch all exception to avoid breaking Application unexpectedly.
+				if(!(e instanceof IOException)){
+					e.printStackTrace();
+				}
 			}finally{
 				try {sc.close();} catch (IOException e) {}
 				if(attached!=null) {

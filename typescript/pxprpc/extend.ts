@@ -137,11 +137,11 @@ s  string(bytes will be decode to string)
 
                 if(retType=='s'){
                     let t2=new TextDecoder().decode(await this.client.conn.pull(t1));
-                    this.client.freeSlot(t1);
+                    await this.client.freeSlot(t1);
                     return t2
                 }else if(retType=='b'){
                     let t2=await this.client.conn.pull(t1)
-                    this.client.freeSlot(t1)
+                    await this.client.freeSlot(t1)
                     return t2
                 }else{
                     return new RpcExtendClientObject(this.client,t1)
@@ -149,7 +149,7 @@ s  string(bytes will be decode to string)
             }
         } finally {
             for (let t1 of freeBeforeReturn) {
-                this.client.freeSlot(t1);
+                await this.client.freeSlot(t1);
             }
         }
 
@@ -200,7 +200,7 @@ export class RpcExtendClient1 {
         await this.conn.push(t1, new TextEncoder().encode(name))
         let t2 = await this.allocSlot()
         await this.conn.getFunc(t2, t1)
-        this.freeSlot(t1)
+        await this.freeSlot(t1)
         return new RpcExtendClientCallable(this, t2)
     }
 

@@ -162,7 +162,10 @@ public class ServerContext implements Closeable{
 		String namespace=name.substring(0,namespaceDelim);
 		String func=name.substring(namespaceDelim+1);
 		Object obj=funcMap.get(namespace);
-		Method found=builtIn.getMethod(obj, func);
+		Method found=null;
+		if(obj!=null){
+			found=builtIn.getMethod(obj, func);
+		}
 		writeLock().lock();
 		if(found==null) {
 			this.out.write(r.session);
