@@ -1,10 +1,6 @@
 package pursuer.pxprpc;
 
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 
 public abstract class AbstractCallable implements PxpCallable{
 

@@ -14,7 +14,9 @@ export class RpcExtendClientObject {
             await this.client.freeSlot(this.value);
         }
     }
-
+    public async asCallable():Promise<RpcExtendClientCallable>{
+        return new RpcExtendClientCallable(this.client,this.value)
+    }
 }
 
 export class RpcExtendClientCallable extends RpcExtendClientObject {
@@ -136,12 +138,12 @@ s  string(bytes will be decode to string)
                     t1, this.value!, args2.buffer.slice(0, writeAt), 4));
 
                 if(retType=='s'){
+                    freeBeforeReturn.push(t1);
                     let t2=new TextDecoder().decode(await this.client.conn.pull(t1));
-                    await this.client.freeSlot(t1);
                     return t2
                 }else if(retType=='b'){
+                    freeBeforeReturn.push(t1);
                     let t2=await this.client.conn.pull(t1)
-                    await this.client.freeSlot(t1)
                     return t2
                 }else{
                     return new RpcExtendClientObject(this.client,t1)
@@ -170,7 +172,6 @@ export class RpcExtendClient1 {
     }
     public async allocSlot() {
         let reachEnd = false;
-
         while (this.__usedSlots[this.__nextSlots]) {
             this.__nextSlots += 1
             if (this.__nextSlots >= this.__slotEnd) {
@@ -185,6 +186,9 @@ export class RpcExtendClient1 {
 
         let t1 = this.__nextSlots
         this.__nextSlots += 1
+        if(this.__nextSlots>=this.__slotEnd){
+            this.__nextSlots=this.__slotStart;
+        }
         this.__usedSlots[t1] = true;
         return t1
     }

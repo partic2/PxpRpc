@@ -38,7 +38,7 @@ public class ServerContext implements Closeable{
 			PxpRequest r=new PxpRequest();
 			r.context=this;
 			byte[] session=new byte[4];
-			this.in.read(session);
+			Utils.readf(in,session);
 			r.session=session;
 			r.opcode=session[0];
 			switch(r.opcode) {
@@ -46,7 +46,7 @@ public class ServerContext implements Closeable{
 				r.destAddr=readInt32();
 				int len=readInt32();
 				byte[] buf=new byte[len];
-				in.read(buf);
+				Utils.readf(in,buf);
 				r.parameter=buf;
 				push(r);
 				break;

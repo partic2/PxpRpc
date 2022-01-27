@@ -168,12 +168,16 @@ class RpcExtendClientObject():
             await self.client.freeSlot(self.value)
             self.value=None
 
+    async def asCallable(self):
+        return RpcExtendClientCallable(self.client,self.value)
+        
     def __del__(self):
         create_task(self.free())
             
 
 class RpcExtendClientCallable(RpcExtendClientObject):
-
+        
+        
     def signature(self,sign:str):
         ''' function signature
 format: 'parameters type->return type' 
@@ -299,6 +303,8 @@ class RpcExtendClient1:
 
         t1=self.__nextSlots
         self.__nextSlots+=1
+        if self.__nextSlots>=self.__slotEnd:
+            self.__nextSlots=self.__slotStart
         self.__usedSlots.add(t1)
         return t1
 

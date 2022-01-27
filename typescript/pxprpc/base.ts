@@ -46,7 +46,7 @@ export class Client{
         let sid=await this.nextSid(1);
         hdr2.setUint32(0,sid,true);
         hdr2.setUint32(4,destAddr,true);
-        hdr2.setUint32(8,data.byteLength);
+        hdr2.setUint32(8,data.byteLength,true);
         let respFut=new Promise((resolve,reject)=>{
             this.waitingSessionCb[sid]=(e)=>{
                 if(e==null){resolve(e);}else{reject(e)};

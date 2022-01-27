@@ -1,4 +1,6 @@
+
 import { Client, Io } from "./base";
+import { RpcExtendError } from "./extend";
 
 
 
@@ -24,6 +26,9 @@ export class WebSocketIo implements Io{
         let remain=size;
         let datar=new Uint8Array(new ArrayBuffer(size));
         while(remain>0){
+            if(this.ws.readyState!=WebSocket.OPEN){
+                throw new RpcExtendError('WebSocket EOF')
+            }
             let data1=this.queuedData.shift()
             if(data1==undefined){
                 await this.waitNewMessage();
