@@ -1,6 +1,6 @@
 
-#ifndef _PXPRPC_SERVER_LIBUV_H
-#define _PXPRPC_SERVER_LIBUV_H
+#ifndef _PXPRPC_SERVER_TBOX_H
+#define _PXPRPC_SERVER_TBOX_H
 
 #include <pxprpc/server.h>
 #include <tbox/tbox.h>
