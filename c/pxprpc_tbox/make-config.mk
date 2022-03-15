@@ -12,5 +12,5 @@ include $(PXPRPC_SOURCE_ROOT)/c/pxprpc/make-config.mk
 
 
 pxprpc_tbox_test:$(C_SOURCE_FILES) $(PXPRPC_SOURCE_ROOT)/c/pxprpc_tbox/test.cpp
-	$(CC) -o __temp_test $(CFLAGS) test.cpp $(C_SOURCE_FILES) $(LDFLAGS) -lstdc++
+	$(CC) -o __temp_test -g $(CFLAGS) test.cpp $(C_SOURCE_FILES) $(LDFLAGS) -lstdc++
 	./__temp_test

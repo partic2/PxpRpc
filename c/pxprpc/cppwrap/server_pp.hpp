@@ -99,6 +99,7 @@ class __IoReadArg{
     NamedFunctionPP *callable;
 };
 
+
 class NamedFunctionPP{
     
     protected:
@@ -117,14 +118,14 @@ class NamedFunctionPP{
             arg1->io1=io1;
             io1->read(io1,length,buf,&__NamedFunctionPPIoRead,arg1);
     }
-    NamedFunctionPP(std::string name){
+    NamedFunctionPP(std::string funcName){
         this->callable.userData=this;
         this->callable.readParameter=__wrap_readParameter;
         this->callable.call=__wrap_call;
         this->callable.writeResult=__wrap_writeResult;
         this->mCNamedFunc.callable=&this->callable;
-        this->name=name;
-        this->mCNamedFunc.name=name.c_str();
+        this->name=funcName;
+        this->mCNamedFunc.name=this->name.c_str();
     }
     virtual struct pxprpc_namedfunc *cNamedFunc(){
         return &mCNamedFunc;

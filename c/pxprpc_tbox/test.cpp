@@ -18,7 +18,7 @@ pxprpc_tbox_api *srvtbox;
 
 class fnPrintString:public pxprpc::NamedFunctionPP{
     public:
-    fnPrintString(std::string name):NamedFunctionPP(name){};
+    fnPrintString(std::string funcName):NamedFunctionPP(funcName){};
     virtual void readParameter(struct pxprpc_request *r,std::function<void()> doneCallback){
         auto buf=std::make_shared<std::array<uint8_t,4>>();
         this->readFromIo(r->io1,buf->data(),4,[doneCallback,buf,r](pxprpc_abstract_io *io1,const char *error)->void{
@@ -33,7 +33,43 @@ class fnPrintString:public pxprpc::NamedFunctionPP{
         
     };
     virtual void call(struct pxprpc_request *r,std::function<void(pxprpc::RpcObject *)> onResult){
-        std::cout<<reinterpret_cast<char *>(&static_cast<pxprpc_bytes *>(r->callable_data)->data)<<std::endl;
+        auto str1=reinterpret_cast<char *>(&static_cast<pxprpc_bytes *>(r->callable_data)->data);
+        auto len=static_cast<pxprpc_bytes *>(r->callable_data)->length;
+        if(str1[len-1]!=0){
+            str1[len-1]=0;
+        }
+        std::cout<<str1<<std::endl;
+        onResult(new pxprpc::RpcRawBytes((uint8_t *)"hello client",strlen("hello client")));
+    };
+    virtual void writeResult(struct pxprpc_request *r){
+        uint32_t t=r->dest_addr;
+        r->io1->write(r->io1,4,reinterpret_cast<uint8_t *>(&t));
+    };
+};
+
+class fnPrintStringUnderline:public pxprpc::NamedFunctionPP{
+    public:
+    fnPrintStringUnderline(std::string funcName):NamedFunctionPP(funcName){};
+    virtual void readParameter(struct pxprpc_request *r,std::function<void()> doneCallback){
+        auto buf=std::make_shared<std::array<uint8_t,4>>();
+        this->readFromIo(r->io1,buf->data(),4,[doneCallback,buf,r](pxprpc_abstract_io *io1,const char *error)->void{
+            if(error){
+                std::cout<<"get error:"<<error<<std::endl;
+                doneCallback();
+            }
+            auto addr=*reinterpret_cast<uint32_t *>(buf->data());
+            r->callable_data=r->ref_slots[addr]->object1;
+            doneCallback();
+        });
+        
+    };
+    virtual void call(struct pxprpc_request *r,std::function<void(pxprpc::RpcObject *)> onResult){
+        auto str1=reinterpret_cast<char *>(&static_cast<pxprpc_bytes *>(r->callable_data)->data);
+        auto len=static_cast<pxprpc_bytes *>(r->callable_data)->length;
+        if(str1[len-1]!=0){
+            str1[len-1]=0;
+        }
+        std::cout<<"__"<<str1<<std::endl;
         onResult(new pxprpc::RpcRawBytes((uint8_t *)"hello client",strlen("hello client")));
     };
     virtual void writeResult(struct pxprpc_request *r){
@@ -61,9 +97,11 @@ int main(int argc,char *argv[]){
         std::cerr<<"tb_socket_bind failed"<<err<<std::endl;
     }
     fnPrintString fn1(std::string("printString"));
-    pxprpc_namedfunc *namedfns=new pxprpc_namedfunc();
-    namedfns[0]=*fn1.cNamedFunc();
-    auto tbrpc=srvtbox->new_server(sock,namedfns,1);
+    fnPrintStringUnderline fn2(std::string("printStringUnderline"));
+    pxprpc_namedfunc namedfns[2]={
+        *fn2.cNamedFunc(),*fn1.cNamedFunc()
+    };
+    auto tbrpc=srvtbox->new_server(sock,namedfns,2);
     srvtbox->serve_block(tbrpc);
     std::cerr<<"serve_block failed"<<srvtbox->get_error()<<std::endl;
     return 0;

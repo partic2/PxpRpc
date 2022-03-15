@@ -85,6 +85,20 @@ async def wstunnel4test():
     app1.router.add_route('*','/pxprpc',wshandler)
     await web._run_app(app1,host='127.0.0.1',port=1345)
 
+async def ctestmain():
+    client1=pxprpc.backend.TcpClient('127.0.0.1',1089)
+    await client1.start()
+    print('start client')
+    client2=pxprpc.client.RpcExtendClient1(client1.rpcconn)
+    t1=await client2.getFunc('printString')
+    print('printString:',t1.value)
+    t1.signature('b->b')
+    print(await t1(b'12345')) 
+    t1=await client2.getFunc('printStringUnderline')
+    print('printStringUnderline:',t1.value)
+    t1.signature('b->b')
+    print(await t1(b'45678'))
+
 
 import sys
 if __name__=='__main__':

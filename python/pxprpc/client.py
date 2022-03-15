@@ -317,6 +317,11 @@ class RpcExtendClient1:
         t1=await self.allocSlot()
         await self.conn.push(t1,name.encode('utf8'))
         t2=await self.allocSlot()
-        await self.conn.getFunc(t2,t1)
-        await self.freeSlot(t1)
-        return RpcExtendClientCallable(self,value=t2)
+        t3=await self.conn.getFunc(t2,t1)
+        if t3==0:
+            await self.freeSlot(t2)
+            await self.freeSlot(t1)
+            return None
+        else:
+            await self.freeSlot(t1)
+            return RpcExtendClientCallable(self,value=t2)

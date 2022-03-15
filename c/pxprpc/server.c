@@ -241,23 +241,52 @@ static void _pxprpc__stepCall1(struct _pxprpc__ServCo *self){
     self->io1->read(self->io1,8,(uint8_t*)&self->hdr.addr1,(void (*)(void *))&_pxprpc__stepCall2,self);
 }
 
-
+//str1(2)Len = -1 indicate 0-ending string, In this case the real length will be put into *str1(2)Len after function return.
+//string length is limited to 0x1000
+static int _pxprpc__strcmp2(const char *str1,int *str1Len,const char *str2,int *str2Len){
+    int i,r;
+    if(*str1Len==-1){
+        for(i=0;i<0x1000;i++){
+            if(str1[i]==0){
+                break;
+            }
+        }
+        *str1Len=i;
+    }
+    if(*str2Len==-1){
+        for(i=0;i<0x1000;i++){
+            if(str2[i]==0){
+                break;
+            }
+        }
+        *str2Len=i;
+    }
+    if(*str1Len==*str2Len){
+        for(i=0,r=0;i<*str1Len;i++){
+            if(str1[i]!=str2[i]){
+                r=str1[i]-str2[i];
+                break;
+            }
+        }
+    }else{
+        r=*str1Len-*str2Len;
+    }
+    return r;
+}
 //GetFunc handler
 static void _pxprpc__stepGetFunc2(struct _pxprpc__ServCo *self){
     if(self->io1->get_error(self->io1,self->io1->read)!=NULL)return;
     struct pxprpc_bytes *bs=(struct pxprpc_bytes *)self->refSlots[self->hdr.addr2]->object1;
-    //Avoid buffer overflow
-    if(bs->data[bs->length-1]!=0){
-        bs->data[bs->length-1]=0;
-    }
     int returnAddr=0;
+    int lenOut=-1;
     for(int i=0;i<self->lengthOfNamedFuncs;i++){
-        if(strcmp(self->namedfuncs[i].name,(const char *)bs->data)){
-            _pxprpc__RefSlotsPut(self,self->hdr.addr1,
-              pxprpc_new_object(self->namedfuncs->callable));
+        lenOut=-1;
+        int cmp1=_pxprpc__strcmp2(self->namedfuncs[i].name,&lenOut,(const char *)bs->data,&bs->length);
+        if(!cmp1){
+            _pxprpc__RefSlotsPut(self,self->hdr.addr1,pxprpc_new_object(self->namedfuncs[i].callable));
             returnAddr=self->hdr.addr1;
+            break;
         }
-        break;
     }
     pthread_mutex_lock(&self->writeMutex);
     self->io1->write(self->io1,4,(uint8_t *)&self->hdr.session);
