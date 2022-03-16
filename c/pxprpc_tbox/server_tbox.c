@@ -53,12 +53,12 @@ struct _pxprpc_tbox_sockconn{
 static void __sockAbsIo1Read(struct pxprpc_abstract_io *self1,uint32_t length,uint8_t *buf,void (*onCompleted)(void *p),void *p){
     struct _pxprpc_tbox_sockconn *self=(struct _pxprpc_tbox_sockconn *)self1->userData;
     if(tb_socket_brecv(self->sock,buf,length)){
-        self->nextFn=onCompleted;
-        self->nextFnArg0=p;
         self->readError=NULL;
     }else{
         self->readError="socket receive failed";
     }
+    self->nextFn=onCompleted;
+    self->nextFnArg0=p;
 }
 static void __sockAbsIo1Write(struct pxprpc_abstract_io *self1,uint32_t length,const uint8_t *buf){
     struct _pxprpc_tbox_sockconn *self=(struct _pxprpc_tbox_sockconn *)self1->userData;
