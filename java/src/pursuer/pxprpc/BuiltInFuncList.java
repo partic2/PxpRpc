@@ -12,7 +12,7 @@ public class BuiltInFuncList {
 			return null;
 		}
 	}
-	public Method getMethod(Object obj,String methodName){
+	public AbstractCallable getMethod(Object obj,String methodName){
 		Method found=null;
 		for(Method method:obj.getClass().getMethods()) {
 			if(method.getName().equals(methodName)) {
@@ -20,7 +20,17 @@ public class BuiltInFuncList {
 				break;
 			}
 		}
-		return found;
+		return new MethodCallable(found);
+	}
+	public AbstractCallable getBoundMethod(Object obj,String methodName){
+		Method found=null;
+		for(Method method:obj.getClass().getMethods()) {
+			if(method.getName().equals(methodName)) {
+				found=method;
+				break;
+			}
+		}
+		return new BoundMethodCallable(found,obj);
 	}
 	public boolean isException(Object obj) {
 		return obj.getClass().isInstance(Exception.class);
