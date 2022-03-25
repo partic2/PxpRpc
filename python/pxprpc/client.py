@@ -165,14 +165,22 @@ class RpcExtendClientObject():
 
     async def free(self):
         if self.value!=None:
-            await self.client.freeSlot(self.value)
+            val=self.value
             self.value=None
+            await self.client.freeSlot(val)
+            
 
     async def asCallable(self):
-        return RpcExtendClientCallable(self.client,self.value)
-        
+        '''this object will be invalid after this function. use return value instead.'''
+        c1=RpcExtendClientCallable(self.client,self.value)
+        self.value=None
+        return c1
+            
     def __del__(self):
-        create_task(self.free())
+        if self.value!=None:
+            val=self.value
+            self.value=None
+            create_task(self.client.freeSlot(val))
             
 
 class RpcExtendClientCallable(RpcExtendClientObject):
@@ -241,6 +249,7 @@ available type signature characters:
                     raise RpcExtendError('Unsupport input argument')
                 else:
                     fmtstr+=sign[t1]
+                    args2.append(args[t1])
             
             packed=struct.pack('<'+fmtstr,*args2) if len(fmtstr)>0 else bytes()
 
