@@ -60,13 +60,15 @@ static void __sockAbsIo1Read(struct pxprpc_abstract_io *self1,uint32_t length,ui
     self->nextFn=onCompleted;
     self->nextFnArg0=p;
 }
-static void __sockAbsIo1Write(struct pxprpc_abstract_io *self1,uint32_t length,const uint8_t *buf){
+static void __sockAbsIo1Write(struct pxprpc_abstract_io *self1,uint32_t length,const uint8_t *buf,void (*onCompleted)(void *p),void *p){
     struct _pxprpc_tbox_sockconn *self=(struct _pxprpc_tbox_sockconn *)self1->userData;
     if(tb_socket_bsend(self->sock,buf,length)){
         self->writeError=NULL;
     }else{
         self->writeError="socket send failed";
     }
+    self->nextFn=onCompleted;
+    self->nextFnArg0=p;
 }
 static const char *__sockAbsIo1GetError(struct pxprpc_abstract_io *self1,void *fn){
     struct _pxprpc_tbox_sockconn *self=(struct _pxprpc_tbox_sockconn *)self1->userData;
