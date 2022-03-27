@@ -57,4 +57,6 @@ typedef struct pxprpc_server_api{
 
 extern int pxprpc_server_query_interface(pxprpc_server_api **outapi);
 
+#pragma pack()
+
 #endif
