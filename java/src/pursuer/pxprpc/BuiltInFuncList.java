@@ -1,8 +1,13 @@
 package pursuer.pxprpc;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.lang.reflect.Method;
+import java.nio.ByteBuffer;
 import java.util.List;
+import java.util.Map;
 
 public class BuiltInFuncList {
 	public String asString(byte[] utf8) {
@@ -11,6 +16,9 @@ public class BuiltInFuncList {
 		} catch (UnsupportedEncodingException e) {
 			return null;
 		}
+	}
+	public String anyToString(Object obj){
+		return obj.toString();
 	}
 	public AbstractCallable getMethod(Object obj,String methodName){
 		Method found=null;
@@ -32,8 +40,12 @@ public class BuiltInFuncList {
 		}
 		return new BoundMethodCallable(found,obj);
 	}
-	public boolean isException(Object obj) {
-		return obj.getClass().isInstance(Exception.class);
+	public String checkException(Object obj) {
+		if(obj!=null&&obj.getClass().isInstance(Exception.class)){
+			return obj.toString();
+		}else{
+			return "";
+		}
 	}
 	public Class<?> findClass(String name){
 		try {
@@ -62,4 +74,31 @@ public class BuiltInFuncList {
 	public void listRemove(List<Object> array,int index) {
 		array.remove(index);
 	}
+	public byte[] listBytesJoin(List<byte[]> array,byte[] sep) throws IOException {
+		int size=array.size();
+		if(size==0){
+			return new byte[0];
+		}
+		ByteArrayOutputStream bais=new ByteArrayOutputStream();
+		bais.write(array.get(0));
+		for(int i1=1;i1<size;i1++){
+			bais.write(sep);
+			bais.write(array.get(i1));
+		}
+		return bais.toByteArray();
+	}
+	public String listStringJoin(List<String> array,String sep){
+		int size=array.size();
+		if(size==0){
+			return "";
+		}
+		StringBuilder sb=new StringBuilder();
+		sb.append(array.get(0));
+		for(int i1=1;i1<size;i1++){
+			sb.append(sep);
+			sb.append(array.get(i1));
+		}
+		return sb.toString();
+	}
+
 }

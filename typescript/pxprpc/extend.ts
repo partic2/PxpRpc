@@ -135,12 +135,19 @@ s  string(bytes will be decode to string)
             }else{
                 let t1=await this.client.allocSlot()
                 let result = new DataView(await this.client.conn.call(
-                    t1, this.value!, args2.buffer.slice(0, writeAt), 4));
-
+                    t1, this.value!, args2.buffer.slice(0, writeAt), 4)).getUint32(0,true);
+                if(result==0){
+                    return null;
+                }
                 if(retType=='s'){
                     freeBeforeReturn.push(t1);
-                    let t2=new TextDecoder().decode(await this.client.conn.pull(t1));
-                    return t2
+                    let byteData=await this.client.conn.pull(t1);
+                    if(byteData!=null){
+                        let t2=new TextDecoder().decode(byteData);
+                        return t2
+                    }else{
+                        return null;
+                    }
                 }else if(retType=='b'){
                     freeBeforeReturn.push(t1);
                     let t2=await this.client.conn.pull(t1)
@@ -167,8 +174,31 @@ export class RpcExtendClient1 {
 
     private __slotStart: number = 1;
     private __slotEnd: number = 64;
+    
     public constructor(public conn: Client) {
         this.__nextSlots = this.__slotEnd;
+    }
+
+    //XXX: support exception handle here?
+    protected builtIn?:{checkException?:RpcExtendClientCallable}
+    public async ensureBuiltIn(){
+        if(this.builtIn==undefined){
+            this.builtIn={}
+            let t1=await this.getFunc('builtin.checkException');
+            if(t1!=null){
+                t1.signature('o->s');
+                this.builtIn.checkException=t1;
+            }
+        }
+    }
+    public async checkException(obj:RpcExtendClientObject){
+        await this.ensureBuiltIn();
+        if(this.builtIn!.checkException!=null){
+            let err=await this.builtIn!.checkException.call(obj) as string
+            if(err!=''){
+                throw(new Error(err));
+            }
+        }
     }
     public async allocSlot() {
         let reachEnd = false;
@@ -203,9 +233,19 @@ export class RpcExtendClient1 {
         let t1 = await this.allocSlot()
         await this.conn.push(t1, new TextEncoder().encode(name))
         let t2 = await this.allocSlot()
-        await this.conn.getFunc(t2, t1)
+        let resp=await this.conn.getFunc(t2, t1)
         await this.freeSlot(t1)
-        return new RpcExtendClientCallable(this, t2)
+        if(resp==0){
+            return null;
+        }
+        return new RpcExtendClientCallable(this, resp)
+    }
+    public async close(){
+        for(let key in this.__usedSlots){
+            if(this.__usedSlots[key])
+                this.freeSlot(Number(key));
+        }
+        await this.conn.close()
     }
 
 }

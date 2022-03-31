@@ -40,6 +40,10 @@ export class Client{
         let buf=await this.io1.read(4);
         return new DataView(buf).getUint32(0,true);
     }
+    public async readInt32(){
+        let buf=await this.io1.read(4);
+        return new DataView(buf).getInt32(0,true); 
+    }
     public async push(destAddr:number,data:ArrayBufferLike){
         let hdr=new ArrayBuffer(12);
         let hdr2=new DataView(hdr);
@@ -70,10 +74,15 @@ export class Client{
         });
         await this.io1.write(hdr);
         await respFut;
-        let size=await this.readUint32();
-        let data1=await this.io1.read(size);
+        let size=await this.readInt32();
+        let result:ArrayBufferLike|null
+        if(size==-1){
+            result=null;
+        }else{
+            result=await this.io1.read(size);
+        }
         this.respReadingCb(null);
-        return data1;
+        return result;
     }
     public async assign(destAddr:number,srcAddr:number){
         let hdr=new ArrayBuffer(12);
