@@ -267,6 +267,7 @@ available type signature characters:
                 t1=await self.client.allocSlot()
                 await self.client.conn.call(t1,self.value,packed,4)
                 if retType=='s':
+                    t3=await self.client.conn.pull(t1)
                     t2=(await self.client.conn.pull(t1)).decode('utf8')
                     await self.client.freeSlot(t1)
                     return t2
@@ -293,6 +294,7 @@ class RpcExtendClient1:
         self.__slotStart=1
         self.__slotEnd=64
         self.__nextSlots=self.__slotStart
+        self.builtIn=None
 
     async def start(self):
         self.conn.run()
@@ -334,3 +336,21 @@ class RpcExtendClient1:
         else:
             await self.freeSlot(t1)
             return RpcExtendClientCallable(self,value=t2)
+
+    async def ensureBuiltIn(self):
+        if(self.builtIn==None):
+            self.builtIn=map()
+            t1=await self.getFunc('builtin.checkException')
+            if(t1!=None):
+                t1.signature('o->s')
+                self.builtIn['checkException']=t1
+            
+    
+    async def checkException(self,obj:RpcExtendClientObject):
+        await self.ensureBuiltIn()
+        if 'checkException' in self.builtIn:
+            err=await self.builtIn['checkException'](obj)
+            if(err!=''):
+                raise RpcExtendError(err)
+            
+    

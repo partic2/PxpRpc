@@ -65,7 +65,7 @@ public class BuiltInFuncList {
 	public int listLength(List<Object> array) {
 		return array.size();
 	}
-	public Object listIndexOf(List<Object> array,int index) {
+	public Object listElemAt(List<Object> array,int index) {
 		return array.get(index);
 	}
 	public void listAdd(List<Object> array,Object obj) {

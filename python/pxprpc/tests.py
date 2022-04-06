@@ -1,6 +1,7 @@
 
 
 
+from tabnanny import check
 import pxprpc.backend
 import pxprpc.client
 
@@ -23,6 +24,9 @@ async def amain():
     async def fn():
         await asyncio.sleep(1)
     server1.funcMap['test1.wait1Sec']=fn
+    async def fn():
+        raise IOError('dummy io error')
+    server1.funcMap['test1.raiseError1']=fn
     await server1.start()
     await client1.start()
 
@@ -42,6 +46,13 @@ async def amain():
     t1=await get1234()
     print('client get:'+t1)
     await wait1Sec()
+    raiseError1=await client2.getFunc('test1.raiseError1')
+    raiseError1.signature('->o')
+    checkException=await client2.getFunc('builtIn.checkException')
+    checkException.signature('o->s')
+    t1=await raiseError1()
+    print('expected dummy io error')
+    print('check exception:'+ await checkException(t1))
     print('done')
     if EnableWebsocketServer:
         await wstunnel4test()

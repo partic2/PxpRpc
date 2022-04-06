@@ -1,6 +1,7 @@
 
 import asyncio
 import asyncio.locks
+import traceback
 import typing
 import struct
 from .common import encodeToBytes,zero32
@@ -33,14 +34,16 @@ class PxpCallable():
 import logging
 
 log1=logging.getLogger(__name__)
-            
+
 class ServerContext(object):
     
     def __init__(self):
         self.refSlots:typing.Dict[int,typing.Any]=dict()
         self.writeLock=asyncio.locks.Lock()
         self.funcMap=dict()
+        fillFuncMapBuiltIn(self.funcMap)
         self.running=False
+
 
     def backend1(self,r:asyncio.StreamReader,w:asyncio.StreamWriter):
         self.in2=r
@@ -80,7 +83,7 @@ class ServerContext(object):
                         self.out2.write(struct.pack('<I',len(data)))
                         self.out2.write(data)
                     else:
-                        self.out2.write(bytes.fromhex('FFFFFFFF'))
+                        self.out2.write(bytes(255,255,255,255))
                 finally:
                     self.writeLock.release()
             elif session[0]==3:
@@ -107,15 +110,19 @@ class ServerContext(object):
                     self.writeLock.release()
             elif session[0]==5:
                 #call
-                req=PxpRequest()
-                req.context=self
-                req.session=session
-                req.destAddr,req.funcAddr=struct.unpack('<II',await self.in2.read(8))
-                t1:PxpCallable=self.refSlots.get(req.funcAddr,None)
-                req.callable=t1
-                await t1.readParameter(req)
-                log1.debug('server get request:%s',req)
-                asyncio.create_task(self.__callRoutine(req))
+                try:
+                    req=PxpRequest()
+                    req.context=self
+                    req.session=session
+                    req.destAddr,req.funcAddr=struct.unpack('<II',await self.in2.read(8))
+                    t1:PxpCallable=self.refSlots.get(req.funcAddr,None)
+                    req.callable=t1
+                    await t1.readParameter(req)
+                    log1.debug('server get request:%s',req)
+                    asyncio.create_task(self.__callRoutine(req))
+                except Exception as ex:
+                    traceback.print_exc()
+                    raise ex
             elif session[0]==6:
                 #getFunc
                 req=PxpRequest()
@@ -204,12 +211,18 @@ class PyCallableWrap(PxpCallable):
                 req.parameter.append(
                     bool(struct.unpack('<I',await req.context.in2.read(4))))[0]
             else:
-                t1=struct.unpack('<i',await req.context.in2.read(4))[0]
-                t2=req.context.refSlots[t1]
-                req.parameter.append(t2)
+                t2=struct.unpack('<i',await req.context.in2.read(4))[0]
+                t3=req.context.refSlots[t2]
+                if t1==str and type(t3)==bytes:
+                    t3=t3.decode('utf-8')
+                req.parameter.append(t3)
     
     async def call(self,req:PxpRequest):
-        return await self.callable(*req.parameter)
+        try:
+            r=await self.callable(*req.parameter)
+            return r
+        except Exception as ex2:
+            return ex2
     
     async def writeResult(self,req:PxpRequest):
         t1=type(req.result)
@@ -224,3 +237,33 @@ class PyCallableWrap(PxpCallable):
         else:
             req.context.out2.write(struct.pack('<I',req.destAddr))
         
+
+
+
+def fillFuncMapBuiltIn(funcMap:typing.Dict):
+    async def fn(obj:object)->str:
+        return str(obj)
+    funcMap['builtIn.anyToString']=fn
+
+    async def fn(obj:object)->str:
+        if isinstance(obj,Exception):
+            return str(obj)
+        else:
+            return ''
+    funcMap['builtIn.checkException']=fn
+
+    async def fn(obj:typing)->int:
+        return len(obj)
+    funcMap['builtIn.listElemAt']=fn
+
+    async def fn(obj:typing.List,elem:object)->object:
+        return obj.append(elem)
+    funcMap['builtIn.listAdd']=fn
+
+    async def fn(obj:typing.List,index:int)->object:
+        return obj.pop(index)
+    funcMap['builtIn.listRemove']=fn
+
+    async def fn(obj:typing.List,sep:str):
+        return sep.join(obj)
+    funcMap['builtIn.listStringJoin']=fn

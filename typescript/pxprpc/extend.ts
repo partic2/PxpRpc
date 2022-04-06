@@ -146,11 +146,15 @@ s  string(bytes will be decode to string)
                         let t2=new TextDecoder().decode(byteData);
                         return t2
                     }else{
+                        this.client.checkException(new RpcExtendClientObject(this.client,t1));
                         return null;
                     }
                 }else if(retType=='b'){
                     freeBeforeReturn.push(t1);
                     let t2=await this.client.conn.pull(t1)
+                    if(t2==null){
+                        this.client.checkException(new RpcExtendClientObject(this.client,t1));
+                    }
                     return t2
                 }else{
                     return new RpcExtendClientObject(this.client,t1)
@@ -179,7 +183,6 @@ export class RpcExtendClient1 {
         this.__nextSlots = this.__slotEnd;
     }
 
-    //XXX: support exception handle here?
     protected builtIn?:{checkException?:RpcExtendClientCallable}
     public async ensureBuiltIn(){
         if(this.builtIn==undefined){
@@ -196,7 +199,7 @@ export class RpcExtendClient1 {
         if(this.builtIn!.checkException!=null){
             let err=await this.builtIn!.checkException.call(obj) as string
             if(err!=''){
-                throw(new Error(err));
+                throw(new RpcExtendError(err));
             }
         }
     }
