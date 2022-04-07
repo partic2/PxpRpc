@@ -160,8 +160,8 @@ class RpcExtendClientObject():
         self.value=value
         self.client=client
 
-    def tryPull(self)->bytes:
-        return self.client.conn.pull(self.value)
+    async def tryPull(self)->bytes:
+        return await self.client.conn.pull(self.value)
 
     async def free(self):
         if self.value!=None:
@@ -264,22 +264,35 @@ available type signature characters:
                 else:
                     return struct.unpack('<'+retType,result)
             else:
-                t1=await self.client.allocSlot()
-                await self.client.conn.call(t1,self.value,packed,4)
+                destAddr=await self.client.allocSlot()
+                status=struct.unpack('<i',await self.client.conn.call(destAddr,self.value,packed,4))[0]
+                result=RpcExtendClientObject(self.client,destAddr)
                 if retType=='s':
-                    t3=await self.client.conn.pull(t1)
-                    t2=(await self.client.conn.pull(t1)).decode('utf8')
-                    await self.client.freeSlot(t1)
-                    return t2
+                    freeBeforeReturn.append(result)
+                    if(status==1):
+                        await self.client.checkException(result)
+                        return None
+                    else:
+                        t3=await result.tryPull()
+                        return t3 if t3==None else t3.decode('utf-8')
                 elif retType=='b':
-                    t2=await self.client.conn.pull(t1)
-                    await self.client.freeSlot(t1)
+                    if(status==1):
+                        await self.client.checkException(result)
+                        return None
+                    freeBeforeReturn.append(result)
+                    t2=await result.tryPull()
                     return t2
                 else:
-                    return RpcExtendClientObject(self.client,value=t1)
+                    if(status==1):
+                        raise RpcExtendError(result)
+                    return result
         finally:
             for t1 in freeBeforeReturn:
-                await self.client.freeSlot(t1)
+                t2=type(t1)
+                if t2==int:
+                    await self.client.freeSlot(t1)
+                elif issubclass(t2,RpcExtendClientObject):
+                    await t1.free()
 
 
 
@@ -339,7 +352,7 @@ class RpcExtendClient1:
 
     async def ensureBuiltIn(self):
         if(self.builtIn==None):
-            self.builtIn=map()
+            self.builtIn=dict()
             t1=await self.getFunc('builtin.checkException')
             if(t1!=None):
                 t1.signature('o->s')

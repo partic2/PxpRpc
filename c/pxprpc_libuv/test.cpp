@@ -15,6 +15,7 @@ extern "C"{
 pxprpc_libuv_api *srvtbox;
 
 uint8_t testFnWriteBuf[4];
+const int constZero=0;
 static void testNopCallback(void *p){};
 
 class fnPrintString:public pxprpc::NamedFunctionPP{
@@ -43,8 +44,7 @@ class fnPrintString:public pxprpc::NamedFunctionPP{
         onResult(new pxprpc::RpcRawBytes((uint8_t *)"hello client",strlen("hello client")));
     };
     virtual void writeResult(struct pxprpc_request *r){
-        *(uint32_t *)(&testFnWriteBuf)=r->dest_addr;
-        r->io1->write(r->io1,4,testFnWriteBuf,testNopCallback,NULL);
+        r->io1->write(r->io1,4,reinterpret_cast<const uint8_t *>(&constZero),testNopCallback,NULL);
     };
 };
 
@@ -74,8 +74,7 @@ class fnPrintStringUnderline:public pxprpc::NamedFunctionPP{
         onResult(new pxprpc::RpcRawBytes((uint8_t *)"hello client",strlen("hello client")));
     };
     virtual void writeResult(struct pxprpc_request *r){
-        *(uint32_t *)(&testFnWriteBuf)=r->dest_addr;
-        r->io1->write(r->io1,4,testFnWriteBuf,testNopCallback,NULL);
+         r->io1->write(r->io1,4,reinterpret_cast<const uint8_t *>(&constZero),testNopCallback,NULL);
     };
 };
 

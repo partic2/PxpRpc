@@ -2,6 +2,7 @@
 
 
 from tabnanny import check
+import traceback
 import pxprpc.backend
 import pxprpc.client
 
@@ -38,21 +39,23 @@ async def amain():
     printString.signature('o->')
     wait1Sec=await client2.getFunc('test1.wait1Sec')
     wait1Sec.signature('->')
+    print('expect 1234')
     t1=await get1234()
     await printString(t1)
     printString.signature('s->')
     await printString('change signature test')
     get1234.signature('->s')
+    print('expect client get:1234')
     t1=await get1234()
     print('client get:'+t1)
     await wait1Sec()
     raiseError1=await client2.getFunc('test1.raiseError1')
-    raiseError1.signature('->o')
-    checkException=await client2.getFunc('builtIn.checkException')
-    checkException.signature('o->s')
-    t1=await raiseError1()
-    print('expected dummy io error')
-    print('check exception:'+ await checkException(t1))
+    raiseError1.signature('->s')
+    try:
+        print('expected dummy io error')
+        t1=await raiseError1()
+    except Exception as ex1:
+        print('exception catched: '+str(ex1))
     print('done')
     if EnableWebsocketServer:
         await wstunnel4test()

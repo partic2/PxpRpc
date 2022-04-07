@@ -52,6 +52,9 @@ public class PxpRpc {
 				}
 			}, 1000);
 		}
+		public void throwError() throws IOException {
+			throw new IOException("dummy exception");
+		}
 	}
 	public static class TickEvent extends EventDispatcher{
 		Timer tm=new Timer();
@@ -124,8 +127,8 @@ public class PxpRpc {
 			//set *12="pxprpc"
 			client.push(12, "pxprpc".getBytes("utf-8"));
 			//should print pxprpc
-			System.out.println("expect print pxprpc");
-			client.callIntFunc(14,13,new Object[] {12});
+			System.out.println("expect print pxprpc\\n0");
+			System.out.println(client.callIntFunc(14,13,new Object[] {12}));
 			
 			System.out.println("sleep 1 tick");
 			//set *11=getFunc test1.waitOneTick
@@ -148,6 +151,22 @@ public class PxpRpc {
 			client.callIntFunc(13,12,new Object[0]);
 			System.out.println(new String(client.pull(13),"utf-8"));
 			
+			System.out.println("check exception test,expect '1' 'dummy exception'");
+			//set *11=getFunc test1.throwError
+			client.getFunc(11, "test1.throwError");
+			//*12=(*11)()
+			System.out.print(client.callIntFunc(12, 11, new Object[0]));
+			//set *13=getFunc builtIn.checkException
+			if(client.getFunc(13, "builtin.checkException")==0) {
+				System.out.println("builtin.checkException not found");
+			}else {
+				//*14=(*13)(12)
+				client.callIntFunc(14, 13, new Object[] {12});
+				System.out.println(new String(client.pull(14),"utf-8"));
+			}
+			
+			
+			
 			//set *11 = getFunc test1.printString
 			client.getFunc(11,"test1.printWhenFree");
 			//set *12 = call *11
@@ -156,7 +175,7 @@ public class PxpRpc {
 			System.out.println("expect print 'free by server gc' if server support");
 			client.push(12, new byte[0]);
 			
-			//should be free if server support when connection close.
+			//should be free when connection close, if server support. 
 			client.callIntFunc(12, 11, new Object[0]);
 			pxptcp.close();
 			System.out.println("close server...");

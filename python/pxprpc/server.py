@@ -83,7 +83,7 @@ class ServerContext(object):
                         self.out2.write(struct.pack('<I',len(data)))
                         self.out2.write(data)
                     else:
-                        self.out2.write(bytes(255,255,255,255))
+                        self.out2.write(bytes([255,255,255,255]))
                 finally:
                     self.writeLock.release()
             elif session[0]==3:
@@ -231,11 +231,11 @@ class PyCallableWrap(PxpCallable):
         elif t1==float:
             req.context.out2.write(struct.pack('<d',req.result))
         elif t1==bool:
-            req.context.out2.write(struct.pack('<I',req.result))
-        elif req.result==None:
-            req.context.out2.write(struct.pack('<I',0))
+            req.context.out2.write(struct.pack('<i',req.result))
+        elif issubclass(t1,Exception):
+            req.context.out2.write(struct.pack('<i',1))
         else:
-            req.context.out2.write(struct.pack('<I',req.destAddr))
+            req.context.out2.write(struct.pack('<i',0))
         
 
 
@@ -243,27 +243,27 @@ class PyCallableWrap(PxpCallable):
 def fillFuncMapBuiltIn(funcMap:typing.Dict):
     async def fn(obj:object)->str:
         return str(obj)
-    funcMap['builtIn.anyToString']=fn
+    funcMap['builtin.anyToString']=fn
 
     async def fn(obj:object)->str:
         if isinstance(obj,Exception):
             return str(obj)
         else:
             return ''
-    funcMap['builtIn.checkException']=fn
+    funcMap['builtin.checkException']=fn
 
     async def fn(obj:typing)->int:
         return len(obj)
-    funcMap['builtIn.listElemAt']=fn
+    funcMap['builtin.listElemAt']=fn
 
     async def fn(obj:typing.List,elem:object)->object:
         return obj.append(elem)
-    funcMap['builtIn.listAdd']=fn
+    funcMap['builtin.listAdd']=fn
 
     async def fn(obj:typing.List,index:int)->object:
         return obj.pop(index)
-    funcMap['builtIn.listRemove']=fn
+    funcMap['builtin.listRemove']=fn
 
     async def fn(obj:typing.List,sep:str):
         return sep.join(obj)
-    funcMap['builtIn.listStringJoin']=fn
+    funcMap['builtin.listStringJoin']=fn

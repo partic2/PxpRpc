@@ -2,6 +2,7 @@
 
 
 import asyncio
+import asyncio.exceptions
 import typing
 import traceback
 
@@ -25,8 +26,10 @@ try:
                     ctx.backend1(r,w)
                     ctx.funcMap.update(self.funcMap)
                     await ctx.handle()
+                except asyncio.exceptions.IncompleteReadError:
+                    log1.debug('connection closed')
                 except Exception as exc:
-                    log1.debug('server exception:%s',repr(exc))
+                    log1.debug('server exception:%s',traceback.format_exc())
                 finally:
                     self.ctxs.remove(ctx)
             finally:

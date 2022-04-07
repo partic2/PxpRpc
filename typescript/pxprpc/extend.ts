@@ -1,6 +1,7 @@
 import { Client } from './base'
 
 export class RpcExtendError extends Error {
+    public remoteException?:RpcExtendClientObject
 }
 
 export class RpcExtendClientObject {
@@ -133,31 +134,39 @@ s  string(bytes will be decode to string)
                 }
                 return result2
             }else{
-                let t1=await this.client.allocSlot()
-                let result = new DataView(await this.client.conn.call(
-                    t1, this.value!, args2.buffer.slice(0, writeAt), 4)).getUint32(0,true);
-                if(result==0){
-                    return null;
-                }
+                let destAddr=await this.client.allocSlot()
+                let status = new DataView(await this.client.conn.call(
+                    destAddr, this.value!, args2.buffer.slice(0, writeAt), 4)).getUint32(0,true);
+                let result=new RpcExtendClientObject(this.client,destAddr);
                 if(retType=='s'){
-                    freeBeforeReturn.push(t1);
-                    let byteData=await this.client.conn.pull(t1);
-                    if(byteData!=null){
-                        let t2=new TextDecoder().decode(byteData);
-                        return t2
+                    freeBeforeReturn.push(destAddr);
+                    if(status==1){
+                        await this.client.checkException(result);
                     }else{
-                        this.client.checkException(new RpcExtendClientObject(this.client,t1));
-                        return null;
+                        let byteData=await result.tryPull()
+                        if(byteData!=null){
+                            let t2=new TextDecoder().decode(byteData);
+                            return t2
+                        }else{
+                            return null;
+                        }
                     }
                 }else if(retType=='b'){
-                    freeBeforeReturn.push(t1);
-                    let t2=await this.client.conn.pull(t1)
-                    if(t2==null){
-                        this.client.checkException(new RpcExtendClientObject(this.client,t1));
+                    freeBeforeReturn.push(destAddr);
+                    if(status==1){
+                        await this.client.checkException(result);
+                    }else{
+                        let byteData=await result.tryPull();
+                        return byteData;
                     }
-                    return t2
                 }else{
-                    return new RpcExtendClientObject(this.client,t1)
+                    if(status==1){
+                        let err1=new RpcExtendError('remote exception');
+                        err1.remoteException=result;
+                        throw err1;
+                    }else{
+                        return result
+                    }
                 }
             }
         } finally {

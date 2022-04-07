@@ -1,5 +1,5 @@
 import { PxprpcWebSocketClient } from "./backend";
-import { RpcExtendClient1, RpcExtendClientObject } from "./extend";
+import { RpcExtendClient1, RpcExtendClientObject, RpcExtendError } from "./extend";
 
 
 
@@ -20,4 +20,11 @@ export async function test(){
     printString.signature('s->')
     await printString.call('4567');
     await str1.free()
+    let raiseError1=(await client2.getFunc('test1.raiseError1'))!
+    try{
+        raiseError1.signature('->s')
+        await raiseError1.call()
+    }catch(e){
+        console.log(e)
+    }
 }

@@ -8,10 +8,10 @@ public abstract class AbstractCallable implements PxpCallable{
 	@Override
 	public void writeResult(PxpRequest req) throws IOException{
 		ServerContext ctx = req.context;
-		if(req.result==null) {
-			ctx.writeInt32(0);
+		if(Exception.class.isInstance(req.result)) {
+			ctx.writeInt32(1);
 		}else {
-			writeNext(req.context,javaTypeToSwitchId(req.result.getClass()), req.result, req.destAddr);
+			ctx.writeInt32(0);
 		}
 	}
 
@@ -113,8 +113,7 @@ public abstract class AbstractCallable implements PxpCallable{
 		//reference type
 		case 8:
 		case 9:
-			ctx.writeInt32(addrIfRefType);
-			break;
+			//processed by callable
 		default :
 			throw new UnsupportedOperationException();
 		}
