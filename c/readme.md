@@ -10,7 +10,7 @@ In makefile, add make config script by "include", like below
 
 or 
 
-`include $(PXPRPC_SOURCE_ROOT)/c/pxprpc_tbox/make-config.mk`
+`include $(PXPRPC_SOURCE_ROOT)/c/pxprpc_libuv/make-config.mk`
 
 
 
@@ -21,8 +21,11 @@ then build like below
 
 
 
-See also pxprpc_tbox/make-config.mk, which contains a build example.
+See also pxprpc_libuv/make-config.mk, which contains a build example.
 
 
-You may need set `$(TBOX_CFLAGS)` and `$(TBOX_LDFLAGS)` variable if use pxprpc_tbox backend. 
+You may need set `$(LIBUV_CFLAGS)` and `$(LIBUV_LDFLAGS)` variable if use pxprpc_libuv backend. 
+
+
+Also `$(TBOX_CFLAGS)` and `$(TBOX_LDFLAGS)` variable if use pxprpc_tbox backend. 
 

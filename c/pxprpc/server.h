@@ -14,7 +14,14 @@ typedef void *pxprpc_server_context;
 
 struct pxprpc_object{
     void *object1;
+    //count is used by object internally to save the reference count,
+    //pxprpc server only use 'addRef' and 'release'. 
     uint16_t count;
+    //type is used to identify the object type.
+    //For pxprpc internal object 'pxprpc_bytes' ,type=1.
+    //type<16 are reserved by pxprpc for future use,
+    //type>=16 are user-defined types.
+    uint16_t type;
     uint32_t (*addRef)(struct pxprpc_object *self);
     uint32_t (*release)(struct pxprpc_object *self);
 };

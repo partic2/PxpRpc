@@ -57,6 +57,7 @@ static struct pxprpc_object *pxprpc_new_object(void *obj){
 
 static struct pxprpc_object *pxprpc_new_bytes_object(uint32_t size){
     struct pxprpc_object *ref=pxprpc_new_object(pxprpc__malloc(size+4));
+    ref->type=1;
     *((int *)(ref->object1))=size;
     ref->release=_pxprpc__ref_bytes_Release;
     return ref;
@@ -291,8 +292,6 @@ static void _pxprpc__stepGetFunc2(struct _pxprpc__ServCo *self){
     self->io1->write(self->io1,4,(uint8_t *)&self->hdr.session,_pxprpc__nopcallback,NULL);
     self->io1->write(self->io1,4,self->writeBuf,(void (*)(void *))_pxprpc__step1,self);
     pthread_mutex_unlock(&self->writeMutex);
-
-    _pxprpc__step1(self);
 }
 static void _pxprpc__stepGetFunc1(struct _pxprpc__ServCo *self){
     self->io1->read(self->io1,8,(uint8_t*)&self->hdr.addr1,(void(*)(void *))&_pxprpc__stepGetFunc2,self);

@@ -11,7 +11,9 @@ Currently, pxprpc has been implemented on below platform
 
 rpc server on java (>=1.6)
 
-rpc server on c
+asynchronous rpc server on c
+
+rpc server over tcp on c with libuv
 
 rpc server over tcp on c with tbox
 
