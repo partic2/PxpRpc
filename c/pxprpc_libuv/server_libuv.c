@@ -65,6 +65,7 @@ static void __sockMoveInternalBufToNextBuf(struct _pxprpc_libuv_sockconn *self){
             }
             memcpy(self->nextBuf.base,self->internalBuf+self->bufStart,size);
             self->nextBuf.len-=size;
+            self->nextBuf.base+=size;
             self->bufStart+=size;
             if(self->bufStart>=__sockconn_internalBuf_len){
                 self->bufStart-=__sockconn_internalBuf_len;
@@ -79,6 +80,7 @@ static void __sockMoveInternalBufToNextBuf(struct _pxprpc_libuv_sockconn *self){
             }
             memcpy(self->nextBuf.base,self->internalBuf+self->bufStart,size);
             self->nextBuf.len-=size;
+            self->nextBuf.base+=size;
             self->bufStart+=size;
         }
     }

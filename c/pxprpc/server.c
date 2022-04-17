@@ -72,6 +72,7 @@ static void pxprpc_fill_bytes_object(struct pxprpc_object *obj,uint8_t *data,int
 }
 
 struct _pxprpc__ServCo{
+    #pragma pack(1)
     union{
         struct{
             uint32_t session;
@@ -83,6 +84,7 @@ struct _pxprpc__ServCo{
         } hdr;
         uint8_t hdrbuf[16];
     };
+    #pragma pack()
     struct pxprpc_abstract_io *io1;
     struct pxprpc_object **refSlots;
     int slotMaxHashOffset;

@@ -8,12 +8,13 @@
 
 #include "config.h"
 
-#pragma pack(1)
 
 typedef void *pxprpc_server_context;
 
 struct pxprpc_object{
     void *object1;
+    uint32_t (*addRef)(struct pxprpc_object *self);
+    uint32_t (*release)(struct pxprpc_object *self);
     //count is used by object internally to save the reference count,
     //pxprpc server only use 'addRef' and 'release'. 
     uint16_t count;
@@ -22,8 +23,6 @@ struct pxprpc_object{
     //type<16 are reserved by pxprpc for future use,
     //type>=16 are user-defined types.
     uint16_t type;
-    uint32_t (*addRef)(struct pxprpc_object *self);
-    uint32_t (*release)(struct pxprpc_object *self);
 };
 
 struct pxprpc_request{
@@ -64,6 +63,5 @@ typedef struct pxprpc_server_api{
 
 extern int pxprpc_server_query_interface(pxprpc_server_api **outapi);
 
-#pragma pack()
 
 #endif
