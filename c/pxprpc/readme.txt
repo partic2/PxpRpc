@@ -1,8 +1,8 @@
 
 
-If you want to use "pxprpc for c" with socket, pipe, etc. consider using pxprpc_tbox, or pxprpc_libuv(WIP).
+If you want to use "pxprpc for c" on socket, pipe, etc. consider using pxprpc_libuv, or pxprpc_tbox.
 
-You can alse implement the struct "pxprpc_abstract_io" yourself as underlying stream. 
+You can also implement your own struct "pxprpc_abstract_io" as underlying stream. 
 
 The API should be used like below:
 
