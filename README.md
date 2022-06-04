@@ -2,7 +2,7 @@
 
 ### Introduce
 
-PxpRpc(pursuer cross platform remote procedure call) is a very tiny rpc library aim to call and interchange data cross platform and language with high performance and little load.
+PxpRpc(PARTIC cross platform remote procedure call) is a very tiny rpc library aim to call and interchange data cross platform and language with high performance and little load.
 
 
 ### Platform
@@ -26,6 +26,17 @@ rpc client on typescript(websocket)
 See /documents/* for more information.
 
 See test files for detail usage.
+
+[C(libuv) example](c/pxprpc_libuv/test.cpp)
+
+[C(tbox) example](c/pxprpc_tbox/test.cpp)
+
+[Java example](java/src/pursuer/test/PxpRpc.java)
+
+[Python example](python/pxprpc/tests.py)
+
+[Typescript(websocket) example](typescript/pxprpc/tests.ts)
+
 
 Feel free to PR and issue
 
