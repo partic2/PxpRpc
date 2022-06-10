@@ -11,9 +11,13 @@ namespace pxprpc
         public Stream stream;
         public static int DefaultRefSlotsCap = 256;
         public Ref[] refSlots = new Ref[256];
+        public Dictionary<String, Object> funcMap = new Dictionary<String, Object>();
+        protected BuiltInFuncList builtIn;
         public void init(Stream stream)
         {
             this.stream = stream;
+            builtIn = new BuiltInFuncList();
+            funcMap["builtin"] = builtIn;
         }
         public bool running = true;
 
@@ -100,31 +104,31 @@ namespace pxprpc
          });
         }
 
-        
-    public void getInfo(PxpRequest r)
-    {
-        writeLock().WaitOne();
-		this.stream.Write(r.session);
-		byte[]
-        b=Encoding.UTF8.GetBytes(
-		"server name:pxprpc for c#\n"+
-		"version:1.0\n"+
-		"reference slots capacity:"+this.refSlots.Length+"\n"
-		);
-        writeInt32(b.Length);
-		stream.Write(b);
-        writeLock().ReleaseMutex();
-		stream.Flush();
-    }
 
-    public void serve()
+        public void getInfo(PxpRequest r)
         {
+            writeLock().WaitOne();
+            this.stream.Write(r.session);
+            byte[]
+            b = Encoding.UTF8.GetBytes(
+            "server name:pxprpc for c#\n" +
+            "version:1.0\n" +
+            "reference slots capacity:" + this.refSlots.Length + "\n"
+            );
+            writeInt32(b.Length);
+            stream.Write(b);
+            writeLock().ReleaseMutex();
+            stream.Flush();
+        }
+
+        public void serve()
+        {
+            this.running = true;
             while (running)
             {
                 PxpRequest r = new PxpRequest();
                 r.context = this;
                 byte[] session = new byte[4];
-                stream.Read(session, 0, 4);
                 Utils.readf(stream, session);
                 r.session = session;
                 r.opcode = session[0];
@@ -196,7 +200,38 @@ namespace pxprpc
             int addr = readInt32();
             return (byte[])refSlots[addr].get();
         }
+        public void getFunc(PxpRequest r)
+        {
+            String name = getStringAt(r.srcAddr);
+            int namespaceDelim = name.LastIndexOf(".");
+            String ns = name.Substring(0, namespaceDelim);
+            String func = name.Substring(namespaceDelim + 1);
+            Object obj = funcMap[ns];
+            AbstractCallable found = null;
+            if (obj != null)
+            {
+                found = builtIn.getBoundMethod(obj, func);
+            }
+            writeLock().WaitOne();
+            if (found == null)
+            {
 
+                this.stream.Write(r.session);
+
+                writeInt32(0);
+            }
+            else
+            {
+                putRefSlots(r.destAddr, new Ref(found));
+
+                this.stream.Write(r.session);
+
+                writeInt32(r.destAddr);
+
+            }
+            writeLock().ReleaseMutex();
+            this.stream.Flush();
+        }
 
         public String readNextString()
         {
@@ -248,7 +283,11 @@ namespace pxprpc
             {
                 if (refSlots[i1] != null)
                 {
-                    refSlots[i1].release();
+                    try
+                    {
+                        refSlots[i1].release();
+                    }
+                    catch (Exception e) { }
                 }
             }
         }

@@ -8,7 +8,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
 public class Utils {
-	// read eough data or EOFException
+	// read enough data or EOFException
 	public static void readf(InputStream in,byte[] b) throws IOException {
 		for(int st=0;st<b.length;) {
 			int r = in.read(b,st,b.length-st);

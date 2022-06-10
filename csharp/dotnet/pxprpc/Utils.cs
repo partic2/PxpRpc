@@ -33,8 +33,7 @@ namespace pxprpc
         }
         public static long readInt64(Stream s)
         {
-            byte[]
-        b = new byte[8];
+            byte[] b = new byte[8];
             readf(s, b);
             if (!BitConverter.IsLittleEndian)
             {

@@ -158,7 +158,7 @@ public class ServerContext implements Closeable{
 	}
 	public void getFunc(final PxpRequest r) throws IOException {
 		String name=getStringAt(r.srcAddr);
-		int namespaceDelim=name.indexOf(".");
+		int namespaceDelim=name.lastIndexOf(".");
 		String namespace=name.substring(0,namespaceDelim);
 		String func=name.substring(namespaceDelim+1);
 		Object obj=funcMap.get(namespace);

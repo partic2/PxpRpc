@@ -21,6 +21,8 @@ rpc server and client on python(>=3.8)
 
 rpc client on typescript(websocket)
 
+rpc server on C# (.net)
+
 
 ### Detail help
 See /documents/* for more information.
@@ -36,6 +38,8 @@ See test files for detail usage.
 [Python example](python/pxprpc/tests.py)
 
 [Typescript(websocket) example](typescript/pxprpc/tests.ts)
+
+[C#(.net) example](csharp/dotnet/pxprpc/tests/TestMain.cs)
 
 
 Feel free to PR and issue
