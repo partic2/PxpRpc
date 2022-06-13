@@ -1,7 +1,6 @@
 
 
 
-from tabnanny import check
 import traceback
 import pxprpc.backend
 import pxprpc.client
@@ -109,6 +108,20 @@ async def ctestmain():
     t1.signature('b->b')
     print(await t1(b'12345')) 
     t1=await client2.getFunc('printStringUnderline')
+    print('printStringUnderline:',t1.value)
+    t1.signature('b->b')
+    print(await t1(b'45678'))
+    
+async def cstestmain():
+    client1=pxprpc.backend.TcpClient('127.0.0.1',2050)
+    await client1.start()
+    print('start client')
+    client2=pxprpc.client.RpcExtendClient1(client1.rpcconn)
+    t1=await client2.getFunc('test.printString')
+    print('printString:',t1.value)
+    t1.signature('b->b')
+    print(await t1(b'12345')) 
+    t1=await client2.getFunc('test.printStringUnderline')
     print('printStringUnderline:',t1.value)
     t1.signature('b->b')
     print(await t1(b'45678'))

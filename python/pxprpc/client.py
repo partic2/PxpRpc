@@ -3,7 +3,6 @@ import asyncio
 from asyncio.tasks import create_task
 import logging
 import struct
-import random
 import typing
 import traceback
 
@@ -35,6 +34,8 @@ class RpcConnection(object):
                 fut.set_result(None)
                 await self.__readingResp
         except Exception as exc:
+            for waiting in self.__waitingSession.values():
+                waiting.set_exception(exc)
             log1.debug('client error:%s',repr(exc))
             self.running=False
 
@@ -256,13 +257,13 @@ available type signature characters:
             if retType in 'ilfdvz':
                 result=await self.client.conn.call(0,self.value,packed,4 if retType in 'ifvz' else 6)
                 if retType=='l':
-                    return struct.unpack('<q',result)
+                    return struct.unpack('<q',result)[0]
                 elif retType=='z':
                     return result!=bytes((0,0,0,0))
                 elif retType in 'v':
                     return None
                 else:
-                    return struct.unpack('<'+retType,result)
+                    return struct.unpack('<'+retType,result)[0]
             else:
                 destAddr=await self.client.allocSlot()
                 status=struct.unpack('<i',await self.client.conn.call(destAddr,self.value,packed,4))[0]
@@ -308,9 +309,6 @@ class RpcExtendClient1:
         self.__slotEnd=64
         self.__nextSlots=self.__slotStart
         self.builtIn=None
-
-    async def start(self):
-        self.conn.run()
 
     async def allocSlot(self)->int:
         reachEnd=False

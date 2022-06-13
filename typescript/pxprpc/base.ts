@@ -20,17 +20,24 @@ export class Client{
     protected respReadingCb:(e:Error|null)=>void=()=>{};
     public async run(){
         this.running=true;
-        while(this.running){
-            let sid=await this.readUint32();
-            let cb=this.waitingSessionCb[sid];
-            delete this.waitingSessionCb[sid];
-            let respReadingDone=new Promise<undefined>((resolve,reject)=>{
-                this.respReadingCb=(e)=>{
-                    if(e==null){resolve(undefined)}else{reject(e)};
-                }
-            });
-            cb(null);
-            await respReadingDone;
+        try{
+            while(this.running){
+                let sid=await this.readUint32();
+                let cb=this.waitingSessionCb[sid];
+                delete this.waitingSessionCb[sid];
+                let respReadingDone=new Promise<undefined>((resolve,reject)=>{
+                    this.respReadingCb=(e)=>{
+                        if(e==null){resolve(undefined)}else{reject(e)};
+                    }
+                });
+                cb(null);
+                await respReadingDone;
+            }
+        }catch(e){
+            for(let k in this.waitingSessionCb){
+                let cb=this.waitingSessionCb[k];
+                cb(e as any);
+            }
         }
     }
     public isRunning():boolean{
