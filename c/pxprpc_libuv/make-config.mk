@@ -2,15 +2,17 @@
 
 # PXPRPC_SOURCE_ROOT=path of this project.
 
-C_SOURCE_FILES+= $(PXPRPC_SOURCE_ROOT)/c/pxprpc_libuv/server_libuv.c
-
-CFLAGS+= $(LIBUV_CFLAGS)
-
-LDFLAGS+= $(LIBUV_LDFLAGS)
-
 include $(PXPRPC_SOURCE_ROOT)/c/pxprpc/make-config.mk
 
+PXPRPC_LIBUV_CFLAGS=$(PXPRPC_CFLAGS) $(LIBUV_CFLAGS)
 
-pxprpc_libuv_test:$(C_SOURCE_FILES) $(PXPRPC_SOURCE_ROOT)/c/pxprpc_libuv/test.cpp
-	$(CC) -o __temp_test -g $(CFLAGS) test.cpp $(C_SOURCE_FILES) $(LDFLAGS) -lstdc++
+PXPRPC_LIBUV_LDFLAGS=pxprpc_server_libuv.o $(PXPRPC_LDFLAGS) $(LIBUV_LDFLAGS)
+
+
+
+pxprpc_libuv_test:build_pxprpc_libuv $(PXPRPC_SOURCE_ROOT)/c/pxprpc_libuv/test.cpp
+	$(CC) -o __temp_test -g $(CFLAGS) $(PXPRPC_LIBUV_CFLAGS) test.cpp $(LDFLAGS) $(PXPRPC_LIBUV_LDFLAGS) -lstdc++
 	./__temp_test
+
+build_pxprpc_libuv:$(PXPRPC_SOURCE_ROOT)/c/pxprpc_libuv/server_libuv.c build_pxprpc
+	$(CC) -o pxprpc_server_libuv.o -c $(CFLAGS) $(PXPRPC_CFLAGS) $<

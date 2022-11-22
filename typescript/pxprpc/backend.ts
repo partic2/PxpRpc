@@ -22,7 +22,15 @@ export class WebSocketIo implements Io{
             }
         });
     }
-    async read(size: number): Promise<ArrayBuffer> {
+    public availableBytes(){
+        let sumBytes=0;
+        let len=this.queuedData.length
+        for(let i1=0;i1<len;i1++){
+            sumBytes+=this.queuedData[i1].byteLength;
+        }
+        return sumBytes;
+    }
+    public async read(size: number): Promise<ArrayBuffer> {
         let remain=size;
         let datar=new Uint8Array(new ArrayBuffer(size));
         while(remain>0){
@@ -46,7 +54,7 @@ export class WebSocketIo implements Io{
         }
         return datar.buffer;
     }
-    async write(data: ArrayBufferLike): Promise<void> {
+    public async write(data: ArrayBufferLike): Promise<void> {
         this.ws.send(data);
     }
 
