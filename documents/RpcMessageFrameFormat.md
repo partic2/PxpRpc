@@ -122,7 +122,7 @@ struct call_response{
         uint16_t id2;
     } session;
     #if FUNCTION_RETURN_32BIT
-    //function return boolean,int8-int32,float32,object.
+    //function return boolean,int32,float32.
     //if function is supposed to return an object, 
     //returnValue=0 to indicate the sucess(In this case, dest_addr will store the return object), 
     //returnValue=1 to indicate the fault(In this case, dest_addr will store an Exception).

@@ -2,9 +2,9 @@ package pursuer.pxprpc;
 
 import java.io.Closeable;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.lang.reflect.Method;
+import java.nio.Buffer;
+import java.nio.ByteBuffer;
+import java.nio.channels.ByteChannel;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -17,16 +17,14 @@ import java.util.concurrent.locks.ReentrantLock;
 
 public class ServerContext implements Closeable{
 	public static int DefaultRefSlotsCap=256;
-	public InputStream in;
-	public OutputStream out;
+	public ByteChannel chan;
 	public boolean running=true;
 	public Ref[] refSlots=new Ref[DefaultRefSlotsCap];
 	public Map<String,Object> funcMap=new HashMap<String,Object>();
 	public Executor executor=Executors.newCachedThreadPool();
 	protected BuiltInFuncList builtIn;
-	public void init(InputStream in,OutputStream out) {
-		this.in=in;
-		this.out=out;
+	public void init(ByteChannel chan) {
+		this.chan=chan;
 		builtIn=new BuiltInFuncList();
 		funcMap.put("builtin", builtIn);
 	}
@@ -38,15 +36,15 @@ public class ServerContext implements Closeable{
 			PxpRequest r=new PxpRequest();
 			r.context=this;
 			byte[] session=new byte[4];
-			Utils.readf(in,session);
+			Utils.readf(chan,ByteBuffer.wrap(session));
 			r.session=session;
 			r.opcode=session[0];
 			switch(r.opcode) {
 			case 1:
 				r.destAddr=readInt32();
 				int len=readInt32();
-				byte[] buf=new byte[len];
-				Utils.readf(in,buf);
+				ByteBuffer buf=ByteBuffer.allocateDirect(len);
+				Utils.readf(chan,buf);
 				r.parameter=buf;
 				push(r);
 				break;
@@ -98,9 +96,8 @@ public class ServerContext implements Closeable{
 	public void push(final PxpRequest r) throws IOException {
 		putRefSlots(r.destAddr,new Ref(r.parameter));
 		writeLock().lock();
-		this.out.write(r.session);
+		Utils.writef(this.chan,ByteBuffer.wrap(r.session));
 		writeLock().unlock();
-		out.flush();
 	}
 	public void pull(final PxpRequest r) throws IOException {
 		Object o=null;
@@ -108,34 +105,34 @@ public class ServerContext implements Closeable{
 			o=refSlots[r.srcAddr].get();
 		}
 		writeLock().lock();
-		this.out.write(r.session);
-		if(o instanceof byte[]) {
+		Utils.writef(this.chan,ByteBuffer.wrap(r.session));
+		if(o instanceof ByteBuffer) {
+			Utils.writeInt32(this.chan, ((Buffer) o).remaining());
+			Utils.writef(this.chan,(ByteBuffer) o);
+		}if(o instanceof byte[]) {
 			byte[] b=(byte[]) o;
 			writeInt32(b.length);
-			out.write(b);
+			Utils.writef(this.chan,ByteBuffer.wrap(b));
 		}else if(o instanceof String){
 			byte[] b=((String)o).getBytes("utf-8");
 			writeInt32(b.length);
-			out.write(b);
+			Utils.writef(this.chan,ByteBuffer.wrap(b));
 		}else {
 			writeInt32(-1);
 		}
 		writeLock().unlock();
-		out.flush();
 	}
 	public void assign(final PxpRequest r) throws IOException {
 		putRefSlots(r.destAddr, this.refSlots[r.srcAddr]);
 		writeLock().lock();
-		this.out.write(r.session);
+		Utils.writef(this.chan,ByteBuffer.wrap(r.session));
 		writeLock().unlock();
-		out.flush();
 	}
 	public void unlink(final PxpRequest r) throws IOException {
 		putRefSlots(r.destAddr, null);
 		writeLock().lock();
-		this.out.write(r.session);
+		Utils.writef(this.chan,ByteBuffer.wrap(r.session));
 		writeLock().unlock();
-		out.flush();
 	}
 	public void call(final PxpRequest r) throws IOException {
 		r.pending=true;
@@ -147,10 +144,9 @@ public class ServerContext implements Closeable{
 					ServerContext.this.putRefSlots(r.destAddr,new Ref(result));
 					r.pending=false;
 					writeLock().lock();
-					ServerContext.this.out.write(r.session);
+					Utils.writef(ServerContext.this.chan,ByteBuffer.wrap(r.session));
 					r.callable.writeResult(r);
 					writeLock().unlock();
-					out.flush();
 				} catch (IOException e) {
 				}
 			}
@@ -168,28 +164,26 @@ public class ServerContext implements Closeable{
 		}
 		writeLock().lock();
 		if(found==null) {
-			this.out.write(r.session);
+			Utils.writef(this.chan,ByteBuffer.wrap(r.session));
 			writeInt32(0);
 		}else {
 			putRefSlots(r.destAddr, new Ref(found));
-			this.out.write(r.session);
+			Utils.writef(this.chan,ByteBuffer.wrap(r.session));
 			writeInt32(r.destAddr);
 		}
 		writeLock().unlock();
-		out.flush();
 	}
 	public void getInfo(final PxpRequest r)throws IOException{
 		writeLock().lock();
-		this.out.write(r.session);
+		Utils.writef(this.chan,ByteBuffer.wrap(r.session));
 		byte[] b=(
 		"server name:pxprpc for java\n"+
 		"version:1.0\n"+
 		"reference slots capacity:"+this.refSlots.length+"\n"
 		).getBytes("utf-8");
 		writeInt32(b.length);
-		out.write(b);
+		Utils.writef(this.chan,ByteBuffer.wrap(b));
 		writeLock().unlock();
-		out.flush();
 	}
 	
 	//TODO: try to implement feature that same session executed in sequence.
@@ -265,20 +259,34 @@ public class ServerContext implements Closeable{
 	
 
 	public int readInt32() throws IOException {
-		return Utils.readInt32(in);
+		return Utils.readInt32(chan);
 	}
 	public long readInt64() throws IOException {
-		return Utils.readInt64(in);
+		return Utils.readInt64(chan);
 	}
 	public float readFloat32() throws IOException {
-		return Utils.readFloat32(in);
+		return Utils.readFloat32(chan);
 	}
 	public double readFloat64() throws IOException {
-		return Utils.readFloat64(in);
+		return Utils.readFloat64(chan);
 	}
-	public byte[] readNextRaw() throws IOException {
+	public byte[] readNextBytes() throws IOException {
 		int addr=readInt32();
-		return (byte[])refSlots[addr].get();
+		return getBytesAt(addr);
+	}
+	public byte[] getBytesAt(int addr) {
+		Object b = refSlots[addr].get();
+		if(b instanceof ByteBuffer) {
+			ByteBuffer b2=(ByteBuffer) b;
+			Buffer b3=b2;
+			b3.mark();
+			byte[] ba=new byte[b2.remaining()];
+			b2.get(ba);
+			b3.reset();
+			return ba;
+		}else {
+			return (byte[])b;
+		}
 	}
 	public static final Charset charset=Charset.forName("utf-8");
 	
@@ -292,24 +300,24 @@ public class ServerContext implements Closeable{
 			return "";
 		}
 		Object o=refSlots[addr].get();
-		if(o instanceof byte[]) {
-			return new String((byte[])o,charset);
+		if(o instanceof ByteBuffer || o instanceof byte[]) {
+			return new String(getBytesAt(addr));
 		}else {
 			return o.toString();
 		}
 	}
 	
 	public void writeInt32(int d) throws IOException {
-		Utils.writeInt32(out, d);
+		Utils.writeInt32(chan, d);
 	}
 	public void writeInt64(long d) throws IOException {
-		Utils.writeInt64(out, d);
+		Utils.writeInt64(chan, d);
 	}
 	public void writeFloat32(float d) throws IOException {
-		Utils.writeFloat32(out, d);
+		Utils.writeFloat32(chan, d);
 	}
 	public void writeFloat64(double d) throws IOException {
-		Utils.writeFloat64(out, d);
+		Utils.writeFloat64(chan, d);
 	}
 	private void closeQuietly(Closeable c) {
 		try {
@@ -319,8 +327,7 @@ public class ServerContext implements Closeable{
 	@Override
 	public void close() throws IOException {
 		running=false;
-		closeQuietly(in);
-		closeQuietly(out);
+		closeQuietly(chan);
 		for(int i1=0;i1<refSlots.length;i1++) {
 			if(refSlots[i1]!=null) {
 				refSlots[i1].release();

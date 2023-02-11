@@ -14,13 +14,14 @@ EnableWebsocketServer=False
 async def amain():
     server1=pxprpc.backend.TcpServer('127.0.0.1',1344)
     client1=pxprpc.backend.TcpClient('127.0.0.1',1344)
+
+    class test1:
+        async def get1234(self)->str:
+            return '1234'
+        async def printString(self,s:str):
+            print(s)
     
-    async def fn()->str:
-        return '1234'
-    server1.funcMap['test1.get1234']=fn
-    async def fn(s:str):
-        print(s)
-    server1.funcMap['test1.printString']=fn
+    server1.funcMap['test1']=test1()
     async def fn():
         await asyncio.sleep(1)
     server1.funcMap['test1.wait1Sec']=fn
@@ -51,7 +52,7 @@ async def amain():
     raiseError1=await client2.getFunc('test1.raiseError1')
     raiseError1.signature('->s')
     try:
-        print('expected dummy io error')
+        print('expect dummy io error')
         t1=await raiseError1()
     except Exception as ex1:
         print('exception catched: '+str(ex1))

@@ -128,15 +128,27 @@ class ServerContext(object):
                 req=PxpRequest()
                 req.session=session
                 req.destAddr,req.srcAddr=struct.unpack('<II',await self.in2.read(8))
-                funcName=self.refSlots.get(req.srcAddr,None)
+                funcName:str=self.refSlots.get(req.srcAddr,None)
                 if type(funcName)==bytes or type(funcName)==bytearray:
-                    funcName=funcName.decode('utf-8')
+                    funcName=funcName.decode('utf-8') # type: ignore
                 t1=self.funcMap.get(funcName,None)
                 if t1==None:
-                    req.result=0
+                    delimIndex=funcName.rfind('.')
+                    if delimIndex>=0:
+                        t2=self.funcMap.get(funcName[0:delimIndex],None)
+                        subfuncName=funcName[delimIndex+1:]
+                        if t2!=None and hasattr(t2,subfuncName):
+                            t1=getattr(t2,subfuncName)
+                            if t1!=None:
+                                req.result=req.destAddr
+                                self.refSlots[req.destAddr]=PyCallableWrap(t1,True)
                 else:
                     req.result=req.destAddr
-                    self.refSlots[req.destAddr]=PyCallableWrap(t1)
+                    self.refSlots[req.destAddr]=PyCallableWrap(t1,False)
+
+                if t1==None:
+                    req.result=0
+                    
                 log1.debug('server get request:%s',req)
                 await self.writeLock.acquire()
                 try:
@@ -184,7 +196,7 @@ import inspect
 
 class PyCallableWrap(PxpCallable):
     
-    def __init__(self,c:typing.Callable):
+    def __init__(self,c:typing.Callable,classMethod:bool):
         self._argsInfo:inspect.FullArgSpec=inspect.getfullargspec(c)
         self.argsType=[]
         self.callable=c
@@ -194,7 +206,7 @@ class PyCallableWrap(PxpCallable):
             self.retType=type(None)
 
         if hasattr(self._argsInfo,'args'):
-            for argName in self._argsInfo.args:
+            for argName in (self._argsInfo.args[1:] if classMethod else self._argsInfo.args):
                 self.argsType.append(self._argsInfo.annotations[argName])
             
         
@@ -222,6 +234,7 @@ class PyCallableWrap(PxpCallable):
             r=await self.callable(*req.parameter)
             return r
         except Exception as ex2:
+            import traceback
             return ex2
     
     async def writeResult(self,req:PxpRequest):
@@ -241,29 +254,32 @@ class PyCallableWrap(PxpCallable):
 
 
 def fillFuncMapBuiltIn(funcMap:typing.Dict):
-    async def fn(obj:object)->str:
-        return str(obj)
-    funcMap['builtin.anyToString']=fn
-
-    async def fn(obj:object)->str:
-        if isinstance(obj,Exception):
+    class builtinFuncs:
+        async def anyToString(self,obj:object):
             return str(obj)
-        else:
-            return ''
-    funcMap['builtin.checkException']=fn
 
-    async def fn(obj:typing)->int:
-        return len(obj)
-    funcMap['builtin.listElemAt']=fn
+        async def checkException(self,obj:object):
+            if isinstance(obj,Exception):
+                return str(obj)
+            else:
+                return ''
 
-    async def fn(obj:typing.List,elem:object)->object:
-        return obj.append(elem)
-    funcMap['builtin.listAdd']=fn
+        async def listLength(self,obj:typing.List):
+            return len(obj)
+        
+        async def listElemAt(self,obj:typing.List,index:int):
+            return obj[index]
+        
+        async def listAdd(self,obj:typing.List,elem:object):
+            return obj.append(elem)
 
-    async def fn(obj:typing.List,index:int)->object:
-        return obj.pop(index)
-    funcMap['builtin.listRemove']=fn
+        async def listRemove(self,obj:typing.List,index:int)->object:
+            return obj.pop(index)
 
-    async def fn(obj:typing.List,sep:str):
-        return sep.join(obj)
-    funcMap['builtin.listStringJoin']=fn
+        async def listStringJoin(self,obj:typing.List,sep:str):
+            return sep.join(obj)
+
+        async def listBytesJoin(self,obj:typing.List,sep:bytes):
+            return sep.join(obj)
+
+    funcMap['builtin']=builtinFuncs()

@@ -2,64 +2,87 @@ package pursuer.pxprpc;
 
 import java.io.EOFException;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
+import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.channels.ByteChannel;
 
 public class Utils {
 	// read enough data or EOFException
-	public static void readf(InputStream in,byte[] b) throws IOException {
-		for(int st=0;st<b.length;) {
-			int r = in.read(b,st,b.length-st);
-			if(r<=0) {
+	public static void readf(ByteChannel in,ByteBuffer b) throws IOException {
+		//java9 method signature change, which may cause error when runing on lower java version(usually happen on android).
+		Buffer b2=b;
+		for(b2.mark();b2.remaining()>0 && in.isOpen();) {
+			if(in.read(b)<0) {
 				throw new EOFException();
 			}
-			st+=r;
 		}
+		b2.reset();
 	}
 
-	public static int readInt32(InputStream in) throws IOException {
-		byte[] b=new byte[4];
+	public static int readInt32(ByteChannel in) throws IOException {
+		ByteBuffer b = ByteBuffer.allocate(4);
 		readf(in,b);
-		return ByteBuffer.wrap(b).order(ByteOrder.LITTLE_ENDIAN).getInt();
+		return b.order(ByteOrder.LITTLE_ENDIAN).getInt();
 	}
-	public static long readInt64(InputStream in) throws IOException {
-		byte[] b=new byte[8];
+	public static long readInt64(ByteChannel in) throws IOException {
+		ByteBuffer b = ByteBuffer.allocate(8);
 		readf(in,b);
-		return ByteBuffer.wrap(b).order(ByteOrder.LITTLE_ENDIAN).getLong();
+		return b.order(ByteOrder.LITTLE_ENDIAN).getLong();
 	}
-	public static float readFloat32(InputStream in) throws IOException {
-		byte[] b=new byte[4];
+	public static float readFloat32(ByteChannel in) throws IOException {
+		ByteBuffer b = ByteBuffer.allocate(4);
 		readf(in,b);
-		return ByteBuffer.wrap(b).order(ByteOrder.LITTLE_ENDIAN).getFloat();
+		return b.order(ByteOrder.LITTLE_ENDIAN).getFloat();
 	}
-	public static double readFloat64(InputStream in) throws IOException {
-		byte[] b=new byte[8];
+	public static double readFloat64(ByteChannel in) throws IOException {
+		ByteBuffer b = ByteBuffer.allocate(8);
 		readf(in,b);
-		return ByteBuffer.wrap(b).order(ByteOrder.LITTLE_ENDIAN).getDouble();
+		return b.order(ByteOrder.LITTLE_ENDIAN).getDouble();
 	}
 
-	
-	public static void writeInt32(OutputStream out,int d) throws IOException {
-		byte[] b=new byte[4];
-		ByteBuffer.wrap(b).order(ByteOrder.LITTLE_ENDIAN).putInt(d);
-		out.write(b);
+	public static void writef(ByteChannel out,ByteBuffer b) throws IOException {
+		Buffer b2=b;
+		for(b2.mark();
+				b2.remaining()>0 && out.isOpen();
+				out.write(b)) {}
+		b2.reset();
 	}
-	public static void writeInt64(OutputStream out,long d) throws IOException {
-		byte[] b=new byte[8];
-		ByteBuffer.wrap(b).order(ByteOrder.LITTLE_ENDIAN).putLong(d);
-		out.write(b);
+	public static void writeInt32(ByteChannel out,int d) throws IOException {
+		ByteBuffer b=ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN).putInt(d);
+		((Buffer)b).flip();
+		writef(out,b);
 	}
-	public static void writeFloat32(OutputStream out,float d) throws IOException {
-		byte[] b=new byte[4];
-		ByteBuffer.wrap(b).order(ByteOrder.LITTLE_ENDIAN).putFloat(d);
-		out.write(b);
+	public static void writeInt64(ByteChannel out,long d) throws IOException {
+		ByteBuffer b=ByteBuffer.allocate(8).order(ByteOrder.LITTLE_ENDIAN).putLong(d);
+		((Buffer)b).flip();
+		writef(out,b);
 	}
-	public static void writeFloat64(OutputStream out,double d) throws IOException {
-		byte[] b=new byte[8];
-		ByteBuffer.wrap(b).order(ByteOrder.LITTLE_ENDIAN).putDouble(d);
-		out.write(b);
+	public static void writeFloat32(ByteChannel out,float d) throws IOException {
+		ByteBuffer b=ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN).putFloat(d);
+		((Buffer)b).flip();
+		writef(out,b);
+	}
+	public static void writeFloat64(ByteChannel out,double d) throws IOException {
+		ByteBuffer b=ByteBuffer.allocate(8).order(ByteOrder.LITTLE_ENDIAN).putDouble(d);
+		((Buffer)b).flip();
+		writef(out,b);
 	}
 
+	public static byte[] bytesGet(ByteBuffer bb,int off,int len) {
+		Buffer bb2=bb;
+		bb2.mark();
+		bb2.position(bb2.position()+off);
+		byte[] b = new byte[len];
+		bb.get(b);
+		bb2.reset();
+		return b;
+	}
+	public static void bytesSet(ByteBuffer bb,int off,int len,byte[] b) {
+		Buffer bb2=bb;
+		bb2.mark();
+		bb2.position(bb2.position()+off);
+		bb.put(b);
+		bb2.reset();
+	}
 }

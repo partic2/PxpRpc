@@ -189,7 +189,25 @@ export class RpcExtendClient1 {
     private __slotEnd: number = 64;
     
     public constructor(public conn: Client) {
-        this.__nextSlots = this.__slotEnd;
+        this.__nextSlots = this.__slotStart;
+    }
+
+    public setAvailableSlotsRange(start:number,end:number){
+        this.__slotStart=start;
+        this.__slotEnd=end;
+        this.__nextSlots = this.__slotStart;
+    }
+
+    public async init():Promise<this>{
+        if(!this.conn.isRunning()){
+            this.conn.run();
+        }
+        let info=await this.conn.getInfo();
+        let refSlotsCap=info.split('\n').find(v=>v.startsWith('reference slots capacity:'))
+        if(refSlotsCap!=undefined){
+            this.setAvailableSlotsRange(1,Number(refSlotsCap.split(':')[1])-1);
+        }
+        return this;
     }
 
     protected builtIn?:{checkException?:RpcExtendClientCallable}

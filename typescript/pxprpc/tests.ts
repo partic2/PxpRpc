@@ -1,13 +1,13 @@
-import { PxprpcWebSocketClient } from "./backend";
+
+import { WebSocketIo } from "./backend";
+import { Client } from "./base";
 import { RpcExtendClient1, RpcExtendClientObject, RpcExtendError } from "./extend";
 
 
 
 export async function test(){
-    let client1=new PxprpcWebSocketClient();
-    await client1.connect('ws://127.0.0.1:1345/pxprpc')
-    client1.run()
-    let client2=new RpcExtendClient1(client1.rpc()!);
+    let client2=await new RpcExtendClient1(new Client(
+        await new WebSocketIo().connect('ws://127.0.0.1:1345'))).init();
     console.log(await client2.conn.getInfo());
     let get1234=(await client2.getFunc('test1.get1234'))!
     get1234.signature('->s');

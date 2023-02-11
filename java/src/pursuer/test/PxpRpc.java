@@ -6,6 +6,11 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.nio.Buffer;
+import java.nio.ByteBuffer;
+import java.nio.channels.ByteChannel;
+import java.nio.channels.SocketChannel;
+import java.util.Arrays;
 import java.util.Timer;
 import java.util.TimerTask;
 
@@ -37,6 +42,10 @@ public class PxpRpc {
 					System.out.println("free by server gc");
 				}
 			};
+		}
+		public void printArg(int a,long b,float c,double d,ByteBuffer e) {
+			System.out.println(a+","+b+","+c+","+d+","+
+					Arrays.toString(Utils.bytesGet(e, 0, 4)));
 		}
 		public TickEvent onTick() {
 			TickEvent te = new TickEvent();
@@ -86,6 +95,7 @@ public class PxpRpc {
 					try {
 						pxptcp.listenAndServe();
 					} catch (IOException e) {
+						e.printStackTrace();
 						if(!e.getMessage().contains("Interrupted function call")) {
 							e.printStackTrace();
 						}
@@ -102,11 +112,12 @@ public class PxpRpc {
 			} catch (InterruptedException e) {
 			}
 			
-			Socket soc=new Socket();
+			SocketChannel soc=SocketChannel.open();
+			soc.configureBlocking(true);
 			soc.connect(new InetSocketAddress("localhost",listenPort));
 			
 			ClientContext client = new ClientContext();
-			client.init(soc.getInputStream(),soc.getOutputStream());
+			client.init(soc);
 			
 			System.out.println("##connected server info:\n"+client.getInfo());
 			// set *11 = getFunc test1.print5678
@@ -130,11 +141,18 @@ public class PxpRpc {
 			System.out.println("expect print pxprpc\\n0");
 			System.out.println(client.callIntFunc(14,13,new Object[] {12}));
 			
+			//set *11 = getFunc test1.get1234
+			client.getFunc(11, "test1.printArg");
+			//set *12=[1,2,3,4]
+			client.push(12, new byte[] {1,2,3,4});
+			//call *11(111,2222222,3.14,3.1415,*12)
+			System.out.println("expect 111,2222222,3.14,3.1415,1,2,3,4");
+			client.callIntFunc(13, 11, new Object[] {111,2222222l,3.14f,3.1415d,12});
+			
 			System.out.println("sleep 1 tick");
 			//set *11=getFunc test1.waitOneTick
 			client.getFunc(11, "test1.waitOneTick");
-			//set *12=call *11
-			client.callIntFunc(12, 11, new Object[0]);
+			client.callIntFunc(12,11,new Object[] {});
 			System.out.println(new String(client.pull(12),"utf-8"));
 			
 			//set *11=getFunc test1.onTick
@@ -192,12 +210,10 @@ public class PxpRpc {
 	}
 	
 	public static class ClientContext {
-		public InputStream in;
-		public OutputStream out;
+		public ByteChannel chan;
 		
-		public void init(InputStream in,OutputStream out) {
-			this.in=in;
-			this.out=out;
+		public void init(ByteChannel chan) {
+			this.chan=chan;
 		}
 		public void assert2(boolean b) {
 			if(!b) {
@@ -208,60 +224,60 @@ public class PxpRpc {
 		
 		public void push(int addr,byte[] data) throws IOException {
 			int op=session|0x1;
-			Utils.writeInt32(out,op);
-			Utils.writeInt32(out,addr);
-			Utils.writeInt32(out, data.length);
-			out.write(data);
-			out.flush();
-			int op2=Utils.readInt32(in);
+			Utils.writeInt32(chan,op);
+			Utils.writeInt32(chan,addr);
+			Utils.writeInt32(chan, data.length);
+			Utils.writef(chan,ByteBuffer.wrap(data));
+			int op2=Utils.readInt32(chan);
 			assert2(op2==op);
 		}
 		public byte[] pull(int addr) throws IOException {
 			int op=session|0x2;
-			Utils.writeInt32(out,op);
-			Utils.writeInt32(out,addr);
-			assert2(Utils.readInt32(in)==op);
-			out.flush();
-			int len=Utils.readInt32(in);
+			Utils.writeInt32(chan,op);
+			Utils.writeInt32(chan,addr);
+			assert2(Utils.readInt32(chan)==op);
+			int len=Utils.readInt32(chan);
 			byte[] r=new byte[len];
-			in.read(r);
+			Utils.readf(chan,ByteBuffer.wrap(r));
 			return r;
 		}
 		public int callIntFunc(int assignAddr,int addr,Object[] params) throws IOException {
 			int op=session|0x5;
-			Utils.writeInt32(out,op);
-			Utils.writeInt32(out,assignAddr);
-			Utils.writeInt32(out,addr);
+			Utils.writeInt32(chan,op);
+			Utils.writeInt32(chan,assignAddr);
+			Utils.writeInt32(chan,addr);
 			for(Object p : params) {
-				//TODO: Other data type.
 				if(p.getClass().equals(Integer.class)) {
-					Utils.writeInt32(out,(Integer) p);
+					Utils.writeInt32(chan,(Integer) p);
+				}else if(p.getClass().equals(Long.class)) {
+					Utils.writeInt64(chan,(Long) p);
+				}else if(p.getClass().equals(Float.class)) {
+					Utils.writeFloat32(chan,(Float) p);
+				}else if(p.getClass().equals(Double.class)) {
+					Utils.writeFloat64(chan,(Double) p);
 				}else {
 					throw new UnsupportedOperationException();
 				}
 			}
-			out.flush();
-			assert2(Utils.readInt32(in)==op);
-			return Utils.readInt32(in);
+			assert2(Utils.readInt32(chan)==op);
+			return Utils.readInt32(chan);
 		}
 		public int getFunc(int assignAddr,String name) throws IOException {
 			int op=session|0x6;
 			push(1, name.getBytes());
-			Utils.writeInt32(out,op);
-			Utils.writeInt32(out,assignAddr);
-			Utils.writeInt32(out, 1);
-			out.flush();
-			assert2(Utils.readInt32(in)==op);
-			return Utils.readInt32(in);
+			Utils.writeInt32(chan,op);
+			Utils.writeInt32(chan,assignAddr);
+			Utils.writeInt32(chan, 1);
+			assert2(Utils.readInt32(chan)==op);
+			return Utils.readInt32(chan);
 		}
 		public String getInfo()throws IOException{
 			int op=session|0x8;
-			Utils.writeInt32(out,op);
-			assert2(Utils.readInt32(in)==op);
-			out.flush();
-			int len=Utils.readInt32(in);
+			Utils.writeInt32(chan,op);
+			assert2(Utils.readInt32(chan)==op);
+			int len=Utils.readInt32(chan);
 			byte[] r=new byte[len];
-			in.read(r);
+			Utils.readf(chan,ByteBuffer.wrap(r));
 			return new String(r,"utf-8");
 		}
 	}

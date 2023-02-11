@@ -20,59 +20,49 @@ public abstract class AbstractCallable implements PxpCallable{
 			String name = jtype.getName();
 			if(name.equals("boolean")) {
 				return 1;
-			}else if(name.equals("byte")) {
-				return 2;
-			}else if(name.equals("short")) {
-				return 3;
 			}else if(name.equals("int")) {
-				return 4;
+				return 2;
 			}else if(name.equals("long")) {
-				return 5;
+				return 3;
 			}else if(name.equals("float")) {
-				return 6;
+				return 4;
 			}else if(name.equals("double")) {
-				return 7;
+				return 5;
 			}else{
-				return 8;
+				return 6;
 			}
 		}else{
-			if(jtype.equals(String.class)) {
-				return 9;
+			if(jtype.equals(byte[].class)) {
+				return 7;
+			}else if(jtype.equals(String.class)) {
+				return 8;
 			}
-			return 8;		
+			return 6;		
 		}
 	}
 	
 	public Object readNext(ServerContext ctx,int switchId) throws IOException {
 		switch(switchId) {
 		//primitive type 
-			//boolean
-		case 1:
+		case 1: //boolean
 			return ctx.readInt32()!=0;
-			//byte
-		case 2:
-			return (byte)ctx.readInt32();
-			//short
-		case 3:
-			return (short)ctx.readInt32();
-			//int
-		case 4:
+		case 2: //int
 			return ctx.readInt32();
-			//long
-		case 5:
+		case 3: //long
 			return ctx.readInt64();
-			//float
-		case 6:
+		case 4: //float
 			return ctx.readFloat32();
-			//double
-		case 7:
+		case 5: //double
 			return ctx.readFloat64();
 		//reference type
-		case 8:
+		case 6:
 			int addr=ctx.readInt32();
 			return ctx.refSlots[addr].get();
-		case 9:
-		//string type
+		case 7:
+			//byte[]
+			return ctx.readNextBytes();
+		case 8:
+			//String
 			return ctx.readNextString();
 		default :
 			throw new UnsupportedOperationException();
@@ -86,33 +76,26 @@ public abstract class AbstractCallable implements PxpCallable{
 		case 1:
 			ctx.writeInt32((Boolean)obj?1:0);
 			break;
-			//byte
-		case 2:
-			ctx.writeInt32((Byte)obj);
-			break;
-			//short
-		case 3:
-			ctx.writeInt32((Short)obj);
-			break;
 			//int
-		case 4:
+		case 2:
 			ctx.writeInt32((Integer)obj);
 			break;
 			//long
-		case 5:
+		case 3:
 			ctx.writeInt64((Long)obj);
 			break;
 			//float
-		case 6:
+		case 4:
 			ctx.writeFloat32((Float)obj);
 			break;
 			//double
-		case 7:
+		case 5:
 			ctx.writeFloat64((Double)obj);
 			break;
 		//reference type
+		case 6:
+		case 7:
 		case 8:
-		case 9:
 			//processed by callable
 		default :
 			throw new UnsupportedOperationException();
