@@ -161,9 +161,7 @@ s  string(bytes will be decode to string)
                     }
                 }else{
                     if(status==1){
-                        let err1=new RpcExtendError('remote exception');
-                        err1.remoteException=result;
-                        throw err1;
+                        await this.client.checkException(result);
                     }else{
                         return result
                     }
