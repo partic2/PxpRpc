@@ -16,3 +16,6 @@ def encodeToBytes(obj,addr32:int):
     else:
         return addr32.to_bytes(4,'little')
     
+T=typing.TypeVar('T')
+def NotNone(t:typing.Optional[T])->T:
+    return t; #type:ignore

@@ -4,35 +4,26 @@
 import traceback
 import pxprpc.backend
 import pxprpc.client
+import pxprpc.server
 
 import asyncio
 
 import struct
 
+import logging
+
+logging.basicConfig(level=logging.INFO)
+
+
 EnableWebsocketServer=False
 
-async def amain():
-    server1=pxprpc.backend.TcpServer('127.0.0.1',1344)
-    client1=pxprpc.backend.TcpClient('127.0.0.1',1344)
+funcMap=dict()
 
-    class test1:
-        async def get1234(self)->str:
-            return '1234'
-        async def printString(self,s:str):
-            print(s)
+async def testClient(rpcconn:pxprpc.client.RpcConnection,name:str='default'):
     
-    server1.funcMap['test1']=test1()
-    async def fn():
-        await asyncio.sleep(1)
-    server1.funcMap['test1.wait1Sec']=fn
-    async def fn():
-        raise IOError('dummy io error')
-    server1.funcMap['test1.raiseError1']=fn
-    await server1.start()
-    await client1.start()
-
-    client2=pxprpc.client.RpcExtendClient1(client1.rpcconn)
-    print(await client1.rpcconn.getInfo())
+    
+    client2=pxprpc.client.RpcExtendClient1(rpcconn)
+    print(await rpcconn.getInfo())
     get1234=await client2.getFunc('test1.get1234')
     get1234.signature('->o')
     printString=await client2.getFunc('test1.printString')
@@ -56,7 +47,34 @@ async def amain():
         t1=await raiseError1()
     except Exception as ex1:
         print('exception catched: '+str(ex1))
-    print('done')
+    print(name+' test done')
+
+async def amain():
+    class test1:
+        async def get1234(self)->str:
+            return '1234'
+        async def printString(self,s:str):
+            print(s)
+    
+    funcMap['test1']=test1()
+    
+    async def fn():
+        await asyncio.sleep(1)
+    funcMap['test1.wait1Sec']=fn
+    async def fn():
+        raise IOError('dummy io error')
+    funcMap['test1.raiseError1']=fn
+    
+    server1=pxprpc.backend.TcpServer('127.0.0.1',1344)
+    server1.funcMap=funcMap
+    await server1.start()
+
+    client1=pxprpc.backend.TcpClient('127.0.0.1',1344)
+    await client1.start()
+
+    await testClient(client1.rpcconn,'python local pxprpc')
+
+    
     if EnableWebsocketServer:
         await wstunnel4test()
     else:
@@ -70,33 +88,27 @@ async def wstunnel4test():
     from aiohttp import web_ws
     from aiohttp import http_websocket
     from aiohttp import web_runner
+    from pxprpc.backend import ServerWebsocketTransport,StreamsFromTransport
+
     async def wshandler(req:web_request.Request):
-        ws1=web_ws.WebSocketResponse()
-        await ws1.prepare(req)
-        r,w=await asyncio.open_connection('127.0.0.1',1344)
-        async def receiver():
-            while True:
-                data1=await ws1.receive()
-                if data1.type==http_websocket.WSMsgType.BINARY:
-                    w.write(data1.data)
-                elif data1.type==http_websocket.WSMsgType.CLOSE:
-                    break
-                
-        async def sender():
-            while not r.at_eof():
-                data1=await r.read(0x400)
-                if len(data1)==0:
-                    break
-                await ws1.send_bytes(data1)
-        try:
-            done,pending=await asyncio.wait([receiver(),sender()],return_when=asyncio.FIRST_COMPLETED)
-            for t1 in pending:
-                t1.cancel()
-        except Exception as ex:
-            import traceback
-            traceback.print_exc()
+        r,w=StreamsFromTransport(ServerWebsocketTransport(req))
+        srv=pxprpc.server.ServerContext()
+        srv.funcMap.update(funcMap)
+        srv.backend1(r,w)
+        await srv.serve()
+        return web.Response()
+
+    async def wshandlerClient(req:web_request.Request):
+        r,w=StreamsFromTransport(ServerWebsocketTransport(req))
+        client1=pxprpc.client.RpcConnection()
+        client1.backend1(r,w)
+        asyncio.create_task(client1.run())
+        await testClient(client1,'websocketClient')
+        return web.Response()
+    
     app1=web_app.Application()
     app1.router.add_route('*','/pxprpc',wshandler)
+    app1.router.add_route('*','/pxprpcClient',wshandlerClient)
     await web._run_app(app1,host='127.0.0.1',port=1345)
 
 async def ctestmain():

@@ -6,7 +6,7 @@ import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.Queue;
 
-public class EventDispatcher extends AbstractCallable {
+public class EventDispatcher implements PxpCallable {
 
 	public EventDispatcher() {
 	}
@@ -25,12 +25,19 @@ public class EventDispatcher extends AbstractCallable {
 	}
 
 
-	@Override
 	public void readParameter(PxpRequest req) throws IOException {
 	}
 
-	@Override
 	public void call(PxpRequest req, AsyncReturn<Object> asyncRet) throws IOException {
 		receivers.offer(asyncRet);
+	}
+
+	@Override
+	public void writeResult(PxpRequest req) throws IOException {
+		if(Exception.class.isInstance(req.result)) {
+			req.context.writeInt32(1);
+		}else {
+			req.context.writeInt32(0);
+		}
 	}
 }

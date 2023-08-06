@@ -26,6 +26,9 @@ public class PxpRpc {
 
 	//Rpc server handler demo.
 	public static class Handler1 {
+		public int getInt2345() {
+			return 2345;
+		}
 		public String get1234() {
 			return "1234";
 		}
@@ -119,7 +122,15 @@ public class PxpRpc {
 			ClientContext client = new ClientContext();
 			client.init(soc);
 			
+			
 			System.out.println("##connected server info:\n"+client.getInfo());
+			
+			
+			// set *12 = getFunc test1.getInt2345
+			client.getFunc(12, "test1.getInt2345");
+			System.out.println("expect print 2345");
+			// set *11 = call *12
+			System.out.println(client.callIntFunc(11, 12, new Object[0]));
 			// set *11 = getFunc test1.print5678
 			client.getFunc(11,"test1.print5678");
 			System.out.println("expect print 5678");

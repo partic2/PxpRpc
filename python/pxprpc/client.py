@@ -6,13 +6,15 @@ import struct
 import typing
 import traceback
 
+from pxprpc.common import NotNone
+
 log1=logging.getLogger(__name__)
 
 class RpcConnection(object):
     
     def __init__(self):
-        self.in2:asyncio.StreamReader=None
-        self.out2:asyncio.StreamWriter=None
+        self.in2:asyncio.StreamReader=None #type:ignore
+        self.out2:asyncio.StreamWriter=None #type:ignore
         self.__waitingSession:typing.Dict[int,asyncio.Future]=dict()
         self.__nextSid=0
         self.__readingResp=None
@@ -56,7 +58,7 @@ class RpcConnection(object):
         finally:
             self.__writeLock.release()
         await respFut
-        self.__readingResp.set_result(None)
+        NotNone(self.__readingResp).set_result(None)
     
     async def pull(self,srcAddr:int)->bytes:
         sid=await self.__newSession(2)
@@ -70,9 +72,9 @@ class RpcConnection(object):
         await respFut
         size=struct.unpack('<i',await self.in2.readexactly(4))[0]
         data=None
-        if size!=-1:
-            data=await self.in2.readexactly(size)
-        self.__readingResp.set_result(None)
+        assert size!=-1,'data do NOT support pull'
+        data=await self.in2.readexactly(size)
+        NotNone(self.__readingResp).set_result(None)
         return data
 
     async def assign(self,destAddr:int,srcAddr:int):
@@ -85,7 +87,7 @@ class RpcConnection(object):
         finally:
             self.__writeLock.release()
         await respFut
-        self.__readingResp.set_result(None)
+        NotNone(self.__readingResp).set_result(None)
 
     async def unlink(self,destAddr:int):
         sid=await self.__newSession(4)
@@ -97,7 +99,7 @@ class RpcConnection(object):
         finally:
             self.__writeLock.release()
         await respFut
-        self.__readingResp.set_result(None)
+        NotNone(self.__readingResp).set_result(None)
 
     async def call(self,destAddr:int,fnAddr:int,argsData:bytes,returnLength:int=4):
         sid=await self.__newSession(5)
@@ -111,7 +113,7 @@ class RpcConnection(object):
             self.__writeLock.release()
         await respFut
         data=await self.in2.readexactly(returnLength)
-        self.__readingResp.set_result(None)
+        NotNone(self.__readingResp).set_result(None)
         return data
 
     async def getFunc(self,destAddr:int,fnName:int):
@@ -125,7 +127,7 @@ class RpcConnection(object):
             self.__writeLock.release()
         await respFut
         t1=struct.unpack('<I',await self.in2.readexactly(4))[0]
-        self.__readingResp.set_result(None)
+        NotNone(self.__readingResp).set_result(None)
         return t1
 
     async def getInfo(self):
@@ -140,9 +142,9 @@ class RpcConnection(object):
         await respFut
         size=struct.unpack('<i',await self.in2.readexactly(4))[0]
         data=None
-        if size!=-1:
-            data=await self.in2.readexactly(size)
-        self.__readingResp.set_result(None)
+        assert size!=-1,'get info return nothing'
+        data=await self.in2.readexactly(size)
+        NotNone(self.__readingResp).set_result(None)
         return data.decode('utf-8')
 
     async def close(self):
@@ -157,15 +159,16 @@ class RpcConnection(object):
 
 
 class RpcExtendClientObject():
-    def __init__(self,client:'RpcExtendClient1',value=None):
+    def __init__(self,client:'RpcExtendClient1',value:typing.Optional[int]=None):
         self.value=value
         self.client=client
 
     async def tryPull(self)->bytes:
+        assert self.value is not None
         return await self.client.conn.pull(self.value)
 
     async def free(self):
-        if self.value!=None:
+        if self.value is not None:
             val=self.value
             self.value=None
             await self.client.freeSlot(val)
@@ -178,10 +181,13 @@ class RpcExtendClientObject():
         return c1
             
     def __del__(self):
-        if self.value!=None:
+        if self.value is not None:
             val=self.value
             self.value=None
-            create_task(self.client.freeSlot(val))
+            try:
+                create_task(self.client.freeSlot(val))
+            except Exception:
+                pass
             
 
 class RpcExtendClientCallable(RpcExtendClientObject):
@@ -206,21 +212,22 @@ available type signature characters:
   d  double(64bit float)
   o  object(32bit reference address)
   b  bytes(32bit address refer to a bytes buffer)
-  v  void(32bit 0)
 
   z  boolean(pxprpc use 32bit to store boolean value)
   s  string(bytes will be decode to string)
         '''
         self.sign=sign
+        return self;
 
 
     async def __call__(self,*args)->typing.Any:
+        assert self.value is not None
         sign=self.sign
         freeBeforeReturn=[]
         t1=0
         fmtstr=''
         args2=[]
-        retType='v'
+        retType=''
         try:
             for t1 in range(0,len(sign)):
                 if sign[t1]=='l':
@@ -246,22 +253,18 @@ available type signature characters:
                         if len(sign)>t1+2:
                             retType=sign[t1+2]
                         break
-                elif sign[t1] == 'v':
-                    raise RpcExtendError('Unsupport input argument')
                 else:
                     fmtstr+=sign[t1]
                     args2.append(args[t1])
             
             packed=struct.pack('<'+fmtstr,*args2) if len(fmtstr)>0 else bytes()
 
-            if retType in 'ilfdvz':
+            if retType!='' and retType in 'ilfdz':
                 result=await self.client.conn.call(0,self.value,packed,4 if retType in 'ifvz' else 6)
                 if retType=='l':
                     return struct.unpack('<q',result)[0]
                 elif retType=='z':
                     return result!=bytes((0,0,0,0))
-                elif retType in 'v':
-                    return None
                 else:
                     return struct.unpack('<'+retType,result)[0]
             else:
@@ -335,7 +338,7 @@ class RpcExtendClient1:
             await self.conn.unlink(index)
         self.__usedSlots.remove(index)
 
-    async def getFunc(self,name:str)->RpcExtendClientCallable:
+    async def getFunc(self,name:str)->typing.Optional[RpcExtendClientCallable]:
         t1=await self.allocSlot()
         await self.conn.push(t1,name.encode('utf8'))
         t2=await self.allocSlot()
@@ -359,8 +362,8 @@ class RpcExtendClient1:
     
     async def checkException(self,obj:RpcExtendClientObject):
         await self.ensureBuiltIn()
-        if 'checkException' in self.builtIn:
-            err=await self.builtIn['checkException'](obj)
+        if 'checkException' in NotNone(self.builtIn):
+            err=await NotNone(self.builtIn)['checkException'](obj)
             if(err!=''):
                 raise RpcExtendError(err)
             

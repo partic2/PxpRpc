@@ -4,8 +4,9 @@ import asyncio.locks
 import traceback
 import typing
 import struct
-from .common import encodeToBytes,zero32
+from .common import NotNone, encodeToBytes,zero32
 
+import typing 
 from dataclasses import dataclass
 
 @dataclass
@@ -49,7 +50,10 @@ class ServerContext(object):
         self.in2=r
         self.out2=w
         
-    async def handle(self):
+    async def serve(self):
+        t1:typing.Any
+        t2:typing.Any
+        t3:typing.Any
         self.running=True
         while(self.running):
             session=await self.in2.readexactly(4)
@@ -115,7 +119,7 @@ class ServerContext(object):
                     req.context=self
                     req.session=session
                     req.destAddr,req.funcAddr=struct.unpack('<II',await self.in2.read(8))
-                    t1:PxpCallable=self.refSlots.get(req.funcAddr,None)
+                    t1=self.refSlots.get(req.funcAddr,None)
                     req.callable=t1
                     await t1.readParameter(req)
                     log1.debug('server get request:%s',req)
@@ -157,8 +161,8 @@ class ServerContext(object):
                 finally:
                     self.writeLock.release()
             elif session[0]==7:
-                for t1,t2 in self.refSlots:
-                    del self.refSlots[t1]
+                for t2 in self.refSlots:
+                    del self.refSlots[t2]
                 self.out2.close()
             elif session[0]==8:
                 #getInfo
@@ -168,25 +172,26 @@ class ServerContext(object):
                     self.out2.write(session)
                     info1=('server name:pxprpc for python3\n'+
                                           'version:1.0\n'+
-                                          'reference slots size:256\n').encode('utf-8')+bytes([0])
+                                          'reference slots size:256\n').encode('utf-8')
                     self.out2.write(struct.pack('<i',len(info1)))
                     self.out2.write(info1)
                 finally:
                     self.writeLock.release()
             else :
                 # unknown, closed
-                for t1,t2 in self.refSlots:
-                    del self.refSlots[t1]
+                for t2 in self.refSlots:
+                    del self.refSlots[t2]
                 self.out2.close()
             
         
     async def __callRoutine(self,req:PxpRequest):
+        req.callable=NotNone(req.callable)
         result=await req.callable.call(req)
         req.result=result
         self.refSlots[req.destAddr]=result
         await self.writeLock.acquire()
         try:
-            self.out2.write(req.session)
+            self.out2.write(NotNone(req.session))
             await req.callable.writeResult(req)
         finally:
             self.writeLock.release()
@@ -211,6 +216,7 @@ class PyCallableWrap(PxpCallable):
             
         
     async def readParameter(self,req:PxpRequest):
+        req.context=NotNone(req.context)
         req.parameter=[]
         for t1 in self.argsType:
             if t1==int:
@@ -238,6 +244,7 @@ class PyCallableWrap(PxpCallable):
             return ex2
     
     async def writeResult(self,req:PxpRequest):
+        req.context=NotNone(req.context)
         t1=type(req.result)
         if t1==int:
             req.context.out2.write(struct.pack('<q',req.result))

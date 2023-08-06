@@ -17,7 +17,7 @@ public class BuiltInFuncList {
 	public String anyToString(Object obj){
 		return obj.toString();
 	}
-	public AbstractCallable getMethod(Object obj,String methodName){
+	public PxpCallable getMethod(Object obj,String methodName){
 		Method found=null;
 		for(Method method:obj.getClass().getMethods()) {
 			if(method.getName().equals(methodName)) {
@@ -27,7 +27,7 @@ public class BuiltInFuncList {
 		}
 		return new MethodCallable(found);
 	}
-	public AbstractCallable getBoundMethod(Object obj,String methodName){
+	public PxpCallable getBoundMethod(Object obj,String methodName){
 		Method found=null;
 		for(Method method:obj.getClass().getMethods()) {
 			if(method.getName().equals(methodName)) {

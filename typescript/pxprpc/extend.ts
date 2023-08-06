@@ -1,4 +1,4 @@
-import { Client } from './base'
+import { Client, PxpCallable, PxpObject, PxpRequest, Server } from './base'
 
 export class RpcExtendError extends Error {
     public remoteException?:RpcExtendClientObject
@@ -44,20 +44,20 @@ f  float(32bit float)
 d  double(64bit float)
 o  object(32bit reference address)
 b  bytes(32bit address refer to a bytes buffer)
-v  void(32bit 0)
+'' return void(32bit 0)
 
 z  boolean(pxprpc use 32bit to store boolean value)
 s  string(bytes will be decode to string)
 */
     public signature(sign: string) {
         this.sign = sign;
+        return this;
     }
 
     public async call(...args:any[]) {
         let sign2 = this.sign
         let argSign = sign2.substring(0, sign2.lastIndexOf('->'))
         let retType = sign2.substring(argSign.length + 2)
-        retType = retType == '' ? 'v' : retType;
 
         let freeBeforeReturn: number[] = []
         //TODO: fix slightly memory waste.
@@ -87,8 +87,6 @@ s  string(bytes will be decode to string)
                         args2.setInt32(writeAt, args[i1].value, true);
                         writeAt += 4;
                         break;
-                    case 'v':
-                        throw new RpcExtendError('Unsupport input argument')
                     case 's':
                     case 'b':
                         let t2 = await this.client.allocSlot()
@@ -110,10 +108,10 @@ s  string(bytes will be decode to string)
                     break;
                 }
             }
-            if ('ilfdvz'.indexOf(retType) >= 0) {
+            if (retType!=='' && 'ilfdz'.indexOf(retType) >= 0) {
                 let result = new DataView(await this.client.conn.call(
                     0, this.value!, args2.buffer.slice(0, writeAt),
-                    'ld'.indexOf(retType) >= 0 ? 6 : 4));
+                    'ld'.indexOf(retType) >= 0 ? 8 : 4));
                 let result2 = null;
                 switch (retType) {
                     case 'i':
@@ -279,5 +277,129 @@ export class RpcExtendClient1 {
 }
 
 
+export class RpcExtendServerCallable implements PxpCallable{
+    protected tParam:string = '';
+    protected tResult:string='';
+    protected paramBufLen=0;
+    public constructor(public wrapped:(...args:any)=>Promise<any>){
+    }
+    //See RpcExtendClientCallable.signature
+    public signature(sign: string) {
+        let [tParam,tResult]=sign.split('->');
+        this.tParam=tParam;
+        this.tResult=tResult;
+        this.paramBufLen=0;
+        for(let i1=0;i1<tParam.length;i1++){
+            if('ifobzs'.indexOf(tParam.charAt(i1))>=0){
+                this.paramBufLen+=4;
+            }else if('ld'.indexOf(tParam.charAt(i1))>=0){
+                this.paramBufLen+=8;
+            }
+        }
+        return this;
+    }
+    public async readParameter (req: PxpRequest){
+        let buf=new DataView(await req.context.io1.read(this.paramBufLen));
+        let tParam=this.tParam;
+        let param=[];
+        let offset=0;
+        let obj:any=null;
+        for(let i1=0;i1<tParam.length;i1++){
+            switch(tParam[i1]){
+                case 'i':
+                    param.push(buf.getInt32(offset,true));
+                    offset+=4;
+                    break;
+                case 'f':
+                    param.push(buf.getFloat32(offset,true));
+                    offset+=4;
+                    break;
+                case 'o':
+                case 'b':
+                    obj=req.context.refSlots[buf.getInt32(offset,true)]!.get();
+                    param.push(obj);
+                    offset+=4;
+                    break;
+                case 's':
+                    obj=req.context.refSlots[buf.getInt32(offset,true)]!.get();
+                    if(obj instanceof ArrayBuffer){
+                        param.push(new TextDecoder().decode(obj));
+                    }else{
+                        param.push(obj);
+                    }
+                    offset+=4;
+                    break;
+                case 'l':
+                    param.push(buf.getBigInt64(offset,true));
+                    offset+=8;
+                    break;
+                case 'd':
+                    param.push(buf.getFloat64(offset,true));
+                    offset+=8;
+                    break;
+                default:
+                    throw new Error('Unsupported value type.');
+            }
+        }
+        req.parameter=param;
+    }
+    public async call(req: PxpRequest) : Promise<any>{
+        try{
+            return await this.wrapped.apply(this,req.parameter);
+        }catch(e){
+            return e;
+        }
+    }
+    public async writeResult(req: PxpRequest){
+        let buf=new DataView(new ArrayBuffer(8));
+        let len=0;
+        switch(this.tResult){
+            case 'i':
+                buf.setInt32(0,req.result,true);len=4;
+                break;
+            case 'f':
+                buf.setFloat32(0,req.result,true);len=4;
+                break;
+            case 'o':
+            case 'b':
+            case 's':
+            case '':
+                if(req.result instanceof Error){
+                    buf.setInt32(0,1,true);
+                }else{
+                    buf.setInt32(0,0,true);
+                }
+                len=4;
+                break;
+            case 'l':
+                buf.setBigInt64(0,req.result,true);len=8;
+                break;
+            case 'd':
+                buf.setFloat64(0,req.result,true);len=8;
+                break;
+            default:
+                throw new Error('Unsupported value type.');
+        }
+        await req.context.io1.write(buf.buffer.slice(0,len));
+    }
+}
+var builtinServerFuncMap:{[k:string]:RpcExtendServerCallable}={
+    'builtin.checkException':new RpcExtendServerCallable(async(e:any)=>(e instanceof Error)?e.message:'').signature('o->s')
+}
+export class RpcExtendServer1{
+    public constructor(public serv:Server){
+        serv.funcMap=(name)=>this.findFunc(name)
+    }
+    public async serve(){
+        await this.serv.serve()
+    }
+    public extFuncMap={} as {[k:string]:RpcExtendServerCallable};
+    public findFunc(name:string){
+        return this.extFuncMap[name]??(builtinServerFuncMap[name]);
+    }
+    public addFunc(name:string,fn:RpcExtendServerCallable){
+        this.extFuncMap[name]=fn;
+        return this;
+    }
 
-
+}

@@ -19,7 +19,7 @@ public class ServerContext implements Closeable{
 	public static int DefaultRefSlotsCap=256;
 	public ByteChannel chan;
 	public boolean running=true;
-	public Ref[] refSlots=new Ref[DefaultRefSlotsCap];
+	public PxpObject[] refSlots=new PxpObject[DefaultRefSlotsCap];
 	public Map<String,Object> funcMap=new HashMap<String,Object>();
 	public Executor executor=Executors.newCachedThreadPool();
 	protected BuiltInFuncList builtIn;
@@ -85,7 +85,7 @@ public class ServerContext implements Closeable{
 		running=false;
 	}
 	
-	protected void putRefSlots(int addr,Ref r) {
+	protected void putRefSlots(int addr,PxpObject r) {
 		if(refSlots[addr]!=null) 
 			refSlots[addr].release();
 		if(r!=null)
@@ -94,7 +94,7 @@ public class ServerContext implements Closeable{
 	}
 	
 	public void push(final PxpRequest r) throws IOException {
-		putRefSlots(r.destAddr,new Ref(r.parameter));
+		putRefSlots(r.destAddr,new PxpObject(r.parameter));
 		writeLock().lock();
 		Utils.writef(this.chan,ByteBuffer.wrap(r.session));
 		writeLock().unlock();
@@ -107,7 +107,7 @@ public class ServerContext implements Closeable{
 		writeLock().lock();
 		Utils.writef(this.chan,ByteBuffer.wrap(r.session));
 		if(o instanceof ByteBuffer) {
-			Utils.writeInt32(this.chan, ((Buffer) o).remaining());
+			writeInt32(((Buffer) o).remaining());
 			Utils.writef(this.chan,(ByteBuffer) o);
 		}if(o instanceof byte[]) {
 			byte[] b=(byte[]) o;
@@ -141,7 +141,7 @@ public class ServerContext implements Closeable{
 			public void result(Object result) {
 				try {
 					r.result=result;
-					ServerContext.this.putRefSlots(r.destAddr,new Ref(result));
+					ServerContext.this.putRefSlots(r.destAddr,new PxpObject(result));
 					r.pending=false;
 					writeLock().lock();
 					Utils.writef(ServerContext.this.chan,ByteBuffer.wrap(r.session));
@@ -158,7 +158,7 @@ public class ServerContext implements Closeable{
 		String namespace=name.substring(0,namespaceDelim);
 		String func=name.substring(namespaceDelim+1);
 		Object obj=funcMap.get(namespace);
-		AbstractCallable found=null;
+		PxpCallable found=null;
 		if(obj!=null){
 			found=builtIn.getBoundMethod(obj, func);
 		}
@@ -167,7 +167,7 @@ public class ServerContext implements Closeable{
 			Utils.writef(this.chan,ByteBuffer.wrap(r.session));
 			writeInt32(0);
 		}else {
-			putRefSlots(r.destAddr, new Ref(found));
+			putRefSlots(r.destAddr, new PxpObject(found));
 			Utils.writef(this.chan,ByteBuffer.wrap(r.session));
 			writeInt32(r.destAddr);
 		}
