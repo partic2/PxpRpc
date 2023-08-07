@@ -10,7 +10,7 @@ namespace pxprpc
     {
         public Stream stream;
         public static int DefaultRefSlotsCap = 256;
-        public Ref[] refSlots = new Ref[256];
+        public PxpObject[] refSlots = new PxpObject[256];
         public Dictionary<String, Object> funcMap = new Dictionary<String, Object>();
         protected BuiltInFuncList builtIn;
         public void init(Stream stream)
@@ -21,7 +21,7 @@ namespace pxprpc
         }
         public bool running = true;
 
-        protected void putRefSlots(int addr, Ref r)
+        protected void putRefSlots(int addr, PxpObject r)
         {
             if (refSlots[addr] != null)
                 refSlots[addr].release();
@@ -36,7 +36,7 @@ namespace pxprpc
         }
         public void push(PxpRequest r)
         {
-            putRefSlots(r.destAddr, new Ref(r.parameter));
+            putRefSlots(r.destAddr, new PxpObject(r.parameter));
             writeLock().WaitOne();
             this.stream.Write(r.session);
             writeLock().ReleaseMutex();
@@ -93,7 +93,7 @@ namespace pxprpc
          {
 
              r.result = result;
-             putRefSlots(r.destAddr, new Ref(result));
+             putRefSlots(r.destAddr, new PxpObject(result));
              r.pending = false;
              writeLock().WaitOne();
              stream.Write(r.session);
@@ -207,7 +207,7 @@ namespace pxprpc
             String ns = name.Substring(0, namespaceDelim);
             String func = name.Substring(namespaceDelim + 1);
             Object obj = funcMap[ns];
-            AbstractCallable found = null;
+            PxpCallable found = null;
             if (obj != null)
             {
                 found = builtIn.getBoundMethod(obj, func);
@@ -222,7 +222,7 @@ namespace pxprpc
             }
             else
             {
-                putRefSlots(r.destAddr, new Ref(found));
+                putRefSlots(r.destAddr, new PxpObject(found));
 
                 this.stream.Write(r.session);
 

@@ -5,14 +5,14 @@ using System.Text;
 
 namespace pxprpc
 {
-	public class Ref : IDisposable
+	public class PxpObject : IDisposable
 	{
 	protected int count;
 	protected Object content;
-	public Ref()
+	public PxpObject()
 	{
 	}
-	public Ref(Object c)
+	public PxpObject(Object c)
 	{
 		this.count = 0;
 		this.content = c;

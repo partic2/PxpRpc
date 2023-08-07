@@ -16,6 +16,7 @@ logging.basicConfig(level=logging.INFO)
 
 
 EnableWebsocketServer=False
+EnableCSharpClient=False
 
 funcMap=dict()
 
@@ -74,6 +75,8 @@ async def amain():
 
     await testClient(client1.rpcconn,'python local pxprpc')
 
+    if EnableCSharpClient:
+        await cstestmain()
     
     if EnableWebsocketServer:
         await wstunnel4test()
@@ -129,19 +132,13 @@ async def cstestmain():
     client1=pxprpc.backend.TcpClient('127.0.0.1',2050)
     await client1.start()
     print('start client')
-    client2=pxprpc.client.RpcExtendClient1(client1.rpcconn)
-    t1=await client2.getFunc('test.printString')
-    print('printString:',t1.value)
-    t1.signature('b->b')
-    print(await t1(b'12345')) 
-    t1=await client2.getFunc('test.printStringUnderline')
-    print('printStringUnderline:',t1.value)
-    t1.signature('b->b')
-    print(await t1(b'45678'))
+    await testClient(client1.rpcconn,'c# test')
 
 
 import sys
 if __name__=='__main__':
     if 'enable-websocket-server' in sys.argv:
         EnableWebsocketServer=True
+    if 'enable-csharp-client' in sys.argv:
+        EnableCSharpClient=True
     asyncio.run(amain())

@@ -36,12 +36,20 @@ namespace pxprpc
             {
                 args[0] = asyncRet;
             }
-            result = method.Invoke(this.boundObj, args);
-            if (firstInputParamIndex == 0)
+            try
             {
-                asyncRet(result);
+                result = method.Invoke(this.boundObj, args);
+                if (firstInputParamIndex == 0)
+                {
+                    asyncRet(result);
+                }
+            }
+            catch (Exception ex)
+            {
+                asyncRet(ex.InnerException);
             }
 
+            
         }
     }
 }

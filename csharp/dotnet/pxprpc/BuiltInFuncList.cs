@@ -16,7 +16,7 @@ namespace pxprpc
         {
             return obj.ToString();
         }
-        public AbstractCallable getMethod(Object obj, String methodName)
+        public PxpCallable getMethod(Object obj, String methodName)
         {
             try
             {
@@ -37,7 +37,7 @@ namespace pxprpc
             }
 
         }
-        public AbstractCallable getBoundMethod(Object obj, String methodName)
+        public PxpCallable getBoundMethod(Object obj, String methodName)
         {
             try
             {
