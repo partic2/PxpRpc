@@ -2,19 +2,19 @@
 
 ## Use pxprpc with Makefile
 
-Set environment variable "PXPRPC_SOURCE_ROOT" to the path of this project.
+Set environment variable "PXPRPC_SOURCE_DIR" to the path of this project.
 
 In makefile, add make config script by "include", like below
 
-`include $(PXPRPC_SOURCE_ROOT)/c/pxprpc_libuv/make-config.mk`
+`include $(PXPRPC_SOURCE_DIR)/c/pxprpc_libuv/make-config.mk`
 
-`include $(PXPRPC_SOURCE_ROOT)/c/pxprpc_tbox/make-config.mk`
+`include $(PXPRPC_SOURCE_DIR)/c/pxprpc_tbox/make-config.mk`
 
 depend on which backend you choose.
 
 or just
 
-`include $(PXPRPC_SOURCE_ROOT)/c/pxprpc/make-config.mk`
+`include $(PXPRPC_SOURCE_DIR)/c/pxprpc/make-config.mk`
 
 for custom backend.
 
