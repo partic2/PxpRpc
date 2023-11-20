@@ -4,11 +4,12 @@
 
 
 extern "C"{
-#include "../server.h"
-#include <stdint.h>
+#include <pxprpc.h>
 }
 
 #include <functional>
+#include <tuple>
+#include <vector>
 
 namespace pxprpc{
     
@@ -134,6 +135,88 @@ class NamedFunctionPP{
     }
 };
 
+
+class Serializer{
+    public:
+    struct pxprpc_serializer wrapped;
+    bool serializing=false;
+    Serializer *prepareUnserializing(uint8_t *buf,uint32_t size){
+        pxprpc_ser_prepare_unser(&this->wrapped,buf,size);
+        this->serializing=false;
+        return this;
+    }
+    Serializer *prepareSerializing(uint32_t initBufSize){
+        pxprpc_ser_prepare_ser(&this->wrapped,initBufSize);
+        this->serializing=true;
+        return this;
+    }
+    int32_t getInt(){
+        int32_t val;
+        pxprpc_ser_get_int(&this->wrapped,&val,1);
+        return val;
+    }
+    int64_t getLong(){
+        int64_t val;
+        pxprpc_ser_get_long(&this->wrapped,&val,1);
+        return val;
+    }
+    float getFloat(){
+        float val;
+        pxprpc_ser_get_float(&this->wrapped,&val,1);
+        return val;
+    }
+    double getDouble(){
+        double val;
+        pxprpc_ser_get_double(&this->wrapped,&val,1);
+        return val;
+    }
+    std::vector<int32_t> getIntVec(int size){
+        std::vector<int32_t> vec(size);
+        pxprpc_ser_get_int(&this->wrapped,vec.data(),size);
+        return vec;
+    }
+    std::vector<int64_t> getLongVec(int size){
+        std::vector<int64_t> vec(size);
+        pxprpc_ser_get_long(&this->wrapped,vec.data(),size);
+        return vec;
+    }
+    std::vector<float> getFloatVec(int size){
+        std::vector<float> vec(size);
+        pxprpc_ser_get_float(&this->wrapped,vec.data(),size);
+        return vec;
+    }
+    std::vector<double> getDoubleVec(int size){
+        std::vector<double> vec(size);
+        pxprpc_ser_get_double(&this->wrapped,vec.data(),size);
+        return vec;
+    }
+    std::tuple<int,uint8_t*> getBytes(){
+        uint32_t size;
+        uint8_t *val=pxprpc_ser_get_bytes(&this->wrapped,&size);
+        return std::tuple<int,uint8_t*>(size,val);
+    }
+    Serializer *putInt(int32_t val){
+        pxprpc_ser_put_int(&this->wrapped,&val,1);
+        return this;
+    }
+    Serializer *putLong(int64_t val){
+       pxprpc_ser_put_long(&this->wrapped,&val,1);
+        return this;
+    }
+    Serializer *putFloat(float val){
+        pxprpc_ser_put_float(&this->wrapped,&val,1);
+        return this;
+    }
+    Serializer *putDouble(double val){
+        pxprpc_ser_put_double(&this->wrapped,&val,1);
+        return this;
+    }
+    Serializer *putBytes(std::tuple<int,uint8_t*> val){
+        pxprpc_ser_put_bytes(&this->wrapped,std::get<1>(val),std::get<0>(val));
+        return this;
+    }
+};
+
 static void __NamedFunctionPPIoRead(void *p){
     auto *arg0=static_cast<__IoReadArg *>(p);
     arg0->doneCallback(arg0->io1,
@@ -154,7 +237,10 @@ static void __wrap_readParameter(struct pxprpc_callable *self,struct pxprpc_requ
 static void __wrap_call(struct pxprpc_callable *self,struct pxprpc_request *r,void (*onResult)(struct pxprpc_request *r,struct pxprpc_object *result)){
     NamedFunctionPP *selfpp=static_cast<NamedFunctionPP *>(self->userData);
     selfpp->call(r,[onResult,r](pxprpc::RpcObject *resultObj)->void{
-        onResult(r,resultObj->cObject());
+        if(resultObj==NULL)
+            onResult(r,NULL);
+        else
+            onResult(r,resultObj->cObject());
     });
 }
 
@@ -162,5 +248,6 @@ static void __wrap_writeResult(struct pxprpc_callable *self,struct pxprpc_reques
     NamedFunctionPP *selfpp=static_cast<NamedFunctionPP *>(self->userData);
     selfpp->writeResult(r);
 }
+
 
 }

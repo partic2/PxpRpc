@@ -2,11 +2,7 @@ package pursuer.test;
 
 import java.io.Closeable;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.net.InetSocketAddress;
-import java.net.Socket;
-import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.channels.ByteChannel;
 import java.nio.channels.SocketChannel;
@@ -14,9 +10,7 @@ import java.util.Arrays;
 import java.util.Timer;
 import java.util.TimerTask;
 
-import pursuer.pxprpc.AsyncReturn;
-import pursuer.pxprpc.EventDispatcher;
-import pursuer.pxprpc.Utils;
+import pursuer.pxprpc.*;
 import pursuer.pxprpc_ex.TCPBackend;
 
 public class PxpRpc {
@@ -49,6 +43,31 @@ public class PxpRpc {
 		public void printArg(int a,long b,float c,double d,ByteBuffer e) {
 			System.out.println(a+","+b+","+c+","+d+","+
 					Arrays.toString(Utils.bytesGet(e, 0, 4)));
+		}
+		public void printArg2(byte[] bb){
+			Serializer2 ser = new Serializer2().prepareUnserializing(ByteBuffer.wrap(bb));
+			int a=ser.getInt();
+			long b=ser.getLong();
+			float c=ser.getFloat();
+			double d=ser.getDouble();
+			String e=ser.getString();
+			byte[] f=ser.getBytes();
+			System.out.println(a+","+b+","+c+","+d+","+e+","+ Arrays.toString(f));
+		}
+		public void tableTest(byte[] bb){
+			TableSerializer ser=new TableSerializer().load(ByteBuffer.wrap(bb));
+			for(String e:ser.getHeaderName()){
+				System.out.print(e+"\t");
+			}
+			System.out.println();
+			int rcnt=ser.getRowCount();
+			for(int i=0;i<rcnt;i++){
+				Object[] row=ser.getRow(i);
+				for(int i2=0;i2<row.length;i2++){
+					System.out.print(row[i2].toString()+"\t");
+				}
+				System.out.println();
+			}
 		}
 		public TickEvent onTick() {
 			TickEvent te = new TickEvent();
@@ -152,14 +171,33 @@ public class PxpRpc {
 			System.out.println("expect print pxprpc\\n0");
 			System.out.println(client.callIntFunc(14,13,new Object[] {12}));
 			
-			//set *11 = getFunc test1.get1234
+			//set *11 = getFunc test1.printArg
 			client.getFunc(11, "test1.printArg");
 			//set *12=[1,2,3,4]
 			client.push(12, new byte[] {1,2,3,4});
 			//call *11(111,2222222,3.14,3.1415,*12)
-			System.out.println("expect 111,2222222,3.14,3.1415,1,2,3,4");
+			System.out.println("expect 111,2222222,3.14,3.1415,[1,2,3,4]");
 			client.callIntFunc(13, 11, new Object[] {111,2222222l,3.14f,3.1415d,12});
-			
+
+			//set *11 = getFunc test1.printArg2
+			client.getFunc(11, "test1.printArg2");
+			//set *12=[1,2,3,4]
+			client.push(12,Utils.toBytes(new Serializer2().prepareSerializing(64)
+					.putInt(111).putLong(2222222l).putFloat(3.14f).putDouble(3.1415d)
+					.putString("abcd").putBytes(new byte[]{1,2,3,4},0,4).build()));
+			System.out.println("expect 111,2222222,3.14,3.1415,abcd,[1,2,3,4]");
+			client.callIntFunc(13, 11, new Object[] {12});
+
+			//serilizer test2
+			client.getFunc(11, "test1.tableTest");
+			//set *12=[1,2,3,4]
+			byte[] arg0=Utils.toBytes(new TableSerializer().setHeader("sil",new String[]{"name","isDir","size"})
+					.addRow(new Object[]{"1.txt",0,45l}).addRow(new Object[]{"docs",1,1122334455667788l}).build());
+			client.push(12,arg0);
+			System.out.println("expect print a table");
+			client.callIntFunc(13, 11, new Object[] {12});
+
+
 			System.out.println("sleep 1 tick");
 			//set *11=getFunc test1.waitOneTick
 			client.getFunc(11, "test1.waitOneTick");
@@ -203,7 +241,8 @@ public class PxpRpc {
 			//push to 12, so *11 should be free if server support.
 			System.out.println("expect print 'free by server gc' if server support");
 			client.push(12, new byte[0]);
-			
+
+
 			//should be free when connection close, if server support. 
 			client.callIntFunc(12, 11, new Object[0]);
 			pxptcp.close();

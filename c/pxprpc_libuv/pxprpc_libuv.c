@@ -1,9 +1,7 @@
 
 
 
-#include "server_libuv.h"
-#include <pxprpc/server.h>
-#include <pxprpc/def.h>
+#include <pxprpc_libuv.h>
 
 struct _pxprpc_libuv{
     uv_loop_t *loop;

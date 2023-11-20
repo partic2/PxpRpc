@@ -1,8 +1,8 @@
 
-#ifndef _PXPRPC_SERVER_TBOX_H
-#define _PXPRPC_SERVER_TBOX_H
+#ifndef _PXPRPC_TBOX_H
+#define _PXPRPC_TBOX_H
 
-#include <pxprpc/server.h>
+#include <pxprpc.h>
 #include <tbox/tbox.h>
 
 typedef void *pxprpc_server_tbox;

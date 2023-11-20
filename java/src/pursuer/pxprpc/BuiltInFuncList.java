@@ -85,17 +85,7 @@ public class BuiltInFuncList {
 		return bais.toByteArray();
 	}
 	public String listStringJoin(List<String> array,String sep){
-		int size=array.size();
-		if(size==0){
-			return "";
-		}
-		StringBuilder sb=new StringBuilder();
-		sb.append(array.get(0));
-		for(int i1=1;i1<size;i1++){
-			sb.append(sep);
-			sb.append(array.get(i1));
-		}
-		return sb.toString();
+		return Utils.stringJoin(sep,array);
 	}
 
 }

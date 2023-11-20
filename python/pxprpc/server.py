@@ -105,7 +105,8 @@ class ServerContext(object):
                 #unlink
                 req=PxpRequest()
                 req.destAddr=struct.unpack('<I',await self.in2.read(4))[0]
-                del self.refSlots[req.destAddr]
+                if req.destAddr in self.refSlots:
+                    del self.refSlots[req.destAddr]
                 log1.debug('server get request:%s',req)
                 await self.writeLock.acquire()
                 try:

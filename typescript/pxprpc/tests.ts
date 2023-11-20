@@ -1,7 +1,7 @@
 
 import { WebSocketIo } from "./backend";
-import { Client, Server } from "./base";
-import { RpcExtendClient1, RpcExtendClientObject, RpcExtendError, RpcExtendServer1, RpcExtendServerCallable } from "./extend";
+import { Client, Serializer, Server } from "./base";
+import { RpcExtendClient1, RpcExtendClientObject, RpcExtendError, RpcExtendServer1, RpcExtendServerCallable, TableSerializer } from "./extend";
 
 
 
@@ -20,6 +20,16 @@ export async function testAsClient(){
     printString.signature('s->')
     await printString.call('4567');
     await str1.free()
+    let testUnser=(await client2.getFunc('test1.testUnser'))!;
+    testUnser.signature('b->')
+    let serdata=new Serializer().prepareSerializing(8)
+    .putInt(123).putLong(BigInt('1122334455667788')).putFloat(123.5).putDouble(123.123).putString('abcdef').putBytes(new TextEncoder().encode('bytes'))
+    .build();
+    await testUnser.call(serdata);
+    let testTableUnser=(await client2.getFunc('test1.testTableUnser'))!;
+    testTableUnser.signature('b->')
+    serdata=new TableSerializer().setHeader('sil',['name','isdir','filesize']).addRow(['1.txt',0,BigInt('12345')]).addRow(['docs',1,BigInt('0')]).build();
+    await testTableUnser.call(serdata);
     let raiseError1=(await client2.getFunc('test1.raiseError1'))!
     try{
         raiseError1.signature('->s')
@@ -34,6 +44,17 @@ export async function testAsServer(){
         await new WebSocketIo().connect('ws://127.0.0.1:1345/pxprpcClient')));
     server2.addFunc('test1.get1234',new RpcExtendServerCallable(async()=>'1234').signature('->s'))
     server2.addFunc('test1.printString',new RpcExtendServerCallable(async(s:string)=>console.log(s)).signature('s->'))
+    server2.addFunc('test1.testUnser',new RpcExtendServerCallable(async(b:ArrayBuffer)=>{
+        let ser=new Serializer().prepareUnserializing(b);
+        console.log(ser.getInt(),ser.getLong(),ser.getFloat(),ser.getDouble(),ser.getString(),new TextDecoder().decode(ser.getBytes()))
+    }).signature('b->'))
+    server2.addFunc('test1.testTableUnser',new RpcExtendServerCallable(async(b:ArrayBuffer)=>{
+        let ser=new TableSerializer().load(b);
+        console.log(ser.headerName!.join('\t'))
+        for(let i1=0;i1<ser.getRowCount();i1++){
+            console.log(ser.getRow(i1).join('\t'));
+        }
+    }).signature('b->'))
     server2.addFunc('test1.wait1Sec',new RpcExtendServerCallable(
         ()=>new Promise((resolve)=>setTimeout(resolve,1000))).signature('->'));
     server2.addFunc('test1.raiseError1',new RpcExtendServerCallable(

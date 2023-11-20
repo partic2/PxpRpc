@@ -1,8 +1,8 @@
 
-#ifndef _PXPRPC_SERVER_LIBUV_H
-#define _PXPRPC_SERVER_LIBUV_H
+#ifndef _PXPRPC_LIBUV_H
+#define _PXPRPC_LIBUV_H
 
-#include <pxprpc/server.h>
+#include <pxprpc.h>
 #include <uv.h>
 
 typedef void *pxprpc_server_libuv;

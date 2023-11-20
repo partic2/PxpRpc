@@ -1,10 +1,9 @@
 
 
-#include "server_tbox.h"
+#include <pxprpc_tbox.h>
 
 
-#include <pxprpc/server.h>
-#include <pxprpc/def.h>
+#include <pxprpc.h>
 
 struct _pxprpc_tbox{
     tb_socket_ref_t sock;

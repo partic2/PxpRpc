@@ -1,13 +1,12 @@
 
 
-#include "def.h"
-#include "config.h"
+#include <pxprpc.h>
+
 #include <stdint.h>
 #include <string.h>
 #include <stdlib.h>
 #include <memory.h>
 
-#include "server.h"
 
 #ifdef USE_PTHREAD_HEADER
 #include <pthread.h>

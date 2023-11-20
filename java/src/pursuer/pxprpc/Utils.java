@@ -68,6 +68,30 @@ public class Utils {
 		((Buffer)b).flip();
 		writef(out,b);
 	}
+	public static ByteBuffer setPos(ByteBuffer bb,int pos){
+		Buffer b=bb;
+		b.position(pos);
+		return bb;
+	}
+	public static int getPos(ByteBuffer bb){
+		Buffer b=bb;
+		return b.position();
+	}
+	public static byte[] toBytes(ByteBuffer bb){
+		byte[] b2=new byte[bb.remaining()];
+		bb.get(b2);
+		return b2;
+	}
+	public static ByteBuffer ensureBuffer(ByteBuffer bb,int remainSize){
+		Buffer b=bb;
+		int size=remainSize+b.position();
+		if(b.capacity()<size){
+			ByteBuffer newbuf=ByteBuffer.allocate(size+(size>>1));
+			newbuf.put(bb.array(),0,b.position());
+			return newbuf;
+		}
+		return bb;
+	}
 
 	public static byte[] bytesGet(ByteBuffer bb,int off,int len) {
 		Buffer bb2=bb;
@@ -84,5 +108,13 @@ public class Utils {
 		bb2.position(bb2.position()+off);
 		bb.put(b);
 		bb2.reset();
+	}
+	public static String stringJoin(String delim,Iterable<String> iter){
+		StringBuilder sb=new StringBuilder();
+		for(String e:iter) {
+			sb.append(e);
+			sb.append(delim);
+		}
+		return sb.substring(0,sb.length()-delim.length());
 	}
 }

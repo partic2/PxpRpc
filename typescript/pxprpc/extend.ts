@@ -1,4 +1,6 @@
-import { Client, PxpCallable, PxpObject, PxpRequest, Server } from './base'
+import { Client, PxpCallable, PxpObject, PxpRequest, Serializer, Server } from './base'
+
+
 
 export class RpcExtendError extends Error {
     public remoteException?:RpcExtendClientObject
@@ -402,4 +404,137 @@ export class RpcExtendServer1{
         return this;
     }
 
+}
+
+export class TableSerializer {
+    FLAG_NO_HEADER_NAME=1;
+    headerName:string[]|null=null;
+    headerType:string|null=null;
+    rows:any[]=[];
+    public setHeader(types:string,names:string[]){
+        this.headerName=names;
+        this.headerType=types;
+        return this;
+    }
+    public getRow(index:number){
+        return this.rows[index];
+    }
+    public getRowCount() {
+        return this.rows.length
+    }
+    public addRow(row:any[]){
+        this.rows.push(row);return this;
+    }
+    public load(buf:ArrayBuffer){
+        let ser=new Serializer().prepareUnserializing(buf);
+        let flag=ser.getInt();
+        let rowCnt=ser.getInt();
+        this.headerType=ser.getString();
+        let colCnt=this.headerType.length;
+        if((flag & this.FLAG_NO_HEADER_NAME)==0){
+            this.headerName=[]
+            for(let i1=0;i1<colCnt;i1++){
+                this.headerName.push(ser.getString());
+            }
+        }
+        for(let i1=0;i1<rowCnt;i1++){
+            this.rows.push(new Array(colCnt));
+        }
+        for(let i1=0;i1<colCnt;i1++){
+            let type=this.headerType.charAt(i1);
+            switch(type){
+                case 'i':
+                    for(let i2=0;i2<rowCnt;i2++){
+                        this.rows[i2][i1]=ser.getInt();
+                    }
+                    break;
+                case 'l':
+                    for(let i2=0;i2<rowCnt;i2++){
+                        this.rows[i2][i1]=ser.getLong();
+                    }
+                    break;
+                case 'f':
+                    for(let i2=0;i2<rowCnt;i2++){
+                        this.rows[i2][i1]=ser.getFloat();
+                    }
+                    break;
+                case 'd':
+                    for(let i2=0;i2<rowCnt;i2++){
+                        this.rows[i2][i1]=ser.getDouble();
+                    }
+                    break;
+                case 'b':
+                    for(let i2=0;i2<rowCnt;i2++){
+                        this.rows[i2][i1]=ser.getBytes();
+                    }
+                    break;
+                case 's':
+                    for(let i2=0;i2<rowCnt;i2++){
+                        this.rows[i2][i1]=ser.getString();
+                    }
+                    break;
+                default:
+                    throw new Error("Unknown Type");
+            }
+        }
+        return this;
+    }
+
+
+    public build():ArrayBuffer{
+        let ser=new Serializer().prepareSerializing(64);
+        let i1=0;
+        let colsCnt=this.headerType!.length;
+        let flag=0;
+        if(this.headerName==null){
+            flag|=this.FLAG_NO_HEADER_NAME;
+        }
+        ser.putInt(flag);
+        let rowCnt=this.rows.length;
+        ser.putInt(rowCnt);
+        ser.putString(this.headerType!);
+        if(this.headerName!=null){
+            for(let e of this.headerName){
+                ser.putString(e);
+            }
+        }
+        for(i1=0;i1<colsCnt;i1++){
+            let type=this.headerType!.charAt(i1);
+            switch(type){
+                case 'i':
+                    for(let i2=0;i2<rowCnt;i2++){
+                        ser.putInt(this.rows[i2][i1]);
+                    }
+                    break;
+                case 'l':
+                    for(let i2=0;i2<rowCnt;i2++){
+                        ser.putLong(this.rows[i2][i1]);
+                    }
+                    break;
+                case 'f':
+                    for(let i2=0;i2<rowCnt;i2++){
+                        ser.putFloat(this.rows[i2][i1]);
+                    }
+                    break;
+                case 'd':
+                    for(let i2=0;i2<rowCnt;i2++){
+                        ser.putDouble(this.rows[i2][i1]);
+                    }
+                    break;
+                case 'b':
+                    for(let i2=0;i2<rowCnt;i2++){
+                        ser.putBytes(this.rows[i2][i1]);
+                    }
+                    break;
+                case 's':
+                    for(let i2=0;i2<rowCnt;i2++){
+                        ser.putString(this.rows[i2][i1]);
+                    }
+                    break;
+                default:
+                    throw new Error("Unknown Type");
+            }
+        }
+        return ser.build();
+    }
 }

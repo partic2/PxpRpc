@@ -5,7 +5,108 @@ export interface Io{
     write(data:ArrayBufferLike):Promise<void>;
 }
 
-
+export class Serializer{
+    public dv?:DataView;
+    public pos:number=0;
+    public prepareUnserializing(buf:ArrayBuffer){
+        this.dv=new DataView(buf);
+        return this;
+    }
+    public prepareSerializing(initBufSize:number){
+        this.dv=new DataView(new ArrayBuffer(initBufSize));
+        return this;
+    } 
+    public getInt(){
+        let val=this.dv!.getInt32(this.pos,true);
+        this.pos+=4;
+        return val;
+    }
+    public getLong(){
+        let val=this.dv!.getBigInt64(this.pos,true);
+        this.pos+=8;
+        return val;
+    }
+    public getFloat(){
+        let val=this.dv!.getFloat32(this.pos,true);
+        this.pos+=4;
+        return val;
+    }
+    public getDouble(){
+        let val=this.dv!.getFloat64(this.pos,true);
+        this.pos+=8;
+        return val;
+    }
+    public putInt(val:number){
+        this.ensureBuffer(4);
+        this.dv!.setInt32(this.pos,val,true);
+        this.pos+=4;
+        return this;
+    }
+    public putLong(val:bigint){
+        this.ensureBuffer(8);
+        this.dv!.setBigInt64(this.pos,val,true);
+        this.pos+=8;
+        return this;
+    }
+    public putFloat(val:number){
+        this.ensureBuffer(4);
+        this.dv!.setFloat32(this.pos,val,true);
+        this.pos+=4;
+        return this;
+    }
+    public putDouble(val:number){
+        this.ensureBuffer(8);
+        this.dv!.setFloat64(this.pos,val,true);
+        this.pos+=8;
+        return this;
+    }
+    public ensureBuffer(remainSize:number){
+        if(this.pos+remainSize>this.dv!.buffer.byteLength){
+            let newSize=this.pos+remainSize;
+            newSize+=newSize>>1;
+            let buf=new ArrayBuffer(newSize);
+            new Uint8Array(buf).set(new Uint8Array(this.dv!.buffer),0);
+            this.dv=new DataView(buf);
+        }
+    }
+    public putBytes(b:ArrayBuffer){
+        let len=b.byteLength;
+        if(len>=0xff){
+            this.ensureBuffer(len+5);
+            this.dv!.setUint8(this.pos,0xff);
+            this.pos++;
+            this.dv!.setUint32(this.pos,len,true);
+        }else{
+            this.ensureBuffer(len+1);
+            this.dv!.setUint8(this.pos,len);
+            this.pos++;
+        }
+        new Uint8Array(this.dv!.buffer).set(new Uint8Array(b),this.pos);
+        this.pos+=len;
+        return this;
+    }
+    public putString(val:string){
+        this.putBytes(new TextEncoder().encode(val));
+        return this;
+    }
+    public build(){
+        return this.dv!.buffer.slice(0,this.pos);
+    }
+    public getBytes(){
+        let len=this.dv!.getUint8(this.pos);
+        this.pos++;
+        if(len==255){
+            len=this.dv!.getUint32(this.pos,true);
+            this.pos+=4;
+        }
+        let val=this.dv!.buffer.slice(this.pos,this.pos+len);
+        this.pos+=len;
+        return val;
+    }
+    public getString(){
+        return new TextDecoder().decode(this.getBytes());
+    }
+}
 
 class mutex{
     protected locked:boolean=false;

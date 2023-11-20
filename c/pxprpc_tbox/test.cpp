@@ -4,13 +4,15 @@
 
 #include <tbox/tbox.h>
 extern "C"{
-    #include "server_tbox.h"
+    #include <pxprpc_tbox.h>
 }
 
 
-#include "../pxprpc/cppwrap/server_pp.hpp"
-#include "functional"
+#include <pxprpc_pp.hpp>
+#include <functional>
+#include <vector>
 #include <memory>
+#include <string>
 
 
 pxprpc_tbox_api *srvtbox;
@@ -23,7 +25,7 @@ class fnPrintString:public pxprpc::NamedFunctionPP{
     public:
     fnPrintString(std::string funcName):NamedFunctionPP(funcName){};
     virtual void readParameter(struct pxprpc_request *r,std::function<void()> doneCallback){
-        auto buf=std::make_shared<std::array<uint8_t,4>>();
+        auto buf=std::make_shared<std::vector<uint8_t>>(4);
         this->readFromIo(r->io1,buf->data(),4,[doneCallback,buf,r](pxprpc_abstract_io *io1,const char *error)->void{
             if(error){
                 std::cout<<"get error:"<<error<<std::endl;
@@ -53,7 +55,7 @@ class fnPrintStringUnderline:public pxprpc::NamedFunctionPP{
     public:
     fnPrintStringUnderline(std::string funcName):NamedFunctionPP(funcName){};
     virtual void readParameter(struct pxprpc_request *r,std::function<void()> doneCallback){
-        auto buf=std::make_shared<std::array<uint8_t,4>>();
+        auto buf=std::make_shared<std::vector<uint8_t>>(4);
         this->readFromIo(r->io1,buf->data(),4,[doneCallback,buf,r](pxprpc_abstract_io *io1,const char *error)->void{
             if(error){
                 std::cout<<"get error:"<<error<<std::endl;
@@ -63,7 +65,6 @@ class fnPrintStringUnderline:public pxprpc::NamedFunctionPP{
             r->callable_data=r->ref_slots[addr]->object1;
             doneCallback();
         });
-        
     };
     virtual void call(struct pxprpc_request *r,std::function<void(pxprpc::RpcObject *)> onResult){
         auto str1=reinterpret_cast<char *>(&static_cast<pxprpc_bytes *>(r->callable_data)->data);
@@ -79,7 +80,37 @@ class fnPrintStringUnderline:public pxprpc::NamedFunctionPP{
     };
 };
 
-
+class fnPrintSerilizedArgs:public pxprpc::NamedFunctionPP{
+    public:
+    fnPrintSerilizedArgs(std::string funcName):NamedFunctionPP(funcName){};
+    virtual void readParameter(struct pxprpc_request *r,std::function<void()> doneCallback){
+        auto buf=std::make_shared<std::vector<uint8_t>>(4);
+        this->readFromIo(r->io1,buf->data(),4,[doneCallback,buf,r](pxprpc_abstract_io *io1,const char *error)->void{
+            if(error){
+                std::cout<<"get error:"<<error<<std::endl;
+                doneCallback();
+            }
+            auto addr=*reinterpret_cast<uint32_t *>(buf->data());
+            r->callable_data=r->ref_slots[addr]->object1;
+            doneCallback();
+        });
+        
+    };
+    virtual void call(struct pxprpc_request *r,std::function<void(pxprpc::RpcObject *)> onResult){
+        pxprpc::Serializer ser;
+        auto arg0=static_cast<pxprpc_bytes *>(r->callable_data);
+        ser.prepareUnserializing(arg0->data,arg0->length);
+        std::cout<<ser.getInt()<<","<<ser.getLong()<<","<<ser.getFloat()<<","<<ser.getDouble()<<",";
+        auto str1=ser.getBytes();
+        std::cout<<std::string(reinterpret_cast<char *>(std::get<1>(str1)),std::get<0>(str1))<<",";
+        str1=ser.getBytes();
+        std::cout<<std::string(reinterpret_cast<char *>(std::get<1>(str1)),std::get<0>(str1))<<",";
+        onResult(nullptr);
+    };
+    virtual void writeResult(struct pxprpc_request *r){
+         r->io1->write(r->io1,4,reinterpret_cast<const uint8_t *>(&constZero),testNopCallback,NULL);
+    };
+};
 int main(int argc,char *argv[]){
     pxprpc::init();
     pxprpc_tbox_query_interface(&srvtbox);
@@ -93,15 +124,16 @@ int main(int argc,char *argv[]){
         std::cerr<<"tb_ipaddr_set failed"<<std::endl;
     }
     if(tb_socket_bind(sock,&ipaddr)==tb_false){
-        int err=WSAGetLastError();
-        std::cerr<<"tb_socket_bind failed"<<err<<std::endl;
+        std::cerr<<"tb_socket_bind failed"<<std::endl;
     }
+
     fnPrintString fn1(std::string("printString"));
     fnPrintStringUnderline fn2(std::string("printStringUnderline"));
-    pxprpc_namedfunc namedfns[2]={
-        *fn2.cNamedFunc(),*fn1.cNamedFunc()
+    fnPrintSerilizedArgs fn3(std::string("printSerilizedArgs"));
+    pxprpc_namedfunc namedfns[3]={
+        *fn2.cNamedFunc(),*fn1.cNamedFunc(),*fn3.cNamedFunc()
     };
-    auto tbrpc=srvtbox->new_server(sock,namedfns,2);
+    auto tbrpc=srvtbox->new_server(sock,namedfns,3);
     srvtbox->serve_block(tbrpc);
     std::cerr<<"serve_block failed"<<srvtbox->get_error()<<std::endl;
     return 0;
