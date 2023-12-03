@@ -53,13 +53,11 @@ public class Serializer2 {
         putBytes(b,0,b.length);
         return this;
     }
-
     public ByteBuffer build(){
         Buffer b=buf;
         b.flip();
         return buf;
     }
-
     public int getInt(){
         return buf.getInt();
     }

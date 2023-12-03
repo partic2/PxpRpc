@@ -7,17 +7,10 @@
 #define pxprpc__free free
 #define pxprpc__realloc realloc
 
-/* use include pthread to create mutex */
-#define USE_PTHREAD_HEADER
-
-#define MAX_REFSLOTS_COUNT 256
-
-
-
 /* definition */
 #include <string.h>
 #include <stdint.h>
-
+#include <stdlib.h>
 
 struct pxprpc_abstract_io{
     //onCompleted is called when expected length data is read or error occured.

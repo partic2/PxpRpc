@@ -1,4 +1,7 @@
+#ifndef _PXPRPC_SERIALIZER_C
+#define _PXPRPC_SERIALIZER_C
 
+#include "utils.c"
 #include <pxprpc.h>
 #include <stdlib.h>
 
@@ -87,3 +90,5 @@ extern uint8_t *pxprpc_ser_get_bytes(struct pxprpc_serializer *ser,uint32_t *siz
     ser->pos+=*size;
     return val;
 }
+
+#endif

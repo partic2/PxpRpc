@@ -40,9 +40,9 @@ public class PxpRpc {
 				}
 			};
 		}
-		public void printArg(int a,long b,float c,double d,ByteBuffer e) {
+		public void printArg(int a,long b,float c,double d,byte[] e) {
 			System.out.println(a+","+b+","+c+","+d+","+
-					Arrays.toString(Utils.bytesGet(e, 0, 4)));
+					Arrays.toString(e));
 		}
 		public void printArg2(byte[] bb){
 			Serializer2 ser = new Serializer2().prepareUnserializing(ByteBuffer.wrap(bb));
@@ -138,7 +138,7 @@ public class PxpRpc {
 			soc.configureBlocking(true);
 			soc.connect(new InetSocketAddress("localhost",listenPort));
 			
-			ClientContext client = new ClientContext();
+			final ClientContext client = new ClientContext();
 			client.init(soc);
 			
 			
@@ -242,7 +242,26 @@ public class PxpRpc {
 			System.out.println("expect print 'free by server gc' if server support");
 			client.push(12, new byte[0]);
 
-
+			client.enableBuffer();
+			System.out.println("buffered response test, should block for 2 second twice");
+			new Thread(new Runnable() {
+				@Override
+				public void run() {
+					try {
+						Thread.sleep(2000);
+						System.out.println("flush write buffer");
+						client.pull(12);
+						Thread.sleep(2000);
+						System.out.println("disable write buffer");
+						client.disableBuffer();
+					} catch (Exception e) {
+						e.printStackTrace();
+					}
+				}
+			}).start();
+			client.bufferedPush(12,new String("buffer test").getBytes(ServerContext.charset));
+			System.out.println("push done, waiting to disable buffer");
+			System.out.println("pull done:"+new String(client.bufferedPull(12),ServerContext.charset));
 			//should be free when connection close, if server support. 
 			client.callIntFunc(12, 11, new Object[0]);
 			pxptcp.close();
@@ -271,6 +290,7 @@ public class PxpRpc {
 			}
 		}
 		public int session=0x78593<<8;
+		public int bufferedSession=0x78597<<8;
 		
 		public void push(int addr,byte[] data) throws IOException {
 			int op=session|0x1;
@@ -285,7 +305,11 @@ public class PxpRpc {
 			int op=session|0x2;
 			Utils.writeInt32(chan,op);
 			Utils.writeInt32(chan,addr);
-			assert2(Utils.readInt32(chan)==op);
+			int rs=Utils.readInt32(chan);
+			if(rs!=op){
+				System.currentTimeMillis();
+			}
+			assert2(rs==op);
 			int len=Utils.readInt32(chan);
 			byte[] r=new byte[len];
 			Utils.readf(chan,ByteBuffer.wrap(r));
@@ -329,6 +353,39 @@ public class PxpRpc {
 			byte[] r=new byte[len];
 			Utils.readf(chan,ByteBuffer.wrap(r));
 			return new String(r,"utf-8");
+		}
+		public void enableBuffer() throws IOException {
+			int op=session|0x9;
+			Utils.writeInt32(chan,op);
+			Utils.writeInt32(chan,bufferedSession|24);
+		}
+		public void disableBuffer() throws IOException{
+			int op=session|0x9;
+			Utils.writeInt32(chan,op);
+			Utils.writeInt32(chan,0xffffffff);
+		}
+		public void bufferedPush(int addr,byte[] data) throws IOException {
+			int op=bufferedSession|0x1;
+			Utils.writeInt32(chan,op);
+			Utils.writeInt32(chan,addr);
+			Utils.writeInt32(chan, data.length);
+			Utils.writef(chan,ByteBuffer.wrap(data));
+			int op2=Utils.readInt32(chan);
+			assert2(op2==op);
+		}
+		public byte[] bufferedPull(int addr) throws IOException{
+			int op=bufferedSession|0x2;
+			Utils.writeInt32(chan,op);
+			Utils.writeInt32(chan,addr);
+			int rs=Utils.readInt32(chan);
+			if(rs!=op){
+				System.currentTimeMillis();
+			}
+			assert2(rs==op);
+			int len=Utils.readInt32(chan);
+			byte[] r=new byte[len];
+			Utils.readf(chan,ByteBuffer.wrap(r));
+			return r;
 		}
 	}
 }

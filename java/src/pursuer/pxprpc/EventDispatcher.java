@@ -35,9 +35,9 @@ public class EventDispatcher implements PxpCallable {
 	@Override
 	public void writeResult(PxpRequest req) throws IOException {
 		if(Exception.class.isInstance(req.result)) {
-			req.context.writeInt32(1);
+			Utils.writeInt32(req.getChan(),1);
 		}else {
-			req.context.writeInt32(0);
+			Utils.writeInt32(req.getChan(),0);
 		}
 	}
 }

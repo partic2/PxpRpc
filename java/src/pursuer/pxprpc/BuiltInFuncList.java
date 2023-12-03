@@ -4,6 +4,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.lang.reflect.Method;
+import java.util.Arrays;
 import java.util.List;
 
 public class BuiltInFuncList {
@@ -42,6 +43,11 @@ public class BuiltInFuncList {
 			return obj.toString();
 		}else{
 			return "";
+		}
+	}
+	public void ensureSlots(PxpRequest req,int count){
+		if(req.context.refSlots.length<count){
+			req.context.refSlots=Arrays.copyOf(req.context.refSlots,count);
 		}
 	}
 	public Class<?> findClass(String name){

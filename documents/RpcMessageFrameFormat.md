@@ -101,10 +101,9 @@ struct call_request{
     } session;
     uint32_t dest_addr;
     uint32_t func_addr;
-    //parameter
-    uint32_t param1;
-    uint64_t param2;
-    uint32_t etc;
+    //parameter, depend on higher level definition
+    uint8_t[length] input;
+    
 };
 struct call_response{
     struct{
@@ -112,25 +111,8 @@ struct call_response{
         uint8_t id1;
         uint16_t id2;
     } session;
-    any returnValue
-};
-//In general(but not necessary), return value are defined like below.
-struct call_response{
-    struct{
-        uint8_t opcode;  // 5
-        uint8_t id1;
-        uint16_t id2;
-    } session;
-    #if FUNCTION_RETURN_32BIT
-    //function return boolean,int32,float32.
-    //if function is supposed to return an object, 
-    //returnValue=0 to indicate the sucess(In this case, dest_addr will store the return object), 
-    //returnValue=1 to indicate the fault(In this case, dest_addr will store an Exception).
-    uint32_t returnValue;
-    #elif FUNCTION_RETURN_64BIT
-    //funcion return int64,float64
-    uint64_t returnValue;
-    #endif
+    //result, depend on higher level definition
+    uint8_t[length] output;
 };
 
 //function:getFunc (get builtin function named by string refered by func_name_addr.) 
@@ -191,6 +173,29 @@ reference slots size:256
 "server name" indicate the server name.
 "version" indicate the pxprpc protocol version. Currently only 1.0 is valid.
 "reference slots capacity" indicate how many slots can client use. Client should ensure that the slot address is less than this value.
+*/
+
+//function:buffer enable write buffer for session match the bufferedSessionMask), for version>=1.1.
+struct buffer_request{
+    struct{
+        uint8_t opcode;  // 8
+        uint8_t id1;
+        uint16_t id2;
+    } session;
+    //server should buffer writing data for session match the bufferedSessionMask(SA:about session mask)
+    uint32_t bufferedSessionMask;
+};
+//buffer has no response.
+
+/*
+about session mask
+if(sessionMask==0xffffffff){
+    //no session mask, all session treat as mismatched.
+}else{
+    maskBitsCnt=bufferedSession&0xff;
+    maskPattern=sessionMask>>(32-maskBitsCnt);
+}
+Mask is matched when (session>>(32-maskBitsCnt))==maskPattern
 */
 
 /* 

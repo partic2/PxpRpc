@@ -73,9 +73,9 @@ public class Utils {
 		b.position(pos);
 		return bb;
 	}
-	public static int getPos(ByteBuffer bb){
+	public static void setLimit(ByteBuffer bb,int limit2){
 		Buffer b=bb;
-		return b.position();
+		b.limit(limit2);
 	}
 	public static byte[] toBytes(ByteBuffer bb){
 		byte[] b2=new byte[bb.remaining()];
@@ -108,6 +108,9 @@ public class Utils {
 		bb2.position(bb2.position()+off);
 		bb.put(b);
 		bb2.reset();
+	}
+	public static void flip(ByteBuffer bb){
+		((Buffer)bb).flip();
 	}
 	public static String stringJoin(String delim,Iterable<String> iter){
 		StringBuilder sb=new StringBuilder();

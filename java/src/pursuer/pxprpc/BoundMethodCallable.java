@@ -20,7 +20,7 @@ public class BoundMethodCallable extends MethodCallable{
 			args[0]=null;
 		}
 		for(int i=firstInputParamIndex;i<argList.length;i++) {
-			args[i]=readNext(c,argList[i]);
+			args[i]=readNext(req,argList[i]);
 		}
 		req.parameter=new Object[] {null,args};
 	}
@@ -32,7 +32,7 @@ public class BoundMethodCallable extends MethodCallable{
 			Object result=null;
 			Object[] args = (Object[])((Object[])req.parameter)[1];
 			if(firstInputParamIndex>=1) {
-				args[0]=asyncRet;
+				args[0]=req;
 			}
 			result=method.invoke(this.boundObj,args);
 			if(firstInputParamIndex==0) {

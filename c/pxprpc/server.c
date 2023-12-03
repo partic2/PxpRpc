@@ -1,4 +1,7 @@
+#ifndef _PXPRPC_SERVER_C
+#define _PXPRPC_SERVER_C
 
+#include "utils.c"
 
 #include <pxprpc.h>
 
@@ -94,6 +97,7 @@ struct _pxprpc__ServCo{
     struct pxprpc_namedfunc *namedfuncs;
     uint32_t status;
     uint8_t writeBuf[4];
+    uint32_t responseSession;
 };
 
 #define _pxprpc__ServCoIsClosed(self) self->status&0x1
@@ -137,18 +141,28 @@ static void _pxprpc__RefSlotsPut(struct _pxprpc__ServCo *self,uint32_t addr, str
     if(ref2!=NULL){
         ref2->addRef(ref2);
     }
-    self->refSlots[addr]=ref2;
+    self->refSlots[addr]=ref2; 
 }
 
 static void _pxprpc__nopcallback(void *p){}
+
+static void _pxprpc__responseStart(struct _pxprpc__ServCo *self,uint32_t session){
+    self->responseSession=session;
+    pthread_mutex_lock(&self->writeMutex);
+    self->io1->write(self->io1,4,(uint8_t *)&self->responseSession,_pxprpc__nopcallback,self);
+}
+
+static void _pxprpc__responseStop(struct _pxprpc__ServCo *self){
+    pthread_mutex_unlock(&self->writeMutex);
+}
 
 //Push handler
 static void _pxprpc__stepPush3(struct _pxprpc__ServCo *self){
     if(self->io1->get_error(self->io1,self->io1->read)!=NULL)return;
     _pxprpc__RefSlotsPut(self,self->hdr.addr1,self->t1);
-    pthread_mutex_lock(&self->writeMutex);
-    self->io1->write(self->io1,4,(uint8_t *)&self->hdr.session,(void (*)(void *))_pxprpc__step1,self);
-    pthread_mutex_unlock(&self->writeMutex);
+    _pxprpc__responseStart(self,self->hdr.session);
+    _pxprpc__responseStop(self);
+    _pxprpc__step1(self);
 }
 static void _pxprpc__stepPush2(struct _pxprpc__ServCo *self){
     if(self->io1->get_error(self->io1,self->io1->read)!=NULL)return;
@@ -168,8 +182,7 @@ static void _pxprpc__stepPull2(struct _pxprpc__ServCo *self){
     
     struct pxprpc_bytes *bytes=self->refSlots[destAddr]->object1;
 
-    pthread_mutex_lock(&self->writeMutex);
-    self->io1->write(self->io1,4,(uint8_t *)&self->hdr.session,_pxprpc__nopcallback,NULL);
+    _pxprpc__responseStart(self,self->hdr.session);
     if(bytes!=NULL){
         self->io1->write(self->io1,4,(uint8_t *)&bytes->length,_pxprpc__nopcallback,NULL);
         self->io1->write(self->io1,bytes->length,bytes->data,(void (*)(void *))_pxprpc__step1,self);
@@ -177,7 +190,7 @@ static void _pxprpc__stepPull2(struct _pxprpc__ServCo *self){
         *(uint32_t *)(&self->writeBuf)=0xffffffff;
         self->io1->write(self->io1,4,self->writeBuf,(void (*)(void *))_pxprpc__step1,self);
     }
-    pthread_mutex_unlock(&self->writeMutex);
+    _pxprpc__responseStop(self);
 }
 static void _pxprpc__stepPull1(struct _pxprpc__ServCo *self){
     self->io1->read(self->io1,4,(uint8_t*)&self->hdr.addr1,(void (*)(void *))&_pxprpc__stepPull2,self);
@@ -187,9 +200,9 @@ static void _pxprpc__stepPull1(struct _pxprpc__ServCo *self){
 static void _pxprpc__stepAssign2(struct _pxprpc__ServCo *self){
     if(self->io1->get_error(self->io1,self->io1->read)!=NULL)return;
     _pxprpc__RefSlotsPut(self,self->hdr.addr1,self->refSlots[self->hdr.addr2]);
-    pthread_mutex_lock(&self->writeMutex);
-    self->io1->write(self->io1,4,(uint8_t *)&self->hdr.session,(void (*)(void *))_pxprpc__step1,self);
-    pthread_mutex_unlock(&self->writeMutex);
+    _pxprpc__responseStart(self,self->hdr.session);
+    _pxprpc__responseStop(self);
+    _pxprpc__step1(self);
 }
 static void _pxprpc__stepAssign1(struct _pxprpc__ServCo *self){
     self->io1->read(self->io1,8,(uint8_t*)&self->hdr.addr1,(void (*)(void *))&_pxprpc__stepAssign2,self);
@@ -200,9 +213,9 @@ static void _pxprpc__stepAssign1(struct _pxprpc__ServCo *self){
 static void _pxprpc__stepUnlink2(struct _pxprpc__ServCo *self){
     if(self->io1->get_error(self->io1,self->io1->read)!=NULL)return;
     _pxprpc__RefSlotsPut(self,self->hdr.addr1,NULL);
-    pthread_mutex_lock(&self->writeMutex);
-    self->io1->write(self->io1,4,(uint8_t *)&self->hdr.session,(void (*)(void *))_pxprpc__step1,self);
-    pthread_mutex_unlock(&self->writeMutex);
+    _pxprpc__responseStart(self,self->hdr.session);
+    _pxprpc__responseStop(self);
+    _pxprpc__step1(self);
 }
 static void _pxprpc__stepUnlink1(struct _pxprpc__ServCo *self){
     self->io1->read(self->io1,4,(uint8_t*)&self->hdr.addr1,(void (*)(void *))&_pxprpc__stepUnlink2,self);
@@ -213,10 +226,9 @@ static void _pxprpc__stepCall4(struct pxprpc_request *r, struct pxprpc_object *r
     struct _pxprpc__ServCo *self=r->server_context;
     _pxprpc__RefSlotsPut(r->server_context,r->dest_addr,result);
     r->result=result;
-    pthread_mutex_lock(&self->writeMutex);
-    self->io1->write(self->io1,4,(uint8_t *)&r->session,_pxprpc__nopcallback,NULL);
+    _pxprpc__responseStart(self,r->session);
     r->callable->writeResult(r->callable,r);
-    pthread_mutex_unlock(&self->writeMutex);
+    _pxprpc__responseStop(self);
     pxprpc__free(r);
 }
 
@@ -288,11 +300,10 @@ static void _pxprpc__stepGetFunc2(struct _pxprpc__ServCo *self){
             break;
         }
     }
-    pthread_mutex_lock(&self->writeMutex);
+    _pxprpc__responseStart(self,self->hdr.session);
     *(uint32_t *)(&self->writeBuf)=returnAddr;
-    self->io1->write(self->io1,4,(uint8_t *)&self->hdr.session,_pxprpc__nopcallback,NULL);
     self->io1->write(self->io1,4,self->writeBuf,(void (*)(void *))_pxprpc__step1,self);
-    pthread_mutex_unlock(&self->writeMutex);
+    _pxprpc__responseStop(self);
 }
 static void _pxprpc__stepGetFunc1(struct _pxprpc__ServCo *self){
     self->io1->read(self->io1,8,(uint8_t*)&self->hdr.addr1,(void(*)(void *))&_pxprpc__stepGetFunc2,self);
@@ -308,13 +319,12 @@ static int _pxprpc__stepClose1(struct _pxprpc__ServCo *self){
 
 //GetInfo handler
 static void _pxprpc__stepGetInfo1(struct _pxprpc__ServCo *self){
-    pthread_mutex_lock(&self->writeMutex);
+    _pxprpc__responseStart(self,self->hdr.session);
     uint32_t length=strlen(ServerInfo);
-    self->io1->write(self->io1,4,(uint8_t *)&self->hdr.session,_pxprpc__nopcallback,NULL);
     *(uint32_t *)(&self->writeBuf)=length;
     self->io1->write(self->io1,4,(uint8_t *)&length,_pxprpc__nopcallback,NULL);
     self->io1->write(self->io1,length,ServerInfo,(void (*)(void *))_pxprpc__step1,self);
-    pthread_mutex_unlock(&self->writeMutex);
+    _pxprpc__responseStop(self);
 }
 
 #include <stdio.h>
@@ -390,3 +400,6 @@ static pxprpc_server_api exports={
 extern int pxprpc_server_query_interface(pxprpc_server_api **outapi){
     *outapi=&exports;
 }
+
+
+#endif
