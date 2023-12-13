@@ -11,26 +11,22 @@
 #include <memory.h>
 
 
-#ifdef USE_PTHREAD_HEADER
-#include <pthread.h>
-#endif
-
 #define MACRO_TO_STR(x) #x
 #define MACRO_TO_STR2(s) MACRO_TO_STR(s)
 
 
 static const char *ServerInfo="server name:pxprpc for c\n"
-"version:1.0\n"
+"version:1.1\n"
 "reference slots size:" MACRO_TO_STR2(MAX_REFSLOTS_COUNT)"\n";
 
+static struct pxprpc_server_context_exports *pxprpc_server_context_exports(pxprpc_server_context context);
 
-
-static uint32_t _pxprpc__ref_AddRef(struct pxprpc_object *ref){
+static uint32_t _pxprpc__ref_AddRef(pxprpc_object *ref){
     ref->count++;
     return ref->count;
 }
 
-static uint32_t _pxprpc__ref_Release(struct pxprpc_object *ref){
+static uint32_t _pxprpc__ref_Release(pxprpc_object *ref){
     ref->count--;
     if(ref->count==0){
         pxprpc__free(ref);
@@ -40,7 +36,7 @@ static uint32_t _pxprpc__ref_Release(struct pxprpc_object *ref){
     }
 }
 
-static uint32_t _pxprpc__ref_bytes_Release(struct pxprpc_object *ref){
+static uint32_t _pxprpc__ref_bytes_Release(pxprpc_object *ref){
     void *bytes=ref->object1;
     if(ref->count==1){
         pxprpc__free(bytes);
@@ -48,8 +44,8 @@ static uint32_t _pxprpc__ref_bytes_Release(struct pxprpc_object *ref){
     return _pxprpc__ref_Release(ref);
 }
 
-static struct pxprpc_object *pxprpc_new_object(void *obj){
-    struct pxprpc_object *ref=pxprpc__malloc(sizeof(struct pxprpc_object));
+static pxprpc_object *pxprpc_new_object(void *obj){
+    pxprpc_object *ref=pxprpc__malloc(sizeof(pxprpc_object));
     ref->addRef=&_pxprpc__ref_AddRef;
     ref->release=&_pxprpc__ref_Release;
     ref->count=0;
@@ -57,15 +53,15 @@ static struct pxprpc_object *pxprpc_new_object(void *obj){
     return ref;
 }
 
-static struct pxprpc_object *pxprpc_new_bytes_object(uint32_t size){
-    struct pxprpc_object *ref=pxprpc_new_object(pxprpc__malloc(size+4));
+static pxprpc_object *pxprpc_new_bytes_object(uint32_t size){
+    pxprpc_object *ref=pxprpc_new_object(pxprpc__malloc(size+4));
     ref->type=1;
     *((int *)(ref->object1))=size;
     ref->release=_pxprpc__ref_bytes_Release;
     return ref;
 }
 
-static void pxprpc_fill_bytes_object(struct pxprpc_object *obj,uint8_t *data,int size){
+static void pxprpc_fill_bytes_object(pxprpc_object *obj,uint8_t *data,int size){
     struct pxprpc_bytes * bytes=(struct pxprpc_bytes *)obj->object1;
     if(size>bytes->length){
         size=bytes->length;
@@ -74,6 +70,15 @@ static void pxprpc_fill_bytes_object(struct pxprpc_object *obj,uint8_t *data,int
 }
 
 struct _pxprpc__ServCo{
+    struct pxprpc_abstract_io *io1;
+    struct pxprpc_server_context_exports exp;
+    int lengthOfNamedFuncs;
+    struct pxprpc_namedfunc *namedfuncs;
+    uint32_t status;
+    uint8_t writeBuf[4];
+    uint32_t sequenceSessionMask;
+    char sequenceMaskBitsCnt;
+    pxprpc_object *t1;
     #pragma pack(1)
     union{
         struct{
@@ -87,17 +92,7 @@ struct _pxprpc__ServCo{
         uint8_t hdrbuf[16];
     };
     #pragma pack()
-    struct pxprpc_abstract_io *io1;
-    struct pxprpc_object **refSlots;
-    int slotMaxHashOffset;
-    int slotsSize;
-    struct pxprpc_object *t1;
-    pthread_mutex_t writeMutex;
-    int lengthOfNamedFuncs;
-    struct pxprpc_namedfunc *namedfuncs;
-    uint32_t status;
-    uint8_t writeBuf[4];
-    uint32_t responseSession;
+    pxprpc_request *pendingReqTail;
 };
 
 #define _pxprpc__ServCoIsClosed(self) self->status&0x1
@@ -112,12 +107,11 @@ static int pxprpc_close(pxprpc_server_context server_context){
     }
     struct _pxprpc__ServCo *self=server_context;
     for(int i=0;i<MAX_REFSLOTS_COUNT;i++){
-        if(self->refSlots[i]!=NULL){
-            self->refSlots[i]->release(self->refSlots[i]);
+        if(self->exp.ref_slots[i]!=NULL){
+            self->exp.ref_slots[i]->release(self->exp.ref_slots[i]);
         }
     }
     self->status|=0x1;
-    pxprpc__free(self->refSlots);
     return 0;
 }
 
@@ -125,49 +119,110 @@ static int pxprpc_close(pxprpc_server_context server_context){
 static void _pxprpc__step1(struct _pxprpc__ServCo *self);
 
 static void _pxprpc__ServCoStart(struct _pxprpc__ServCo *self){
-    self->slotsSize=MAX_REFSLOTS_COUNT;
-    self->refSlots=pxprpc__malloc(sizeof(struct pxprpc_object)*MAX_REFSLOTS_COUNT);
-    memset(self->refSlots,0,sizeof(struct pxprpc_object)*MAX_REFSLOTS_COUNT);
-    pthread_mutex_init(&self->writeMutex,NULL);
+    self->exp.slots_size=MAX_REFSLOTS_COUNT;
+    self->exp.ref_slots=pxprpc__malloc(sizeof(pxprpc_object *)*MAX_REFSLOTS_COUNT);
+    self->pendingReqTail=NULL;
+    self->sequenceSessionMask=0xffffffff;
+    memset(self->exp.ref_slots,0,sizeof(pxprpc_object *)*MAX_REFSLOTS_COUNT);
     self->status=0;
     _pxprpc__step1(self);
 }
 
-static void _pxprpc__RefSlotsPut(struct _pxprpc__ServCo *self,uint32_t addr, struct pxprpc_object *ref2){
-    struct pxprpc_object *ref=self->refSlots[addr];
+static void _pxprpc__RefSlotsPut(struct _pxprpc__ServCo *self,uint32_t addr, pxprpc_object *ref2){
+    pxprpc_object *ref=self->exp.ref_slots[addr];
     if(ref!=NULL){
         ref->release(ref);
     }
     if(ref2!=NULL){
         ref2->addRef(ref2);
     }
-    self->refSlots[addr]=ref2; 
+    self->exp.ref_slots[addr]=ref2; 
 }
 
 static void _pxprpc__nopcallback(void *p){}
 
-static void _pxprpc__responseStart(struct _pxprpc__ServCo *self,uint32_t session){
-    self->responseSession=session;
-    pthread_mutex_lock(&self->writeMutex);
-    self->io1->write(self->io1,4,(uint8_t *)&self->responseSession,_pxprpc__nopcallback,self);
+static void _pxprpc__responseStart(pxprpc_request *r,void (*onCompleted)(void *),void *p){
+    struct _pxprpc__ServCo *self=r->server_context;
+    self->io1->write(self->io1,4,(const uint8_t *)&r->session,onCompleted,p);
 }
 
-static void _pxprpc__responseStop(struct _pxprpc__ServCo *self){
-    pthread_mutex_unlock(&self->writeMutex);
+
+static void _pxprpc__queueRequest(pxprpc_request *r){
+    struct _pxprpc__ServCo *self=r->server_context;
+    if(self->sequenceSessionMask==0xffffffff || self->sequenceSessionMask!=(r->session>>(32-self->sequenceMaskBitsCnt)) ){
+        r->inSequence=0;
+        r->nextStep(r);
+    }else{
+        r->inSequence=0;
+        for(pxprpc_request *r2=self->pendingReqTail;r2!=NULL;r2=r2->lastReq){
+            if((r2->session&0xffffff00) == (r->session&0xffffff00)){
+                r->lastReq=r2;
+                r->nextReq=r2->nextReq;
+                if(r->nextReq!=NULL){
+                    r->nextReq->lastReq=r;
+                }
+                r2->nextReq=r;
+                r->inSequence=1;
+                break;
+            }
+        }
+        if(r->inSequence==0){
+            if(self->pendingReqTail!=NULL){
+                self->pendingReqTail->nextReq=r;
+            }
+            r->lastReq=self->pendingReqTail;
+            r->inSequence=1;
+            r->nextStep(r);
+        }
+    }
+}
+
+static void _pxprpc__finishRequest(pxprpc_request *r){
+    r->finishCount--;
+    if(r->finishCount)return;
+    struct _pxprpc__ServCo *self=r->server_context;
+    if(r->inSequence){
+        if(r->lastReq!=NULL){
+            r->lastReq->nextReq=r->nextReq;
+        }
+        if(r->nextReq!=NULL){
+            r->nextReq->lastReq=r->lastReq;
+            if((r->nextReq->session&0xffffff00)==(r->session&0xffffff00)){
+                r->nextReq->nextStep(r->nextReq);
+            }
+        }
+    }
+    pxprpc__free(r);
+}
+
+static pxprpc_request *_pxprpc__newRequest(pxprpc_server_context context,uint32_t session){
+    pxprpc_request *r=pxprpc__malloc(sizeof(pxprpc_request));
+    r->session=session;
+    r->server_context=context;
+    r->finishCount=1;
+    r->nextReq=NULL;
+    r->lastReq=NULL;
+    return r;
 }
 
 //Push handler
+static void _pxprpc__stepPush4(pxprpc_request *r){
+    struct _pxprpc__ServCo *self=(struct _pxprpc__ServCo *)r->server_context;
+    _pxprpc__RefSlotsPut(self,r->dest_addr,(pxprpc_object *)r->callable_data);
+    _pxprpc__responseStart(r,(void *)&_pxprpc__finishRequest,r);
+}
 static void _pxprpc__stepPush3(struct _pxprpc__ServCo *self){
     if(self->io1->get_error(self->io1,self->io1->read)!=NULL)return;
-    _pxprpc__RefSlotsPut(self,self->hdr.addr1,self->t1);
-    _pxprpc__responseStart(self,self->hdr.session);
-    _pxprpc__responseStop(self);
+    pxprpc_request *r=_pxprpc__newRequest(self,self->hdr.session);
+    r->callable_data=self->t1;
+    r->dest_addr=self->hdr.addr1;
+    r->nextStep=_pxprpc__stepPush4;
+    _pxprpc__queueRequest(r);
     _pxprpc__step1(self);
 }
 static void _pxprpc__stepPush2(struct _pxprpc__ServCo *self){
     if(self->io1->get_error(self->io1,self->io1->read)!=NULL)return;
     self->t1=pxprpc_new_bytes_object(self->hdr.length1);
-
     self->io1->read(self->io1,self->hdr.length1,((struct pxprpc_bytes *)self->t1->object1)->data,
       (void (*)(void *))&_pxprpc__stepPush3,self);
 }
@@ -176,32 +231,44 @@ static void _pxprpc__stepPush1(struct _pxprpc__ServCo *self){
 }
 
 //Pull handler
-static void _pxprpc__stepPull2(struct _pxprpc__ServCo *self){
-    if(self->io1->get_error(self->io1,self->io1->read)!=NULL)return;
-    int destAddr=self->hdr.addr1;
-    
-    struct pxprpc_bytes *bytes=self->refSlots[destAddr]->object1;
+static void _pxprpc__stepPull3(pxprpc_request *r){
+    struct _pxprpc__ServCo *self=(struct _pxprpc__ServCo *)r->server_context;
+    struct pxprpc_bytes *bytes=pxprpc_server_context_exports(r->server_context)->ref_slots[r->dest_addr]->object1;
 
-    _pxprpc__responseStart(self,self->hdr.session);
+    _pxprpc__responseStart(r,_pxprpc__nopcallback,NULL);
     if(bytes!=NULL){
         self->io1->write(self->io1,4,(uint8_t *)&bytes->length,_pxprpc__nopcallback,NULL);
-        self->io1->write(self->io1,bytes->length,bytes->data,(void (*)(void *))_pxprpc__step1,self);
+        self->io1->write(self->io1,bytes->length,bytes->data,(void *)_pxprpc__finishRequest,r);
     }else{
         *(uint32_t *)(&self->writeBuf)=0xffffffff;
-        self->io1->write(self->io1,4,self->writeBuf,(void (*)(void *))_pxprpc__step1,self);
+        self->io1->write(self->io1,4,self->writeBuf,(void *)_pxprpc__finishRequest,r);
     }
-    _pxprpc__responseStop(self);
+}
+static void _pxprpc__stepPull2(struct _pxprpc__ServCo *self){
+    if(self->io1->get_error(self->io1,self->io1->read)!=NULL)return;
+    pxprpc_request *r=_pxprpc__newRequest(self,self->hdr.session);
+    r->dest_addr=self->hdr.addr1;
+    r->nextStep=_pxprpc__stepPull3;
+    _pxprpc__queueRequest(r);
+    _pxprpc__step1(self);
 }
 static void _pxprpc__stepPull1(struct _pxprpc__ServCo *self){
     self->io1->read(self->io1,4,(uint8_t*)&self->hdr.addr1,(void (*)(void *))&_pxprpc__stepPull2,self);
 }
 
 //Assign handler
+static void _pxprpc__stepAssign3(pxprpc_request *r){
+    struct _pxprpc__ServCo *self=(struct _pxprpc__ServCo *)r->server_context;
+    _pxprpc__RefSlotsPut(self,r->dest_addr,*(pxprpc_object **)r->callable_data);
+    _pxprpc__responseStart(r,(void *)&_pxprpc__finishRequest,r);
+}
 static void _pxprpc__stepAssign2(struct _pxprpc__ServCo *self){
     if(self->io1->get_error(self->io1,self->io1->read)!=NULL)return;
-    _pxprpc__RefSlotsPut(self,self->hdr.addr1,self->refSlots[self->hdr.addr2]);
-    _pxprpc__responseStart(self,self->hdr.session);
-    _pxprpc__responseStop(self);
+    pxprpc_request *r=_pxprpc__newRequest(self,self->hdr.session);
+    r->dest_addr=self->hdr.addr1;
+    r->callable_data=self->exp.ref_slots+self->hdr.addr2;
+    r->nextStep=_pxprpc__stepAssign3;
+    _pxprpc__queueRequest(r);
     _pxprpc__step1(self);
 }
 static void _pxprpc__stepAssign1(struct _pxprpc__ServCo *self){
@@ -210,11 +277,18 @@ static void _pxprpc__stepAssign1(struct _pxprpc__ServCo *self){
 
 
 //Unlink handler
+static void _pxprpc__stepUnlink3(pxprpc_request *r){
+    struct _pxprpc__ServCo *self=(struct _pxprpc__ServCo *)r->server_context;
+    _pxprpc__RefSlotsPut(self,r->dest_addr,NULL);
+    _pxprpc__responseStart(r,(void *)&_pxprpc__finishRequest,r);
+}
 static void _pxprpc__stepUnlink2(struct _pxprpc__ServCo *self){
     if(self->io1->get_error(self->io1,self->io1->read)!=NULL)return;
-    _pxprpc__RefSlotsPut(self,self->hdr.addr1,NULL);
-    _pxprpc__responseStart(self,self->hdr.session);
-    _pxprpc__responseStop(self);
+    pxprpc_request *r=_pxprpc__newRequest(self,self->hdr.session);
+    r->dest_addr=self->hdr.addr1;
+    r->callable_data=self->exp.ref_slots+self->hdr.addr2;
+    r->nextStep=_pxprpc__stepUnlink3;
+    _pxprpc__queueRequest(r);
     _pxprpc__step1(self);
 }
 static void _pxprpc__stepUnlink1(struct _pxprpc__ServCo *self){
@@ -222,32 +296,33 @@ static void _pxprpc__stepUnlink1(struct _pxprpc__ServCo *self){
 }
 
 //Call Handler
-static void _pxprpc__stepCall4(struct pxprpc_request *r, struct pxprpc_object *result){
+static void _pxprpc__stepCall5(pxprpc_request *r, pxprpc_object *result){
     struct _pxprpc__ServCo *self=r->server_context;
     _pxprpc__RefSlotsPut(r->server_context,r->dest_addr,result);
     r->result=result;
-    _pxprpc__responseStart(self,r->session);
-    r->callable->writeResult(r->callable,r);
-    _pxprpc__responseStop(self);
-    pxprpc__free(r);
+    r->finishCount=2;
+    _pxprpc__responseStart(r,(void *)&_pxprpc__finishRequest,r);
+    r->callable->writeResult(r->callable,r,_pxprpc__finishRequest);
 }
 
-static void _pxprpc__stepCall3(struct pxprpc_request *r){
+static void _pxprpc__stepCall4(pxprpc_request *r){
+    r->callable->call(r->callable,r,&_pxprpc__stepCall5);
+}
+
+static void _pxprpc__stepCall3(pxprpc_request *r){
     struct _pxprpc__ServCo *self=(struct _pxprpc__ServCo *)r->server_context;
-    r->callable->call(r->callable,r,&_pxprpc__stepCall4);
+    r->nextStep=_pxprpc__stepCall4;
+    _pxprpc__queueRequest(r);
     _pxprpc__step1(self);
 }
 static void _pxprpc__stepCall2(struct _pxprpc__ServCo *self){
     if(self->io1->get_error(self->io1,self->io1->read)!=NULL)return;
-    struct pxprpc_request *req=(struct pxprpc_request *)pxprpc__malloc(sizeof(struct pxprpc_request));
-    req->session=self->hdr.session;
-    req->io1=self->io1;
-    req->ref_slots=self->refSlots;
-    req->dest_addr=self->hdr.addr1;
-    req->server_context=self;
-    struct pxprpc_callable *func=(struct pxprpc_callable *)((struct pxprpc_object *)self->refSlots[self->hdr.addr2])->object1;
-    req->callable=func;
-    func->readParameter(func,req,&_pxprpc__stepCall3);
+    pxprpc_request *r=_pxprpc__newRequest(self,self->hdr.session);
+    r->io1=self->io1;
+    r->dest_addr=self->hdr.addr1;
+    pxprpc_callable *func=(pxprpc_callable *)((pxprpc_object *)self->exp.ref_slots[self->hdr.addr2])->object1;
+    r->callable=func;
+    func->readParameter(func,r,&_pxprpc__stepCall3);
 }
 static void _pxprpc__stepCall1(struct _pxprpc__ServCo *self){
     self->io1->read(self->io1,8,(uint8_t*)&self->hdr.addr1,(void (*)(void *))&_pxprpc__stepCall2,self);
@@ -286,24 +361,32 @@ static int _pxprpc__strcmp2(const char *str1,int *str1Len,const char *str2,int *
     return r;
 }
 //GetFunc handler
-static void _pxprpc__stepGetFunc2(struct _pxprpc__ServCo *self){
-    if(self->io1->get_error(self->io1,self->io1->read)!=NULL)return;
-    struct pxprpc_bytes *bs=(struct pxprpc_bytes *)self->refSlots[self->hdr.addr2]->object1;
+static void _pxprpc__stepGetFunc3(pxprpc_request *r){
+    struct _pxprpc__ServCo *self=(struct _pxprpc__ServCo *)r->server_context;
+    struct pxprpc_bytes *bs=(struct pxprpc_bytes *)(*(pxprpc_object **)r->callable_data)->object1;
     int returnAddr=0;
     int lenOut=-1;
     for(int i=0;i<self->lengthOfNamedFuncs;i++){
         lenOut=-1;
         int cmp1=_pxprpc__strcmp2(self->namedfuncs[i].name,&lenOut,(const char *)bs->data,&bs->length);
         if(!cmp1){
-            _pxprpc__RefSlotsPut(self,self->hdr.addr1,pxprpc_new_object(self->namedfuncs[i].callable));
-            returnAddr=self->hdr.addr1;
+            _pxprpc__RefSlotsPut(self,r->dest_addr,pxprpc_new_object(self->namedfuncs[i].callable));
+            returnAddr=r->dest_addr;
             break;
         }
     }
-    _pxprpc__responseStart(self,self->hdr.session);
+    _pxprpc__responseStart(r,_pxprpc__nopcallback,NULL);
     *(uint32_t *)(&self->writeBuf)=returnAddr;
-    self->io1->write(self->io1,4,self->writeBuf,(void (*)(void *))_pxprpc__step1,self);
-    _pxprpc__responseStop(self);
+    self->io1->write(self->io1,4,self->writeBuf,(void *)_pxprpc__finishRequest,r);
+}
+static void _pxprpc__stepGetFunc2(struct _pxprpc__ServCo *self){
+    if(self->io1->get_error(self->io1,self->io1->read)!=NULL)return;
+    pxprpc_request *r=_pxprpc__newRequest(self,self->hdr.session);
+    r->dest_addr=self->hdr.addr1;
+    r->callable_data=self->exp.ref_slots+self->hdr.addr2;
+    r->nextStep=_pxprpc__stepGetFunc3;
+    _pxprpc__queueRequest(r);
+    _pxprpc__step1(self);
 }
 static void _pxprpc__stepGetFunc1(struct _pxprpc__ServCo *self){
     self->io1->read(self->io1,8,(uint8_t*)&self->hdr.addr1,(void(*)(void *))&_pxprpc__stepGetFunc2,self);
@@ -318,13 +401,62 @@ static int _pxprpc__stepClose1(struct _pxprpc__ServCo *self){
 
 
 //GetInfo handler
-static void _pxprpc__stepGetInfo1(struct _pxprpc__ServCo *self){
-    _pxprpc__responseStart(self,self->hdr.session);
+static void _pxprpc__stepGetInfo2(pxprpc_request *r){
+    struct _pxprpc__ServCo *self=(struct _pxprpc__ServCo *)r->server_context;
+    _pxprpc__responseStart(r,_pxprpc__nopcallback,NULL);
     uint32_t length=strlen(ServerInfo);
     *(uint32_t *)(&self->writeBuf)=length;
     self->io1->write(self->io1,4,(uint8_t *)&length,_pxprpc__nopcallback,NULL);
-    self->io1->write(self->io1,length,ServerInfo,(void (*)(void *))_pxprpc__step1,self);
-    _pxprpc__responseStop(self);
+    self->io1->write(self->io1,length,ServerInfo,(void *)&_pxprpc__finishRequest,r);
+}
+static void _pxprpc__stepGetInfo1(struct _pxprpc__ServCo *self){
+    pxprpc_request *r=_pxprpc__newRequest(self,self->hdr.session);
+    r->nextStep=_pxprpc__stepGetInfo2;
+    _pxprpc__queueRequest(r);
+    _pxprpc__step1(self);
+}
+
+
+static void _pxprpc__stepBuffer1(struct _pxprpc__ServCo *self){
+    /* buffer command just ignored now. */
+}
+
+static void _pxprpc__stepSequence3(pxprpc_request *r){
+    struct _pxprpc__ServCo *self=(struct _pxprpc__ServCo *)r->server_context;
+    uint32_t sessionMask=r->dest_addr;
+    if(sessionMask==0xffffffff){
+        self->sequenceSessionMask=0xffffffff;
+        pxprpc_request *req;
+        req=self->pendingReqTail;
+        while(req!=NULL){
+            req->nextStep(req);
+            req=req->lastReq;
+        }
+    }else{
+        self->sequenceMaskBitsCnt=sessionMask&0xff;
+        self->sequenceSessionMask=sessionMask>>(32-self->sequenceMaskBitsCnt);
+    }
+}
+
+static void _pxprpc__stepSequence2(struct _pxprpc__ServCo *self){
+    pxprpc_request *r=_pxprpc__newRequest(self,self->hdr.session);
+    r->dest_addr=self->hdr.addr1;
+    r->nextStep=_pxprpc__stepSequence3;
+    _pxprpc__queueRequest(r);
+    _pxprpc__step1(self);
+}
+static void _pxprpc__stepSequence1(struct _pxprpc__ServCo *self){
+    self->io1->read(self->io1,8,(uint8_t*)&self->hdr.addr1,(void *)&_pxprpc__stepSequence2,self);
+}
+
+static void _pxprpc_stepClose2(pxprpc_request *r){
+    pxprpc_close(r->server_context);
+}
+static void _pxprpc_stepClose1(struct _pxprpc__ServCo *self){
+    pxprpc_request *r=_pxprpc__newRequest(self,self->hdr.session);
+    r->nextStep=_pxprpc_stepClose2;
+    _pxprpc__queueRequest(r);
+    _pxprpc__step1(self);
 }
 
 #include <stdio.h>
@@ -355,6 +487,12 @@ static void _pxprpc__step2(struct _pxprpc__ServCo *self){
         break;
         case 8:
         _pxprpc__stepGetInfo1(self);
+        break;
+        case 9:
+        _pxprpc__stepSequence1(self);
+        break;
+        case 10:
+        _pxprpc__stepBuffer1(self);
         break;
     }
 }
@@ -388,13 +526,18 @@ static int pxprpc_free_context(pxprpc_server_context *server_context){
     struct _pxprpc__ServCo *ctx=(struct _pxprpc__ServCo *)*server_context;
     pxprpc_close(ctx);
     pxprpc__free(*server_context);
+    server_context=NULL;
     return 0;
 }
 
+static struct pxprpc_server_context_exports *pxprpc_server_context_exports(pxprpc_server_context context){
+    struct _pxprpc__ServCo *self=context;
+    return &self->exp;
+}
 
 static pxprpc_server_api exports={
     &pxprpc_new_server_context,&pxprpc_start_serve,&pxprpc_closed,&pxprpc_close,&pxprpc_free_context,
-    &pxprpc_new_object,&pxprpc_new_bytes_object,&pxprpc_fill_bytes_object
+    &pxprpc_new_object,&pxprpc_new_bytes_object,&pxprpc_fill_bytes_object,&pxprpc_server_context_exports
 };
 
 extern int pxprpc_server_query_interface(pxprpc_server_api **outapi){

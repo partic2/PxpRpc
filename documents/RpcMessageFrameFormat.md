@@ -175,15 +175,28 @@ reference slots size:256
 "reference slots capacity" indicate how many slots can client use. Client should ensure that the slot address is less than this value.
 */
 
-//function:buffer enable write buffer for session match the bufferedSessionMask), for version>=1.1.
+
+/* function:sequence. Requests with same sid(session&0xffffff00) ,
+which match the sessionMask, will be executed in sequence (executed after last queued request finished). , for version>=1.1.
+*/
 struct buffer_request{
     struct{
-        uint8_t opcode;  // 8
+        uint8_t opcode;  // 9
         uint8_t id1;
         uint16_t id2;
     } session;
-    //server should buffer writing data for session match the bufferedSessionMask(SA:about session mask)
-    uint32_t bufferedSessionMask;
+    //(SA:about session mask)
+    uint32_t sessionMask;
+};
+//sequence has no response.
+
+//function:buffer. switch write buffer(enable or disable, depend on current status), for version>=1.1. This is optional function, server can do nothing for this request
+struct buffer_request{
+    struct{
+        uint8_t opcode;  // 10
+        uint8_t id1;
+        uint16_t id2;
+    } session;
 };
 //buffer has no response.
 
@@ -192,7 +205,7 @@ about session mask
 if(sessionMask==0xffffffff){
     //no session mask, all session treat as mismatched.
 }else{
-    maskBitsCnt=bufferedSession&0xff;
+    maskBitsCnt=sessionMask&0xff;
     maskPattern=sessionMask>>(32-maskBitsCnt);
 }
 Mask is matched when (session>>(32-maskBitsCnt))==maskPattern

@@ -7,10 +7,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.channels.ByteChannel;
 import java.nio.charset.Charset;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.locks.Lock;
@@ -29,8 +26,9 @@ public class ServerContext implements Closeable {
         builtIn = new BuiltInFuncList();
         funcMap.put("builtin", builtIn);
     }
-    public int bufferedSession=0xffffffff;
-    public int bufferedMaskBitsCnt=0;
+    public int sequenceSession=0xffffffff;
+    public int sequenceMaskBitsCnt=0;
+    public boolean bufferEnabled=false;
     public void serve() throws IOException {
         while (running) {
             PxpRequest r = new PxpRequest();
@@ -46,43 +44,46 @@ public class ServerContext implements Closeable {
                     byte[] buf=new byte[len];
                     Utils.readf(chan, ByteBuffer.wrap(buf));
                     r.parameter = buf;
-                    push(r);
+                    queueRequest(r);
                     break;
                 case 2:
                     r.srcAddr = Utils.readInt32(chan);
-                    pull(r);
+                    queueRequest(r);
                     break;
                 case 3:
                     r.destAddr = Utils.readInt32(chan);
                     r.srcAddr = Utils.readInt32(chan);
-                    assign(r);
+                    queueRequest(r);
                     break;
                 case 4:
                     r.destAddr = Utils.readInt32(chan);
-                    unlink(r);
+                    queueRequest(r);
                     break;
                 case 5:
                     r.destAddr = Utils.readInt32(chan);
                     r.srcAddr = Utils.readInt32(chan);
                     r.callable = (PxpCallable) refSlots[r.srcAddr].get();
                     r.callable.readParameter(r);
-                    call(r);
+                    queueRequest(r);
                     break;
                 case 6:
                     r.destAddr = Utils.readInt32(chan);
                     r.srcAddr = Utils.readInt32(chan);
-                    getFunc(r);
+                    queueRequest(r);
                     break;
                 case 7:
                     close();
                     running = false;
                     break;
                 case 8:
-                    getInfo(r);
+                    queueRequest(r);
                     break;
                 case 9:
                     r.parameter=Utils.readInt32(chan);
-                    buffer(r);
+                    queueRequest(r);
+                    break;
+                case 10:
+                    queueRequest(r);
                     break;
 
             }
@@ -97,7 +98,84 @@ public class ServerContext implements Closeable {
             r.addRef();
         refSlots[addr] = r;
     }
-
+    HashMap<Integer,PxpRequest> pendingRequests=new HashMap<Integer, PxpRequest>();
+    public void queueRequest(final PxpRequest r)throws IOException{
+        if(sequenceSession==0xffffffff || (r.session>>(32-sequenceMaskBitsCnt)!=sequenceSession)){
+            processRequest(r);
+            return;
+        }
+        r.inSequence=true;
+        synchronized (pendingRequests){
+            PxpRequest r2=pendingRequests.get(r.session>>8);
+            if(r2==null){
+                pendingRequests.put(r.session>>8,r);
+                processRequest(r);
+            }else{
+                while(r2.nextPending!=null){
+                    r2=r2.nextPending;
+                }
+                r2.nextPending=r;
+            }
+        }
+    }
+    //return next request to process
+    public PxpRequest finishRequest(final PxpRequest r)throws IOException{
+        if(r.inSequence){
+            synchronized (pendingRequests){
+                if(r.nextPending!=null){
+                    pendingRequests.put(r.session>>8,r.nextPending);
+                    return r.nextPending;
+                }else{
+                    pendingRequests.remove(r.session>>8);
+                    return null;
+                }
+            }
+        }else{
+            return null;
+        }
+    }
+    public void processRequest(PxpRequest r) throws IOException {
+        while(r!=null){
+            switch(r.opcode){
+                case 1:
+                    push(r);
+                    r=finishRequest(r);
+                    break;
+                case 2:
+                    pull(r);
+                    r=finishRequest(r);
+                    break;
+                case 3:
+                    assign(r);
+                    r=finishRequest(r);
+                    break;
+                case 4:
+                    unlink(r);
+                    r=finishRequest(r);
+                    break;
+                case 5:
+                    call(r);
+                    r=null;
+                    break;
+                case 6:
+                    getFunc(r);
+                    r=finishRequest(r);
+                    break;
+                case 8:
+                    getInfo(r);
+                    r=finishRequest(r);
+                    break;
+                case 9:
+                    sequence(r);
+                    r=finishRequest(r);
+                    break;
+                case 10:
+                    buffer(r);
+                    r=finishRequest(r);
+                    break;
+            }
+        }
+    }
     public void push(final PxpRequest r) throws IOException {
         putRefSlots(r.destAddr, new PxpObject(r.parameter));
         PxpChannel chan=responseStart(r.session);
@@ -143,7 +221,6 @@ public class ServerContext implements Closeable {
     }
 
     public void call(final PxpRequest r) throws IOException {
-        r.pending = true;
         r.callable.call(r, r);
     }
 
@@ -184,16 +261,28 @@ public class ServerContext implements Closeable {
             responseStop(chan);
         }
     }
-    public void buffer(final PxpRequest r) throws IOException {
-        bufferedSession=(int)r.parameter;
-        if(bufferedSession==0xffffffff){
-            //no buffer, default value.
-            chan.setBuf(false);
+    public void sequence(final PxpRequest r) throws IOException{
+        sequenceSession=(int)r.parameter;
+        if(sequenceSession==0xffffffff){
+            //flush sequence, execute immdiately, default value
+            synchronized (pendingRequests){
+                for(PxpRequest r2:pendingRequests.values()){
+                    while(r2.nextPending!=null){
+                        PxpRequest r3=r2;
+                        r2=r2.nextPending;
+                        r3.nextPending=null;
+                        processRequest(r2);
+                    }
+                }
+            }
         }else{
-            chan.setBuf(true);
-            bufferedMaskBitsCnt=bufferedSession&0xff;
-            bufferedSession=bufferedSession>>(32-bufferedMaskBitsCnt);
+            sequenceMaskBitsCnt=sequenceSession&0xff;
+            sequenceSession=sequenceSession>>(32-sequenceMaskBitsCnt);
         }
+    }
+    public void buffer(final PxpRequest r) throws IOException {
+        this.bufferEnabled=!this.bufferEnabled;
+        chan.setBuf(this.bufferEnabled);
     }
 
     public PxpChannel responseStart(int session) throws IOException {
@@ -203,13 +292,6 @@ public class ServerContext implements Closeable {
         return chan;
     }
     public void responseStop(PxpChannel chan) throws IOException {
-        if(bufferedSession!=0xffffffff){
-            if((chan.boundSession>>(32-bufferedMaskBitsCnt))!=bufferedSession){
-                chan.flush();
-            }else{
-                System.currentTimeMillis();
-            }
-        }
         writeLock().unlock();
     }
 

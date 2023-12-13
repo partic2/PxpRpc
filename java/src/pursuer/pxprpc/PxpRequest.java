@@ -14,13 +14,13 @@ public class PxpRequest implements AsyncReturn<Object> {
     public Object parameter;
     public Object result;
     public PxpCallable callable;
-    public boolean pending = false;
     protected PxpChannel chan;
+    public PxpRequest nextPending=null;
+    public boolean inSequence=false;
     @Override
     public void result(Object result) {
         this.result = result;
         context.putRefSlots(destAddr, new PxpObject(result));
-        pending = false;
         try {
             this.chan = context.responseStart(session);
             try {
@@ -28,6 +28,7 @@ public class PxpRequest implements AsyncReturn<Object> {
             } catch (IOException ex) {
             } finally {
                 context.responseStop(chan);
+                context.processRequest(context.finishRequest(this));
             }
         } catch (Exception ex) {
         }

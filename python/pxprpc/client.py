@@ -16,7 +16,6 @@ class RpcConnection(object):
         self.in2:asyncio.StreamReader=None #type:ignore
         self.out2:asyncio.StreamWriter=None #type:ignore
         self.__waitingSession:typing.Dict[int,asyncio.Future]=dict()
-        self.__nextSid=0
         self.__readingResp=None
         self.__writeLock=asyncio.Lock()
     
@@ -29,7 +28,7 @@ class RpcConnection(object):
         try:
             while self.running:
                 sid=struct.unpack('<I',await self.in2.readexactly(4))[0]
-                log1.debug('client get sid:%s',sid)
+                log1.debug('client get sid:%s',hex(sid))
                 fut=self.__waitingSession[sid]
                 del self.__waitingSession[sid]
                 self.__readingResp=asyncio.Future()
@@ -40,15 +39,9 @@ class RpcConnection(object):
                 waiting.set_exception(exc)
             log1.debug('client error:%s',repr(exc))
             self.running=False
-
-    
-    async def __newSession(self,opcode:int)->int:
-        sid=self.__nextSid
-        self.__nextSid+=0x100
-        return sid|opcode
         
-    async def push(self,destAddr:int,data:bytes):
-        sid=await self.__newSession(1)
+    async def push(self,destAddr:int,data:bytes,sid:int=0x100):
+        sid=sid|1
         respFut=asyncio.Future()
         self.__waitingSession[sid]=respFut
         await self.__writeLock.acquire()
@@ -60,8 +53,8 @@ class RpcConnection(object):
         await respFut
         NotNone(self.__readingResp).set_result(None)
     
-    async def pull(self,srcAddr:int)->bytes:
-        sid=await self.__newSession(2)
+    async def pull(self,srcAddr:int,sid:int=0x100)->bytes:
+        sid=sid|2
         respFut=asyncio.Future()
         self.__waitingSession[sid]=respFut
         await self.__writeLock.acquire()
@@ -77,8 +70,8 @@ class RpcConnection(object):
         NotNone(self.__readingResp).set_result(None)
         return data
 
-    async def assign(self,destAddr:int,srcAddr:int):
-        sid=await self.__newSession(3)
+    async def assign(self,destAddr:int,srcAddr:int,sid:int=0x100):
+        sid=sid|3
         respFut=asyncio.Future()
         self.__waitingSession[sid]=respFut
         await self.__writeLock.acquire()
@@ -89,8 +82,8 @@ class RpcConnection(object):
         await respFut
         NotNone(self.__readingResp).set_result(None)
 
-    async def unlink(self,destAddr:int):
-        sid=await self.__newSession(4)
+    async def unlink(self,destAddr:int,sid:int=0x100):
+        sid=sid|4
         respFut=asyncio.Future()
         self.__waitingSession[sid]=respFut
         await self.__writeLock.acquire()
@@ -101,8 +94,8 @@ class RpcConnection(object):
         await respFut
         NotNone(self.__readingResp).set_result(None)
 
-    async def call(self,destAddr:int,fnAddr:int,argsData:bytes,returnLength:int=4):
-        sid=await self.__newSession(5)
+    async def call(self,destAddr:int,fnAddr:int,argsData:bytes,returnLength:int=4,sid:int=0x100):
+        sid=sid|5
         respFut=asyncio.Future()
         self.__waitingSession[sid]=respFut
         await self.__writeLock.acquire()
@@ -116,8 +109,8 @@ class RpcConnection(object):
         NotNone(self.__readingResp).set_result(None)
         return data
 
-    async def getFunc(self,destAddr:int,fnName:int):
-        sid=await self.__newSession(6)
+    async def getFunc(self,destAddr:int,fnName:int,sid:int=0x100):
+        sid=sid|6
         respFut=asyncio.Future()
         self.__waitingSession[sid]=respFut
         await self.__writeLock.acquire()
@@ -130,8 +123,8 @@ class RpcConnection(object):
         NotNone(self.__readingResp).set_result(None)
         return t1
 
-    async def getInfo(self):
-        sid=await self.__newSession(8)
+    async def getInfo(self,sid:int=0x100):
+        sid=sid|8
         respFut=asyncio.Future()
         self.__waitingSession[sid]=respFut
         await self.__writeLock.acquire()
@@ -147,8 +140,8 @@ class RpcConnection(object):
         NotNone(self.__readingResp).set_result(None)
         return data.decode('utf-8')
 
-    async def close(self):
-        sid=await self.__newSession(7)
+    async def close(self,sid:int=0x100):
+        sid=sid|7
         respFut=asyncio.Future()
         await self.__writeLock.acquire()
         try:
@@ -156,6 +149,20 @@ class RpcConnection(object):
         finally:
             self.__writeLock.release()
             self.out2.close()
+
+    async def sequence(self,mask:int,maskCnt:int,sid:int=0x100):
+        sid=sid|9
+        respFut=asyncio.Future()
+        self.__waitingSession[sid]=respFut
+        await self.__writeLock.acquire()
+        try:
+            self.out2.write(struct.pack('<I',sid,(mask<<(32-maskCnt))|maskCnt))
+        finally:
+            self.__writeLock.release()
+        await respFut
+        t1=struct.unpack('<I',await self.in2.readexactly(4))[0]
+        NotNone(self.__readingResp).set_result(None)
+        return t1
 
 
 class RpcExtendClientObject():

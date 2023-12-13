@@ -24,82 +24,87 @@ static void testNopCallback(void *p){};
 class fnPrintString:public pxprpc::NamedFunctionPP{
     public:
     fnPrintString(std::string funcName):NamedFunctionPP(funcName){};
-    virtual void readParameter(struct pxprpc_request *r,std::function<void()> doneCallback){
+    virtual void readParameter(pxprpc_request *r,std::function<void()> doneCallback){
         auto buf=std::make_shared<std::vector<uint8_t>>(4);
-        this->readFromIo(r->io1,buf->data(),4,[doneCallback,buf,r](pxprpc_abstract_io *io1,const char *error)->void{
+        auto iopp=new pxprpc::IoPP(r->io1);
+        iopp->read(4,buf->data(),[doneCallback,buf,r](pxprpc::IoPP *self,const char *error)->void{
             if(error){
                 std::cout<<"get error:"<<error<<std::endl;
                 doneCallback();
             }
             auto addr=*reinterpret_cast<uint32_t *>(buf->data());
-            r->callable_data=r->ref_slots[addr]->object1;
+            r->callable_data=pxprpc::RpcRawBytes::at(r->server_context,addr);
             doneCallback();
+            delete self;
         });
         
     };
-    virtual void call(struct pxprpc_request *r,std::function<void(pxprpc::RpcObject *)> onResult){
-        auto str1=reinterpret_cast<char *>(&static_cast<pxprpc_bytes *>(r->callable_data)->data);
-        auto len=static_cast<pxprpc_bytes *>(r->callable_data)->length;
-        if(str1[len-1]!=0){
-            str1[len-1]=0;
-        }
-        std::cout<<str1<<std::endl;
+    virtual void call(pxprpc_request *r,std::function<void(pxprpc::RpcObject *)> onResult){
+        auto str1=static_cast<pxprpc::RpcRawBytes *>(r->callable_data);
+        std::cout<<str1->asString()<<std::endl;
+        delete str1;
         onResult(new pxprpc::RpcRawBytes((uint8_t *)"hello client",strlen("hello client")));
     };
-    virtual void writeResult(struct pxprpc_request *r){
-        r->io1->write(r->io1,4,reinterpret_cast<const uint8_t *>(&constZero),testNopCallback,NULL);
+    virtual void writeResult(pxprpc_request *r,std::function<void()> doneCallback){
+        auto iopp=new pxprpc::IoPP(r->io1);
+        iopp->write(4,reinterpret_cast<const uint8_t *>(&constZero),[doneCallback](pxprpc::IoPP *self,const char *error)->void{
+            doneCallback();
+        });
     };
 };
 
 class fnPrintStringUnderline:public pxprpc::NamedFunctionPP{
     public:
     fnPrintStringUnderline(std::string funcName):NamedFunctionPP(funcName){};
-    virtual void readParameter(struct pxprpc_request *r,std::function<void()> doneCallback){
+    virtual void readParameter(pxprpc_request *r,std::function<void()> doneCallback){
         auto buf=std::make_shared<std::vector<uint8_t>>(4);
-        this->readFromIo(r->io1,buf->data(),4,[doneCallback,buf,r](pxprpc_abstract_io *io1,const char *error)->void{
+        auto iopp=new pxprpc::IoPP(r->io1);
+        iopp->read(4,buf->data(),[doneCallback,buf,r](pxprpc::IoPP *self,const char *error)->void{
             if(error){
                 std::cout<<"get error:"<<error<<std::endl;
                 doneCallback();
             }
             auto addr=*reinterpret_cast<uint32_t *>(buf->data());
-            r->callable_data=r->ref_slots[addr]->object1;
+            r->callable_data=pxprpc::RpcRawBytes::at(r->server_context,addr);
             doneCallback();
+            delete self;
         });
     };
-    virtual void call(struct pxprpc_request *r,std::function<void(pxprpc::RpcObject *)> onResult){
-        auto str1=reinterpret_cast<char *>(&static_cast<pxprpc_bytes *>(r->callable_data)->data);
-        auto len=static_cast<pxprpc_bytes *>(r->callable_data)->length;
-        if(str1[len-1]!=0){
-            str1[len-1]=0;
-        }
-        std::cout<<"__"<<str1<<std::endl;
+    virtual void call(pxprpc_request *r,std::function<void(pxprpc::RpcObject *)> onResult){
+        auto str1=static_cast<pxprpc::RpcRawBytes *>(r->callable_data);
+        std::cout<<"__"<<str1->asString()<<std::endl;
+        delete str1;
         onResult(new pxprpc::RpcRawBytes((uint8_t *)"hello client",strlen("hello client")));
     };
-    virtual void writeResult(struct pxprpc_request *r){
-         r->io1->write(r->io1,4,reinterpret_cast<const uint8_t *>(&constZero),testNopCallback,NULL);
+    virtual void writeResult(pxprpc_request *r,std::function<void()> doneCallback){
+        auto iopp=new pxprpc::IoPP(r->io1);
+        iopp->write(4,reinterpret_cast<const uint8_t *>(&constZero),[doneCallback](pxprpc::IoPP *self,const char *error)->void{
+            doneCallback();
+        });
     };
 };
 
 class fnPrintSerilizedArgs:public pxprpc::NamedFunctionPP{
     public:
     fnPrintSerilizedArgs(std::string funcName):NamedFunctionPP(funcName){};
-    virtual void readParameter(struct pxprpc_request *r,std::function<void()> doneCallback){
+    virtual void readParameter(pxprpc_request *r,std::function<void()> doneCallback){
         auto buf=std::make_shared<std::vector<uint8_t>>(4);
-        this->readFromIo(r->io1,buf->data(),4,[doneCallback,buf,r](pxprpc_abstract_io *io1,const char *error)->void{
+        auto iopp=new pxprpc::IoPP(r->io1);
+        iopp->read(4,buf->data(),[doneCallback,buf,r](pxprpc::IoPP *self,const char *error)->void{
             if(error){
                 std::cout<<"get error:"<<error<<std::endl;
                 doneCallback();
             }
             auto addr=*reinterpret_cast<uint32_t *>(buf->data());
-            r->callable_data=r->ref_slots[addr]->object1;
+            r->callable_data=pxprpc::RpcRawBytes::at(r->server_context,addr);
             doneCallback();
+            delete self;
         });
-        
     };
-    virtual void call(struct pxprpc_request *r,std::function<void(pxprpc::RpcObject *)> onResult){
+    virtual void call(pxprpc_request *r,std::function<void(pxprpc::RpcObject *)> onResult){
         pxprpc::Serializer ser;
-        auto arg0=static_cast<pxprpc_bytes *>(r->callable_data);
-        ser.prepareUnserializing(arg0->data,arg0->length);
+        auto arg0=static_cast<pxprpc::RpcRawBytes *>(r->callable_data);
+        ser.prepareUnserializing(arg0->data,arg0->size);
         std::cout<<ser.getInt()<<","<<ser.getLong()<<","<<ser.getFloat()<<","<<ser.getDouble()<<",";
         auto str1=ser.getBytes();
         std::cout<<std::string(reinterpret_cast<char *>(std::get<1>(str1)),std::get<0>(str1))<<",";
@@ -107,10 +112,15 @@ class fnPrintSerilizedArgs:public pxprpc::NamedFunctionPP{
         std::cout<<std::string(reinterpret_cast<char *>(std::get<1>(str1)),std::get<0>(str1))<<",";
         onResult(nullptr);
     };
-    virtual void writeResult(struct pxprpc_request *r){
-         r->io1->write(r->io1,4,reinterpret_cast<const uint8_t *>(&constZero),testNopCallback,NULL);
+    virtual void writeResult(pxprpc_request *r,std::function<void()> doneCallback){
+        auto iopp=new pxprpc::IoPP(r->io1);
+        iopp->write(4,reinterpret_cast<const uint8_t *>(&constZero),[doneCallback](pxprpc::IoPP *self,const char *error)->void{
+            doneCallback();
+        });
     };
 };
+
+
 int main(int argc,char *argv[]){
     pxprpc::init();
     pxprpc_tbox_query_interface(&srvtbox);

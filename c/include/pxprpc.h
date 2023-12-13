@@ -21,6 +21,7 @@ struct pxprpc_abstract_io{
     //get last error. For example, to get error caused by read, call "io->get_error(io,io->read)". return NULL if no error
     const char *(*get_error)(struct pxprpc_abstract_io *self,void *fn);
     void *userData;
+    void *backendData;
 };
 
 struct pxprpc_bytes{
@@ -52,42 +53,53 @@ extern uint8_t *pxprpc_ser_build(struct pxprpc_serializer *ser,uint32_t *size);
 
 typedef void *pxprpc_server_context;
 
-struct pxprpc_object{
-    void *object1;
-    uint32_t (*addRef)(struct pxprpc_object *self);
-    uint32_t (*release)(struct pxprpc_object *self);
-    //count is used by object internally to save the reference count,
-    //pxprpc server only use 'addRef' and 'release'. 
-    uint16_t count;
-    //type is used to identify the object type.
-    //For pxprpc internal object 'pxprpc_bytes' ,type=1.
-    //type<16 are reserved by pxprpc for future use,
-    //type>=16 are user-defined types.
-    uint16_t type;
-};
 
-struct pxprpc_request{
+typedef struct _pxprpc_object_s{
+    void *object1;
+    uint32_t (*addRef)(struct _pxprpc_object_s *self);
+    uint32_t (*release)(struct _pxprpc_object_s *self);
+    /* count is used by object internally to save the reference count,
+    pxprpc server only use 'addRef' and 'release'.  */
+    uint16_t count;
+    /* type is used to identify the object type.
+    For pxprpc internal object 'pxprpc_bytes' ,type=1.
+    type<16 are reserved by pxprpc for future use,
+    type>=16 are user-defined types. */
+    uint16_t type;
+}pxprpc_object;
+
+typedef struct _pxprpc_request_s{
     struct pxprpc_abstract_io *io1;
-    struct pxprpc_object **ref_slots;
     uint32_t dest_addr;
     uint32_t session;
-    struct pxprpc_callable *callable;
+    struct _pxprpc_callable_s *callable;
     void *callable_data;
     pxprpc_server_context server_context;
-    struct pxprpc_object *result;
+    pxprpc_object *result;
+    /* internal memeber for pxprpc*/
+    struct _pxprpc_request_s *nextReq;
+    struct _pxprpc_request_s *lastReq;
+    void (*nextStep)(struct _pxprpc_request_s*);
+    char inSequence;
+    char finishCount;
+} pxprpc_request;
+
+struct pxprpc_server_context_exports{
+    pxprpc_object **ref_slots;
+    uint16_t slots_size;
 };
 
 
-struct pxprpc_callable{
-    void (*readParameter)(struct pxprpc_callable *self,struct pxprpc_request *r,void (*doneCallback)(struct pxprpc_request *r));
-    void (*call)(struct pxprpc_callable *self,struct pxprpc_request *r,void (*onResult)(struct pxprpc_request *r,struct pxprpc_object *result));
-    void (*writeResult)(struct pxprpc_callable *self,struct pxprpc_request *r);
+typedef struct _pxprpc_callable_s{
+    void (*readParameter)(struct _pxprpc_callable_s *self,pxprpc_request *r,void (*doneCallback)(pxprpc_request *r));
+    void (*call)(struct _pxprpc_callable_s *self,pxprpc_request *r,void (*onResult)(pxprpc_request *r,pxprpc_object *result));
+    void (*writeResult)(struct _pxprpc_callable_s *self,pxprpc_request *r,void (*doneCallback)(pxprpc_request *r));
     void *userData;
-};
+}pxprpc_callable;
 
 struct pxprpc_namedfunc{
     const char *name;
-    struct pxprpc_callable *callable;
+    pxprpc_callable *callable;
 };
 
 typedef struct pxprpc_server_api{
@@ -97,9 +109,10 @@ typedef struct pxprpc_server_api{
     int (*context_closed)(pxprpc_server_context);
     int (*context_close)(pxprpc_server_context);
     int (*context_delete)(pxprpc_server_context *);
-    struct pxprpc_object *(*new_object)(void *obj);
-    struct pxprpc_object *(*new_bytes_object)(uint32_t size);
-    void (*fill_bytes_object)(struct pxprpc_object *obj,uint8_t *data,int size);
+    pxprpc_object *(*new_object)(void *obj);
+    pxprpc_object *(*new_bytes_object)(uint32_t size);
+    void (*fill_bytes_object)(pxprpc_object *obj,uint8_t *data,int size);
+    struct pxprpc_server_context_exports *(*context_exports)(pxprpc_server_context context);
 }pxprpc_server_api;
 
 extern int pxprpc_server_query_interface(pxprpc_server_api **outapi);

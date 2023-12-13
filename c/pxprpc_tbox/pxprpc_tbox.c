@@ -50,7 +50,7 @@ struct _pxprpc_tbox_sockconn{
 
 
 static void __sockAbsIo1Read(struct pxprpc_abstract_io *self1,uint32_t length,uint8_t *buf,void (*onCompleted)(void *p),void *p){
-    struct _pxprpc_tbox_sockconn *self=(struct _pxprpc_tbox_sockconn *)self1->userData;
+    struct _pxprpc_tbox_sockconn *self=(void *)self1-offsetof(struct _pxprpc_tbox_sockconn,io1);
     if(tb_socket_brecv(self->sock,buf,length)){
         self->readError=NULL;
     }else{
@@ -60,7 +60,7 @@ static void __sockAbsIo1Read(struct pxprpc_abstract_io *self1,uint32_t length,ui
     self->nextFnArg0=p;
 }
 static void __sockAbsIo1Write(struct pxprpc_abstract_io *self1,uint32_t length,const uint8_t *buf,void (*onCompleted)(void *p),void *p){
-    struct _pxprpc_tbox_sockconn *self=(struct _pxprpc_tbox_sockconn *)self1->userData;
+    struct _pxprpc_tbox_sockconn *self=(void *)self1-offsetof(struct _pxprpc_tbox_sockconn,io1);
     if(tb_socket_bsend(self->sock,buf,length)){
         self->writeError=NULL;
     }else{
@@ -70,7 +70,7 @@ static void __sockAbsIo1Write(struct pxprpc_abstract_io *self1,uint32_t length,c
     self->nextFnArg0=p;
 }
 static const char *__sockAbsIo1GetError(struct pxprpc_abstract_io *self1,void *fn){
-    struct _pxprpc_tbox_sockconn *self=(struct _pxprpc_tbox_sockconn *)self1->userData;
+    struct _pxprpc_tbox_sockconn *self=(void *)self1-offsetof(struct _pxprpc_tbox_sockconn,io1);
     if(fn==self1->read){
         return self->readError;
     }else if(fn==self1->write){
@@ -80,7 +80,6 @@ static const char *__sockAbsIo1GetError(struct pxprpc_abstract_io *self1,void *f
 
 static struct _pxprpc_tbox_sockconn * __buildTboxSockconn(tb_socket_ref_t sock,struct _pxprpc_tbox *sCtx){
     struct _pxprpc_tbox_sockconn *sockconn=pxprpc__malloc(sizeof(struct _pxprpc_tbox_sockconn));
-    sockconn->io1.userData=sockconn;
     sockconn->io1.read=&__sockAbsIo1Read;
     sockconn->io1.write=&__sockAbsIo1Write;
     sockconn->io1.get_error=&__sockAbsIo1GetError;

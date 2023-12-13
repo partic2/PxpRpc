@@ -114,7 +114,7 @@ static void __sockUvReadCb(uv_stream_t* stream,ssize_t nread,const uv_buf_t* buf
     }
 }
 static void __sockAbsIo1Read(struct pxprpc_abstract_io *self1,uint32_t length,uint8_t *buf,void (*onCompleted)(void *p),void *p){
-    struct _pxprpc_libuv_sockconn *self=(struct _pxprpc_libuv_sockconn *)self1->userData;
+    struct _pxprpc_libuv_sockconn *self=(void *)self1-offsetof(struct _pxprpc_libuv_sockconn,io1);
     if(self->nextBuf.base!=NULL){
         self->readError="overlap read is not allowed";
         onCompleted(p);
@@ -157,7 +157,7 @@ void __sockUvWriteCb(uv_write_t *req, int status){
     writeReq->onCompleted(writeReq->cbArgs);
 }
 static void __sockAbsIo1Write(struct pxprpc_abstract_io *self1,uint32_t length,const uint8_t *buf,void (*onCompleted)(void *args),void *p){
-    struct _pxprpc_libuv_sockconn *self=(struct _pxprpc_libuv_sockconn *)self1->userData;
+    struct _pxprpc_libuv_sockconn *self=(void *)self1-offsetof(struct _pxprpc_libuv_sockconn,io1);
     struct __sockUvWriteReq *writeReq=(struct __sockUvWriteReq *)pxprpc__malloc(sizeof(struct __sockUvWriteReq));
     memset(writeReq,0,sizeof(struct __sockUvWriteReq));
     writeReq->buf.base=(char *)buf;
@@ -168,7 +168,7 @@ static void __sockAbsIo1Write(struct pxprpc_abstract_io *self1,uint32_t length,c
     uv_req_set_data((uv_req_t *)&writeReq->uvReq,writeReq);
 }
 static const char *__sockAbsIo1GetError(struct pxprpc_abstract_io *self1,void *fn){
-    struct _pxprpc_libuv_sockconn *self=(struct _pxprpc_libuv_sockconn *)self1->userData;
+    struct _pxprpc_libuv_sockconn *self=(void *)self1-offsetof(struct _pxprpc_libuv_sockconn,io1);
     if(fn==self1->read){
         return self->readError;
     }else if(fn==self1->write){
@@ -178,7 +178,6 @@ static const char *__sockAbsIo1GetError(struct pxprpc_abstract_io *self1,void *f
 
 static struct _pxprpc_libuv_sockconn * __buildLibuvSockconn(struct _pxprpc_libuv *sCtx){
     struct _pxprpc_libuv_sockconn *sockconn=pxprpc__malloc(sizeof(struct _pxprpc_libuv_sockconn));
-    sockconn->io1.userData=sockconn;
     sockconn->io1.read=&__sockAbsIo1Read;
     sockconn->io1.write=&__sockAbsIo1Write;
     sockconn->io1.get_error=&__sockAbsIo1GetError;

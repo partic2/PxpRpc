@@ -16,7 +16,6 @@ import pursuer.pxprpc_ex.TCPBackend;
 public class PxpRpc {
 	
 	//Just for test, will ignore session check.
-	
 
 	//Rpc server handler demo.
 	public static class Handler1 {
@@ -242,26 +241,15 @@ public class PxpRpc {
 			System.out.println("expect print 'free by server gc' if server support");
 			client.push(12, new byte[0]);
 
-			client.enableBuffer();
-			System.out.println("buffered response test, should block for 2 second twice");
-			new Thread(new Runnable() {
-				@Override
-				public void run() {
-					try {
-						Thread.sleep(2000);
-						System.out.println("flush write buffer");
-						client.pull(12);
-						Thread.sleep(2000);
-						System.out.println("disable write buffer");
-						client.disableBuffer();
-					} catch (Exception e) {
-						e.printStackTrace();
-					}
-				}
-			}).start();
-			client.bufferedPush(12,new String("buffer test").getBytes(ServerContext.charset));
-			System.out.println("push done, waiting to disable buffer");
-			System.out.println("pull done:"+new String(client.bufferedPull(12),ServerContext.charset));
+			client.sequence();
+			System.out.println("expect print 5678 in 1 second later.");
+			client.getFunc(11,"test1.waitOneTick");
+			client.getFunc(12,"test1.print5678");
+			client.seqCallFuncReq(13,11,new Object[]{});
+			client.seqCallFuncReq(13,12,new Object[]{});
+			client.seqCallFuncResp();
+			client.seqCallFuncResp();
+
 			//should be free when connection close, if server support. 
 			client.callIntFunc(12, 11, new Object[0]);
 			pxptcp.close();
@@ -290,7 +278,7 @@ public class PxpRpc {
 			}
 		}
 		public int session=0x78593<<8;
-		public int bufferedSession=0x78597<<8;
+		public int sequenceSession=0x78597<<8;
 		
 		public void push(int addr,byte[] data) throws IOException {
 			int op=session|0x1;
@@ -306,9 +294,6 @@ public class PxpRpc {
 			Utils.writeInt32(chan,op);
 			Utils.writeInt32(chan,addr);
 			int rs=Utils.readInt32(chan);
-			if(rs!=op){
-				System.currentTimeMillis();
-			}
 			assert2(rs==op);
 			int len=Utils.readInt32(chan);
 			byte[] r=new byte[len];
@@ -354,38 +339,39 @@ public class PxpRpc {
 			Utils.readf(chan,ByteBuffer.wrap(r));
 			return new String(r,"utf-8");
 		}
-		public void enableBuffer() throws IOException {
+		public void sequence() throws IOException{
 			int op=session|0x9;
 			Utils.writeInt32(chan,op);
-			Utils.writeInt32(chan,bufferedSession|24);
+			Utils.writeInt32(chan,sequenceSession|24);
 		}
-		public void disableBuffer() throws IOException{
-			int op=session|0x9;
+		public void buffer() throws IOException {
+			int op=session|0xa;
 			Utils.writeInt32(chan,op);
-			Utils.writeInt32(chan,0xffffffff);
 		}
-		public void bufferedPush(int addr,byte[] data) throws IOException {
-			int op=bufferedSession|0x1;
+		public void seqCallFuncReq(int assignAddr,int addr,Object[] params) throws IOException {
+			int op=sequenceSession|0x5;
 			Utils.writeInt32(chan,op);
+			Utils.writeInt32(chan,assignAddr);
 			Utils.writeInt32(chan,addr);
-			Utils.writeInt32(chan, data.length);
-			Utils.writef(chan,ByteBuffer.wrap(data));
-			int op2=Utils.readInt32(chan);
-			assert2(op2==op);
-		}
-		public byte[] bufferedPull(int addr) throws IOException{
-			int op=bufferedSession|0x2;
-			Utils.writeInt32(chan,op);
-			Utils.writeInt32(chan,addr);
-			int rs=Utils.readInt32(chan);
-			if(rs!=op){
-				System.currentTimeMillis();
+			for(Object p : params) {
+				if(p.getClass().equals(Integer.class)) {
+					Utils.writeInt32(chan,(Integer) p);
+				}else if(p.getClass().equals(Long.class)) {
+					Utils.writeInt64(chan,(Long) p);
+				}else if(p.getClass().equals(Float.class)) {
+					Utils.writeFloat32(chan,(Float) p);
+				}else if(p.getClass().equals(Double.class)) {
+					Utils.writeFloat64(chan,(Double) p);
+				}else {
+					throw new UnsupportedOperationException();
+				}
 			}
-			assert2(rs==op);
-			int len=Utils.readInt32(chan);
-			byte[] r=new byte[len];
-			Utils.readf(chan,ByteBuffer.wrap(r));
-			return r;
 		}
+		public int seqCallFuncResp() throws IOException {
+			int op=sequenceSession|0x5;
+			assert2(Utils.readInt32(chan)==op);
+			return Utils.readInt32(chan);
+		}
+
 	}
 }
