@@ -42,11 +42,13 @@ extern void pxprpc_ser_put_int(struct pxprpc_serializer *ser,int32_t *val,int co
 extern void pxprpc_ser_put_long(struct pxprpc_serializer *ser,int64_t *val,int count);
 extern void pxprpc_ser_put_float(struct pxprpc_serializer *ser,float *val,int count);
 extern void pxprpc_ser_put_double(struct pxprpc_serializer *ser,double *val,int count);
+extern void pxprpc_ser_put_varint(struct pxprpc_serializer *ser,uint32_t val);
 extern void pxprpc_ser_put_bytes(struct pxprpc_serializer *ser,uint8_t *val,uint32_t size);
 extern void pxprpc_ser_get_int(struct pxprpc_serializer *ser,int32_t *val,int count);
 extern void pxprpc_ser_get_long(struct pxprpc_serializer *ser,int64_t *val,int count);
 extern void pxprpc_ser_get_float(struct pxprpc_serializer *ser,float *val,int count);
-extern double pxprpc_ser_get_double(struct pxprpc_serializer *ser,double *val,int count);
+extern void pxprpc_ser_get_double(struct pxprpc_serializer *ser,double *val,int count);
+extern void pxprpc_ser_get_varint(struct pxprpc_serializer *ser,uint32_t *val);
 extern uint8_t *pxprpc_ser_get_bytes(struct pxprpc_serializer *ser,uint32_t *size);
 extern uint8_t *pxprpc_ser_build(struct pxprpc_serializer *ser,uint32_t *size);
 

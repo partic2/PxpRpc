@@ -47,18 +47,22 @@ extern void pxprpc_ser_put_double(struct pxprpc_serializer *ser,double *val,int 
     memmove(ser->buf+ser->pos,val,8*count);
     ser->pos+=8*count;
 }
-extern void pxprpc_ser_put_bytes(struct pxprpc_serializer *ser,uint8_t *val,uint32_t size){
-    if(size<=0xff){
-        _pxprpc_ensure_buf(ser,1+size);
-        *(ser->buf+ser->pos)=size;
+extern void pxprpc_ser_put_varint(struct pxprpc_serializer *ser,uint32_t val){
+    if(val<=0xff){
+        _pxprpc_ensure_buf(ser,1);
+        *(ser->buf+ser->pos)=val;
         ser->pos++;
     }else{
-        _pxprpc_ensure_buf(ser,5+size);
+        _pxprpc_ensure_buf(ser,5);
         *(ser->buf+ser->pos)=0xff;
         ser->pos++;
-        memmove(ser->buf+ser->pos,&size,4);
+        memmove(ser->buf+ser->pos,&val,4);
         ser->pos+=4;
     }
+}
+extern void pxprpc_ser_put_bytes(struct pxprpc_serializer *ser,uint8_t *val,uint32_t size){
+    pxprpc_ser_put_varint(ser,size);
+    _pxprpc_ensure_buf(ser,size);
     memcpy(ser->buf+ser->pos,val,size);
     ser->pos+=size;
 }
@@ -74,18 +78,20 @@ extern void pxprpc_ser_get_float(struct pxprpc_serializer *ser,float *val,int co
     memmove(val,ser->buf+ser->pos,4*count);
     ser->pos+=4*count;
 }
-extern double pxprpc_ser_get_double(struct pxprpc_serializer *ser,double *val,int count){
+extern void pxprpc_ser_get_double(struct pxprpc_serializer *ser,double *val,int count){
     memmove(val,ser->buf+ser->pos,8*count);
     ser->pos+=8*count;
 }
-extern uint8_t *pxprpc_ser_get_bytes(struct pxprpc_serializer *ser,uint32_t *size){
-    uint32_t len=*(ser->buf+ser->pos);
+extern void pxprpc_ser_get_varint(struct pxprpc_serializer *ser,uint32_t *val){
+    *val=*(ser->buf+ser->pos);
     ser->pos++;
-    if(len==0xff){
-        memmove(&len,ser->buf+ser->pos,4);
+    if(*val==0xff){
+        memmove(val,ser->buf+ser->pos,4);
         ser->pos+=4;
     }
-    *size=len;
+}
+extern uint8_t *pxprpc_ser_get_bytes(struct pxprpc_serializer *ser,uint32_t *size){
+    pxprpc_ser_get_varint(ser,size);
     uint8_t *val=ser->buf+ser->pos;
     ser->pos+=*size;
     return val;

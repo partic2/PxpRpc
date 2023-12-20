@@ -167,7 +167,7 @@ struct getInfo_response{
 "data" stored the information about the server (as utf8). An example "data" show below
 -----------------------------
 server name:pxprpc for java
-version:1.0
+version:1.1
 reference slots size:256
 -------------------------------
 "server name" indicate the server name.
@@ -177,20 +177,27 @@ reference slots size:256
 
 
 /* function:sequence. Requests with same sid(session&0xffffff00) ,
-which match the sessionMask, will be executed in sequence (executed after last queued request finished). , for version>=1.1.
+which match the sessionMask, will be executed in sequence (executed after last queued request finished). , since version 1.1.
 */
-struct buffer_request{
+struct sequence_request{
     struct{
         uint8_t opcode;  // 9
         uint8_t id1;
         uint16_t id2;
     } session;
-    //(SA:about session mask)
+    //(If 0xffffffff, all pending request will be discarded.SA:about session mask)
     uint32_t sessionMask;
 };
-//sequence has no response.
+struct sequence_response{
+    struct{
+        uint8_t opcode;  // 1
+        uint8_t id1;
+        uint16_t id2;
+    } session;  // MUST be the same as the value of "session" in request
+};
 
-//function:buffer. switch write buffer(enable or disable, depend on current status), for version>=1.1. This is optional function, server can do nothing for this request
+/* function:buffer. switch write buffer(enable or disable, depend on current status), and flush buffer if disabled.
+since version 1.1. This is optional function, server can do nothing for this request */
 struct buffer_request{
     struct{
         uint8_t opcode;  // 10
@@ -198,7 +205,7 @@ struct buffer_request{
         uint16_t id2;
     } session;
 };
-//buffer has no response.
+// buffer has no response. 
 
 /*
 about session mask

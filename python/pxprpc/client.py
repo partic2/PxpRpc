@@ -150,20 +150,26 @@ class RpcConnection(object):
             self.__writeLock.release()
             self.out2.close()
 
-    async def sequence(self,mask:int,maskCnt:int,sid:int=0x100):
+    async def sequence(self,mask:int,maskCnt:int=24,sid:int=0x100):
         sid=sid|9
         respFut=asyncio.Future()
         self.__waitingSession[sid]=respFut
         await self.__writeLock.acquire()
         try:
-            self.out2.write(struct.pack('<I',sid,(mask<<(32-maskCnt))|maskCnt))
+            self.out2.write(struct.pack('<II',sid,mask|maskCnt))
         finally:
             self.__writeLock.release()
         await respFut
-        t1=struct.unpack('<I',await self.in2.readexactly(4))[0]
         NotNone(self.__readingResp).set_result(None)
-        return t1
 
+    async def buffer(self,sid:int=0x100):
+        sid=sid|10
+        respFut=asyncio.Future()
+        await self.__writeLock.acquire()
+        try:
+            self.out2.write(struct.pack('<I',sid))
+        finally:
+            self.__writeLock.release()
 
 class RpcExtendClientObject():
     def __init__(self,client:'RpcExtendClient1',value:typing.Optional[int]=None):

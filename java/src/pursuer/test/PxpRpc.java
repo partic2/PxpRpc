@@ -19,6 +19,7 @@ public class PxpRpc {
 
 	//Rpc server handler demo.
 	public static class Handler1 {
+		public static Timer tm=new Timer(true);
 		public int getInt2345() {
 			return 2345;
 		}
@@ -74,7 +75,6 @@ public class PxpRpc {
 			return te;
 		}
 		public void waitOneTick(final AsyncReturn<Object> asyncRet) {
-			Timer tm=new Timer();
 			tm.schedule(new TimerTask() {
 				@Override
 				public void run() {
@@ -87,19 +87,15 @@ public class PxpRpc {
 		}
 	}
 	public static class TickEvent extends EventDispatcher{
-		Timer tm=new Timer();
 		public TickEvent() {
 		}
 		public void start() {
-			tm.schedule(new TimerTask() {
+			Handler1.tm.schedule(new TimerTask() {
 				@Override
 				public void run() {
 					TickEvent.this.fireEvent("tick");
 				}
 			}, 1000,1000);
-		}
-		public void stop() {
-			tm.cancel();
 		}
 	}
 
@@ -263,7 +259,6 @@ public class PxpRpc {
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
-
 	}
 	
 	public static class ClientContext {
@@ -343,6 +338,8 @@ public class PxpRpc {
 			int op=session|0x9;
 			Utils.writeInt32(chan,op);
 			Utils.writeInt32(chan,sequenceSession|24);
+			int op2=Utils.readInt32(chan);
+			assert2(op2==op);
 		}
 		public void buffer() throws IOException {
 			int op=session|0xa;

@@ -36,6 +36,15 @@ export class Serializer{
         this.pos+=8;
         return val;
     }
+    public getVarint(){
+        let val=this.dv!.getUint8(this.pos);
+        this.pos++;
+        if(val==0xff){
+            val=this.dv!.getUint32(this.pos,true);
+            this.pos+=4;
+        }
+        return val;
+    }
     public putInt(val:number){
         this.ensureBuffer(4);
         this.dv!.setInt32(this.pos,val,true);
@@ -60,6 +69,19 @@ export class Serializer{
         this.pos+=8;
         return this;
     }
+    public putVarint(val:number){
+        if(val>=0xff){
+            this.ensureBuffer(5);
+            this.dv!.setUint8(this.pos,0xff);
+            this.pos+=1;
+            this.dv!.setUint32(this.pos,val,true);
+            this.pos+=4;
+        }else{
+            this.ensureBuffer(1);
+            this.dv!.setUint8(this.pos,val);
+            this.pos++;
+        }
+    }
     public ensureBuffer(remainSize:number){
         if(this.pos+remainSize>this.dv!.buffer.byteLength){
             let newSize=this.pos+remainSize;
@@ -71,16 +93,8 @@ export class Serializer{
     }
     public putBytes(b:ArrayBuffer){
         let len=b.byteLength;
-        if(len>=0xff){
-            this.ensureBuffer(len+5);
-            this.dv!.setUint8(this.pos,0xff);
-            this.pos++;
-            this.dv!.setUint32(this.pos,len,true);
-        }else{
-            this.ensureBuffer(len+1);
-            this.dv!.setUint8(this.pos,len);
-            this.pos++;
-        }
+        this.putVarint(len);
+        this.ensureBuffer(len);
         new Uint8Array(this.dv!.buffer).set(new Uint8Array(b),this.pos);
         this.pos+=len;
         return this;
@@ -93,12 +107,7 @@ export class Serializer{
         return this.dv!.buffer.slice(0,this.pos);
     }
     public getBytes(){
-        let len=this.dv!.getUint8(this.pos);
-        this.pos++;
-        if(len==255){
-            len=this.dv!.getUint32(this.pos,true);
-            this.pos+=4;
-        }
+        let len=this.getVarint();
         let val=this.dv!.buffer.slice(this.pos,this.pos+len);
         this.pos+=len;
         return val;
@@ -151,11 +160,6 @@ export class Client{
     public constructor(public io1:Io){
         this.nextSid1=0;
     }
-    protected async nextSid(opcode:number){
-        let sid=opcode|this.nextSid1;
-        this.nextSid1+=0x100;
-        return sid;
-    }
     protected running=false;
     protected waitingSessionCb={} as {[key:number]:(e:Error|null)=>void}
     protected respReadingCb:(e:Error|null)=>void=()=>{};
@@ -192,10 +196,10 @@ export class Client{
         let buf=await this.io1.read(4);
         return new DataView(buf).getInt32(0,true); 
     }
-    public async push(destAddr:number,data:ArrayBufferLike){
+    public async push(destAddr:number,data:ArrayBufferLike,sid:number=0x100){
         let hdr=new ArrayBuffer(12);
         let hdr2=new DataView(hdr);
-        let sid=await this.nextSid(1);
+        sid=sid|1;
         hdr2.setUint32(0,sid,true);
         hdr2.setUint32(4,destAddr,true);
         hdr2.setUint32(8,data.byteLength,true);
@@ -211,10 +215,10 @@ export class Client{
         await respFut;
         this.respReadingCb(null);
     }
-    public async pull(srcAddr:number){
+    public async pull(srcAddr:number,sid:number=0x100){
         let hdr=new ArrayBuffer(8);
         let hdr2=new DataView(hdr);
-        let sid=await this.nextSid(2);
+        sid=sid|2;
         hdr2.setUint32(0,sid,true);
         hdr2.setUint32(4,srcAddr,true)
         let respFut=new Promise((resolve,reject)=>{
@@ -237,10 +241,10 @@ export class Client{
         this.respReadingCb(null);
         return result;
     }
-    public async assign(destAddr:number,srcAddr:number){
+    public async assign(destAddr:number,srcAddr:number,sid:number=0x100){
         let hdr=new ArrayBuffer(12);
         let hdr2=new DataView(hdr);
-        let sid=await this.nextSid(3);
+        sid=sid|3;
         hdr2.setUint32(0,sid,true);
         hdr2.setUint32(4,destAddr,true);
         hdr2.setUint32(8,srcAddr,true);
@@ -255,10 +259,10 @@ export class Client{
         await respFut;
         this.respReadingCb(null);
     }
-    public async unlink(destAddr:number){
+    public async unlink(destAddr:number,sid:number=0x100){
         let hdr=new ArrayBuffer(8);
         let hdr2=new DataView(hdr);
-        let sid=await this.nextSid(4);
+        sid=sid|4;
         hdr2.setUint32(0,await sid,true);
         hdr2.setUint32(4,destAddr,true)
         let respFut=new Promise((resolve,reject)=>{
@@ -272,10 +276,10 @@ export class Client{
         await respFut;
         this.respReadingCb(null);
     }
-    public async call(destAddr:number,fnAddr:number,args:ArrayBufferLike,sizeOfReturn:number){
+    public async call(destAddr:number,fnAddr:number,args:ArrayBufferLike,sizeOfReturn:number,sid:number=0x100){
         let hdr=new ArrayBuffer(12);
         let hdr2=new DataView(hdr);
-        let sid=await this.nextSid(5);
+        sid=sid|5;
         hdr2.setUint32(0,await sid,true);
         hdr2.setUint32(4,destAddr,true)
         hdr2.setUint32(8,fnAddr,true)
@@ -293,10 +297,10 @@ export class Client{
         this.respReadingCb(null);
         return data1
     }
-    public async getFunc(destAddr:number,fnNameAddr:number){
+    public async getFunc(destAddr:number,fnNameAddr:number,sid:number=0x100){
         let hdr=new ArrayBuffer(12);
         let hdr2=new DataView(hdr);
-        let sid=await this.nextSid(6);
+        sid=sid|6;
         hdr2.setUint32(0,sid,true);
         hdr2.setUint32(4,destAddr,true);
         hdr2.setUint32(8,fnNameAddr,true);
@@ -313,10 +317,20 @@ export class Client{
         this.respReadingCb(null);
         return data1
     }
-    public async getInfo(){
+    public async close(sid:number=0x100){
         let hdr=new ArrayBuffer(4);
         let hdr2=new DataView(hdr);
-        let sid=await this.nextSid(8);
+        sid=sid|7
+        hdr2.setUint32(0,sid,true);
+        await this.writeLock.mutexDo(async ()=>{
+            await this.io1.write(hdr);
+        });
+        this.running=false;
+    }
+    public async getInfo(sid:number=0x100){
+        let hdr=new ArrayBuffer(4);
+        let hdr2=new DataView(hdr);
+        sid=sid|8;
         hdr2.setUint32(0,sid,true);
         let respFut=new Promise((resolve,reject)=>{
             this.waitingSessionCb[sid]=(e)=>{
@@ -332,15 +346,31 @@ export class Client{
         this.respReadingCb(null);
         return data1;
     }
-    public async close(){
+    public async sequence(mask:number,maskCnt:number=24,sid:number=0x100){
+        let hdr=new ArrayBuffer(8);
+        let hdr2=new DataView(hdr);
+        sid=sid|9;
+        hdr2.setUint32(0,sid,true);
+        hdr2.setUint32(4,mask|maskCnt,true);
+        let respFut=new Promise((resolve,reject)=>{
+            this.waitingSessionCb[sid]=(e)=>{
+                if(e==null){resolve(e);}else{reject(e)};
+            }
+        });
+        await this.writeLock.mutexDo(async ()=>{
+            await this.io1.write(hdr);
+        });
+        await respFut;
+        this.respReadingCb(null);
+    }
+    public async buffer(sid:number=0x100){
         let hdr=new ArrayBuffer(4);
         let hdr2=new DataView(hdr);
-        let sid=await this.nextSid(6);
+        sid=sid|10;
         hdr2.setUint32(0,sid,true);
         await this.writeLock.mutexDo(async ()=>{
             await this.io1.write(hdr);
         });
-        this.running=false;
     }
 }
 
@@ -351,10 +381,11 @@ export class PxpRequest{
     public parameter:any;
     public result:any;
     public callable:PxpCallable|null=null;
-    public session:ArrayBufferLike|null=null;
     public opcode:number=0;
-    public constructor(public context:Server){
-
+    public nextPending:PxpRequest|null=null;
+    public inSequence=false;
+    public constructor(public context:Server,public session:number){
+        this.opcode=session&0xff;
     }
 }
 
@@ -395,6 +426,8 @@ export class PxpObject{
 
 export class Server{
     public refSlots=new Array<PxpObject|null>();
+    public sequenceSession=0xffffffff;
+    public sequenceMaskBitsCnt=0;
     public constructor(public io1:Io){
     }
     public running=false;
@@ -416,52 +449,125 @@ export class Server{
         new DataView(buf).setInt32(0,i32,true);
         await this.io1.write(buf);
     }
+    pendingRequests:{[sid:number]:PxpRequest}={};
+    public queueRequest(r:PxpRequest){
+        if(this.sequenceSession==0xffffffff || (r.session>>(32-this.sequenceMaskBitsCnt)!=this.sequenceSession)){
+            this.processRequest(r);
+            return;
+        }
+        r.inSequence=true;
+        let r2=this.pendingRequests[r.session>>8];
+        if(r2==undefined){
+            this.pendingRequests[r.session>>8]=r;
+            this.processRequest(r);
+        }else{
+            while(r2.nextPending!=null){
+                r2=r2.nextPending;
+            }
+            r2.nextPending=r;
+        }
+    }
+    //return next request to process
+    public finishRequest(r:PxpRequest){
+        if(r.inSequence){
+            if(r.nextPending!=null){
+                this.pendingRequests[r.session>>8]=r.nextPending;
+                return r.nextPending;
+            }else{
+                delete this.pendingRequests[r.session>>8];
+                return null;
+            }
+        }else{
+            return null;
+        }
+    }
+    public async processRequest(r:PxpRequest|null) {
+        while(r!=null){
+            switch(r.opcode){
+                case 1:
+                    await this.push(r);
+                    break;
+                case 2:
+                    await this.pull(r);
+                    break;
+                case 3:
+                    await this.assign(r);
+                    break;
+                case 4:
+                    await this.unlink(r);
+                    break;
+                case 5:
+                    await this.call(r);
+                    break;
+                case 6:
+                    await this.getFunc(r);
+                    break;
+                case 7:
+                    this.close(r);
+                    break;
+                case 8:
+                    await this.getInfo(r);
+                    break;
+                case 9:
+                    await this.sequence(r);
+                    break;
+                case 10:
+                    await this.buffer(r);
+                    break;
+            }
+            r=this.finishRequest(r);
+        }
+    }
     public async serve(){
         this.running=true;
 		while(this.running) {
-			let session=await this.io1.read(4);
-            let r=new PxpRequest(this);
-			r.session=session;
-			r.opcode=new DataView(session).getUint8(0);
+			let session=await this.readUint32();
+            let r=new PxpRequest(this,session);
 			switch(r.opcode) {
 			case 1:
 				r.destAddr=await this.readInt32();
 				let len=await this.readInt32();
 				r.parameter=await this.io1.read(len);
-				this.push(r);
+				this.queueRequest(r);
 				break;
 			case 2:
 				r.srcAddr=await this.readInt32();
-				this.pull(r);
+				this.queueRequest(r);
 				break;
 			case 3:
 				r.destAddr=await this.readInt32();
 				r.srcAddr=await this.readInt32();
-				this.assign(r);
+				this.queueRequest(r);
 				break;
 			case 4:
 				r.destAddr=await this.readInt32();
-				this.unlink(r);
+				this.queueRequest(r);
 				break;
 			case 5:
 				r.destAddr=await this.readInt32();
 				r.srcAddr=await this.readInt32();
 				r.callable=await this.refSlots[r.srcAddr]!.get() as PxpCallable;
 				await r.callable.readParameter(r);
-				this.call(r);
+				this.queueRequest(r);
 				break;
 			case 6:
 				r.destAddr=await this.readInt32();
 				r.srcAddr=await this.readInt32();
-				this.getFunc(r);
+				this.queueRequest(r);
 				break;
 			case 7:
-				close();
-				this.running=false;
+                this.queueRequest(r);
 				break;
 			case 8:
-				this.getInfo(r);
+				this.queueRequest(r);
 				break;
+            case 9:
+                r.destAddr=await this.readUint32();
+                this.queueRequest(r);
+                break;
+            case 10:
+                this.queueRequest(r);
+                break;
 			}
 		}
 		this.running=false;
@@ -492,7 +598,7 @@ export class Server{
 	public async push(r:PxpRequest) {
 		this.putRefSlots(r.destAddr,new PxpObject(r.parameter));
 		await this.writeLock.mutexDo(async()=>{
-            await this.io1.write(r.session!);
+            await this.writeUint32(r.session);
         });
 	}
 	public async pull(r:PxpRequest){
@@ -501,7 +607,7 @@ export class Server{
 			o=this.refSlots[r.srcAddr]!.get();
 		}
         await this.writeLock.mutexDo(async ()=>{
-            await this.io1.write(r.session!);
+            await this.writeUint32(r.session);
             if(o instanceof ArrayBuffer) {
                 this.writeInt32(o.byteLength);
                 await this.io1.write(o);
@@ -517,13 +623,13 @@ export class Server{
 	public async assign(r:PxpRequest) {
 		this.putRefSlots(r.destAddr, this.refSlots[r.srcAddr]);
 		await this.writeLock.mutexDo(async()=>{
-            await this.io1.write(r.session!);
+            await this.writeUint32(r.session);
         });
 	}
 	public async unlink(r:PxpRequest){
 		this.putRefSlots(r.destAddr, null);
 		await this.writeLock.mutexDo(async()=>{
-            await this.io1.write(r.session!);
+            await this.writeUint32(r.session);
         });
 	}
 	public async call(r:PxpRequest){
@@ -531,7 +637,7 @@ export class Server{
         r.result=result;
         this.putRefSlots(r.destAddr,new PxpObject(result));
         await this.writeLock.mutexDo(async()=>{
-            await this.io1.write(r.session!);
+            await this.writeUint32(r.session);
             await r.callable!.writeResult(r);
         });
 	}
@@ -541,25 +647,52 @@ export class Server{
 		let found=this.funcMap?.(name);
 		await this.writeLock.mutexDo(async()=>{
             if(found==null) {
-                await this.io1.write(r.session!);
+                await this.writeUint32(r.session);
                 await this.writeInt32(0);
             }else {
                 this.putRefSlots(r.destAddr, new PxpObject(found));
-                await this.io1.write(r.session!);
+                await this.writeUint32(r.session);
                 await this.writeInt32(r.destAddr);
             }
         });
 	}
 	public async getInfo(r:PxpRequest){
 		await this.writeLock.mutexDo(async()=>{
-            await this.io1.write(r.session!);
+            await this.writeUint32(r.session);
             let b=new TextEncoder().encode(
             "server name:pxprpc for typescript\n"+
-            "version:1.0\n"+
-            "reference slots capacity:"+this.refSlots.length+"\n"
+            "version:1.1\n"+
+            "reference slots capacity:4096\n"
             );
             await this.writeInt32(b.length);
             await this.io1.write(b);
         });
 	}
+    public async sequence(r:PxpRequest){
+        this.sequenceSession=r.destAddr
+        if(this.sequenceSession==0xffffffff){
+            //discard pending request. execute immdiately mode, default value
+            for(let i2 in this.pendingRequests){
+                let r2=this.pendingRequests[i2];
+                r2.nextPending=null;
+            }
+            this.pendingRequests=this.pendingRequests;
+        }else{
+            this.sequenceMaskBitsCnt=this.sequenceSession&0xff;
+            this.sequenceSession=this.sequenceSession>>(32-this.sequenceMaskBitsCnt);
+        }
+        await this.writeLock.mutexDo(async()=>{
+            await this.writeUint32(r.session);
+        });
+    }
+    public async buffer(r:PxpRequest){
+        //Not implemented
+    }
+
+    public close(r:PxpRequest){
+        this.running=false;
+        for(let val of this.refSlots){
+            if(val!=null)val.release();
+        }
+    }
 }

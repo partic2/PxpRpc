@@ -22,7 +22,7 @@ public class PxpRequest implements AsyncReturn<Object> {
         this.result = result;
         context.putRefSlots(destAddr, new PxpObject(result));
         try {
-            this.chan = context.responseStart(session);
+            this.chan = context.responseStart(this);
             try {
                 callable.writeResult(this);
             } catch (IOException ex) {

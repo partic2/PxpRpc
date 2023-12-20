@@ -52,13 +52,17 @@ class Serializer:
         val=struct.unpack_from('<d',self.buf,self.pos)[0]
         self.pos+=8
         return val
-
-    def getBytes(self)->bytes:
-        len=self.buf[self.pos]
+    
+    def getVarint(self)->int:
+        val=self.buf[self.pos]
         self.pos+=1
-        if len==255:
-            len=struct.unpack_from('<I',self.buf,self.pos)[0]
+        if val==255:
+            val=struct.unpack_from('<I',self.buf,self.pos)[0]
             self.pos+=4
+        return val
+        
+    def getBytes(self)->bytes:
+        len=self.getVarint()
         val=self.buf[self.pos:self.pos+len]
         self.pos+=len
         return val
@@ -83,12 +87,17 @@ class Serializer:
         cast(bytearray,self.buf).extend(struct.pack('<d',val))
         return self
 
+    def putVarint(self,val:int)->'Serializer':
+        b2=cast(bytearray,self.buf)
+        if val<255:
+            b2.extend([val])
+        else:
+            b2.extend(struct.pack('<BI',255,val))
+        return self
+
     def putBytes(self,val:bytes)->'Serializer':
         b2=cast(bytearray,self.buf)
-        if len(val)<255:
-            b2.extend([len(val)])
-        else:
-            b2.extend(struct.pack('<BI',255,len(val)))
+        self.putVarint(len(val))
         b2.extend(val)
         return self
 

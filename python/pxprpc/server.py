@@ -2,24 +2,26 @@
 import asyncio
 import asyncio.locks
 import traceback
-import typing
 import struct
 from .common import NotNone, encodeToBytes,zero32
 
 import typing 
+from typing import Optional
 from dataclasses import dataclass
 
 @dataclass
 class PxpRequest(object):
-    context:typing.Union['ServerContext',None]=None
-    session:typing.Union[bytes,None]=None
+    context:Optional['ServerContext']=None
+    session:int=0
     opcode:int=0
     destAddr:int=0
     srcAddr:int=0
     funcAddr:int=0
     parameter:typing.Any=None
     result:typing.Any=None
-    callable:typing.Union['PxpCallable',None]=None
+    callable:Optional['PxpCallable']=None
+    nextPending:Optional['PxpRequest']=None
+    inSequence:bool=False
     
 class PxpCallable():
         
@@ -44,158 +46,202 @@ class ServerContext(object):
         self.funcMap=dict()
         fillFuncMapBuiltIn(self.funcMap)
         self.running=False
+        self.pendingRequests:typing.Dict[int,PxpRequest]
+        self.sequenceSession:int=0xffffffff
+        self.sequenceMaskBitsCnt:int=0
 
 
     def backend1(self,r:asyncio.StreamReader,w:asyncio.StreamWriter):
-        self.in2=r
-        self.out2=w
-        
-    async def serve(self):
-        t1:typing.Any
-        t2:typing.Any
-        t3:typing.Any
-        self.running=True
-        while(self.running):
-            session=await self.in2.readexactly(4)
-            log1.debug('get session:%s',session)
-            if session[0]==1:
-                # push
-                req=PxpRequest()
-                req.destAddr,size=struct.unpack('<II',await self.in2.read(8))
-                req.parameter=await self.in2.read(size)
-                self.refSlots[req.destAddr]=req.parameter
-                log1.debug('server get request:%s',req)
-                await self.writeLock.acquire()
-                try:
-                    self.out2.write(session)
-                finally:
-                    self.writeLock.release()
-            elif session[0]==2:
-                #pull
-                req=PxpRequest()
-                req.srcAddr=struct.unpack('<I',await self.in2.read(4))[0]
-                data=self.refSlots.get(req.srcAddr,None)
-                log1.debug('server get request:%s',req)
-                await self.writeLock.acquire()
-                try:
-                    self.out2.write(session)
-                    if isinstance(data,(bytes,bytearray)):
-                        self.out2.write(struct.pack('<I',len(data)))
-                        self.out2.write(data)
-                    elif isinstance(data,str):
-                        data=data.encode('utf-8')
-                        self.out2.write(struct.pack('<I',len(data)))
-                        self.out2.write(data)
-                    else:
-                        self.out2.write(bytes([255,255,255,255]))
-                finally:
-                    self.writeLock.release()
-            elif session[0]==3:
-                #assign
-                req=PxpRequest()
-                req.destAddr,req.srcAddr=struct.unpack('<II',await self.in2.read(8))
-                self.refSlots[req.destAddr]=self.refSlots.get(req.srcAddr,None)
-                log1.debug('server get request:%s',req)
-                await self.writeLock.acquire()
-                try:
-                    self.out2.write(session)
-                finally:
-                    self.writeLock.release()
-            elif session[0]==4:
-                #unlink
-                req=PxpRequest()
-                req.destAddr=struct.unpack('<I',await self.in2.read(4))[0]
-                if req.destAddr in self.refSlots:
-                    del self.refSlots[req.destAddr]
-                log1.debug('server get request:%s',req)
-                await self.writeLock.acquire()
-                try:
-                    self.out2.write(session)
-                finally:
-                    self.writeLock.release()
-            elif session[0]==5:
-                #call
-                try:
-                    req=PxpRequest()
-                    req.context=self
-                    req.session=session
-                    req.destAddr,req.funcAddr=struct.unpack('<II',await self.in2.read(8))
-                    t1=self.refSlots.get(req.funcAddr,None)
-                    req.callable=t1
-                    await t1.readParameter(req)
-                    log1.debug('server get request:%s',req)
-                    asyncio.create_task(self.__callRoutine(req))
-                except Exception as ex:
-                    traceback.print_exc()
-                    raise ex
-            elif session[0]==6:
-                #getFunc
-                req=PxpRequest()
-                req.session=session
-                req.destAddr,req.srcAddr=struct.unpack('<II',await self.in2.read(8))
-                funcName:str=self.refSlots.get(req.srcAddr,None)
-                if type(funcName)==bytes or type(funcName)==bytearray:
-                    funcName=funcName.decode('utf-8') # type: ignore
-                t1=self.funcMap.get(funcName,None)
-                if t1==None:
-                    delimIndex=funcName.rfind('.')
-                    if delimIndex>=0:
-                        t2=self.funcMap.get(funcName[0:delimIndex],None)
-                        subfuncName=funcName[delimIndex+1:]
-                        if t2!=None and hasattr(t2,subfuncName):
-                            t1=getattr(t2,subfuncName)
-                            if t1!=None:
-                                req.result=req.destAddr
-                                self.refSlots[req.destAddr]=PyCallableWrap(t1,True)
-                else:
-                    req.result=req.destAddr
-                    self.refSlots[req.destAddr]=PyCallableWrap(t1,False)
+        self.in2:asyncio.StreamReader=r
+        self.out2:asyncio.StreamWriter=w
 
-                if t1==None:
-                    req.result=0
-                    
-                log1.debug('server get request:%s',req)
-                await self.writeLock.acquire()
-                try:
-                    self.out2.write(session)
-                    self.out2.write(struct.pack('<I',req.result))
-                finally:
-                    self.writeLock.release()
-            elif session[0]==7:
-                for t2 in self.refSlots:
-                    del self.refSlots[t2]
-                self.out2.close()
-            elif session[0]==8:
-                #getInfo
-                log1.debug('server get request:getInfo')
-                await self.writeLock.acquire()
-                try:
-                    self.out2.write(session)
-                    info1=('server name:pxprpc for python3\n'+
-                                          'version:1.0\n'+
-                                          'reference slots size:256\n').encode('utf-8')
-                    self.out2.write(struct.pack('<i',len(info1)))
-                    self.out2.write(info1)
-                finally:
-                    self.writeLock.release()
-            else :
-                # unknown, closed
-                for t2 in self.refSlots:
-                    del self.refSlots[t2]
-                self.out2.close()
-            
+    def queueRequest(self,r:PxpRequest):
+        r.opcode=r.session&0xff
+        if self.sequenceSession==0xffffffff or (r.session>>(32-self.sequenceMaskBitsCnt)!=self.sequenceSession):
+            asyncio.create_task(self.processRequest(r))
+            return
         
-    async def __callRoutine(self,req:PxpRequest):
+        r.inSequence=True
+        r2=self.pendingRequests.get(r.session>>8,None)
+        if r2==None:
+            self.pendingRequests[r.session>>8]=r
+            asyncio.create_task(self.processRequest(r))
+        else:
+            while r2.nextPending!=None:
+                r2=r2.nextPending
+            r2.nextPending=r
+        
+    def finishRequest(self,r:PxpRequest):
+        if r.inSequence:
+            if r.nextPending!=None:
+                self.pendingRequests[r.session>>8]=r.nextPending
+                return r.nextPending
+            else:
+                del self.pendingRequests[r.session>>8]
+                return None
+        else:
+            return None
+        
+    async def push(self,req:PxpRequest):
+        self.refSlots[req.destAddr]=req.parameter
+        self.out2.write(req.session.to_bytes(4,'little'))
+
+    async def pull(self,req:PxpRequest):
+        data=self.refSlots.get(req.srcAddr,None)
+        self.out2.write(req.session.to_bytes(4,'little'))
+        if isinstance(data,(bytes,bytearray)):
+            self.out2.write(len(data).to_bytes(4,'little'))
+            self.out2.write(data)
+        elif isinstance(data,str):
+            data=data.encode('utf-8')
+            self.out2.write(len(data).to_bytes(4,'little'))
+            self.out2.write(data)
+        else:
+            self.out2.write(b'\xff\xff\xff\xff')
+
+    async def assign(self,req:PxpRequest):
+        self.refSlots[req.destAddr]=self.refSlots.get(req.srcAddr,None)
+        self.out2.write(req.session.to_bytes(4,'little'))
+
+    async def unlink(self,req:PxpRequest):
+        if req.destAddr in self.refSlots:
+            del self.refSlots[req.destAddr]
+        self.out2.write(req.session.to_bytes(4,'little'))
+
+    async def call(self,req:PxpRequest):
         req.callable=NotNone(req.callable)
         result=await req.callable.call(req)
         req.result=result
         self.refSlots[req.destAddr]=result
         await self.writeLock.acquire()
         try:
-            self.out2.write(NotNone(req.session))
+            self.out2.write(req.session.to_bytes(4,'little'))
             await req.callable.writeResult(req)
         finally:
             self.writeLock.release()
+
+    async def getFunc(self,req:PxpRequest):
+        funcName:str=self.refSlots.get(req.srcAddr,None)
+        if type(funcName)==bytes or type(funcName)==bytearray:
+            funcName=funcName.decode('utf-8') # type: ignore
+        t1=self.funcMap.get(funcName,None)
+        if t1==None:
+            delimIndex=funcName.rfind('.')
+            if delimIndex>=0:
+                t2=self.funcMap.get(funcName[0:delimIndex],None)
+                subfuncName=funcName[delimIndex+1:]
+                if t2!=None and hasattr(t2,subfuncName):
+                    t1=getattr(t2,subfuncName)
+                    if t1!=None:
+                        req.result=req.destAddr
+                        self.refSlots[req.destAddr]=PyCallableWrap(t1,True)
+        else:
+            req.result=req.destAddr
+            self.refSlots[req.destAddr]=PyCallableWrap(t1,False)
+
+        if t1==None:
+            req.result=0
+            
+        await self.writeLock.acquire()
+        try:
+            self.out2.write(req.session.to_bytes(4,'little'))
+            self.out2.write(struct.pack('<I',req.result))
+        finally:
+            self.writeLock.release()
+
+    async def close(self,req:PxpRequest):
+        for t2 in self.refSlots:
+            del self.refSlots[t2]
+        self.out2.close()
+
+    async def getInfo(self,req:PxpRequest):
+        self.out2.write(req.session.to_bytes(4,'little'))
+        info1=('server name:pxprpc for python3\n'+
+                                'version:1.1\n'+
+                                'reference slots size:4096\n').encode('utf-8')
+        self.out2.write(struct.pack('<i',len(info1)))
+        self.out2.write(info1)
+
+    async def sequence(self,r:PxpRequest):
+        self.sequenceSession=r.destAddr
+        if self.sequenceSession==0xffffffff:
+            for r2 in self.pendingRequests.values():
+                r2.nextPending=None
+            self.pendingRequests.clear()
+        else:
+            self.sequenceMaskBitsCnt=self.sequenceSession&0xff
+            self.sequenceSession=self.sequenceSession>>(32-self.sequenceMaskBitsCnt)
+        
+        self.out2.write(r.session.to_bytes(4,'little'))
+
+    async def buffer(self,r:PxpRequest):
+        # Not implemented
+        pass
+
+    async def processRequest(self,req:PxpRequest):
+        handler=[None,self.push,self.pull,self.assign,self.unlink,
+        self.call,self.getFunc,self.close,self.getInfo,self.sequence,self.buffer]
+        r2:Optional[PxpRequest]=req
+        while r2!=None:
+            await handler[r2.opcode](r2)
+            r2=self.finishRequest(r2)
+        
+
+    async def serve(self):
+        t1:typing.Any
+        t2:typing.Any
+        self.running=True
+        while(self.running):
+            req=PxpRequest(self)
+            req.session=int.from_bytes(await self.in2.readexactly(4),'little')
+            log1.debug('get session:%s',hex(req.session))
+            req.opcode=req.session&0xff
+            if req.opcode==1:
+                # push
+                req.destAddr,size=struct.unpack('<II',await self.in2.read(8))
+                req.parameter=await self.in2.read(size)
+                self.queueRequest(req)
+            elif req.opcode==2:
+                #pull
+                req.srcAddr=struct.unpack('<I',await self.in2.read(4))[0]
+                self.queueRequest(req)
+            elif req.opcode==3:
+                #assign
+                req.destAddr,req.srcAddr=struct.unpack('<II',await self.in2.read(8))
+                self.refSlots[req.destAddr]=self.refSlots.get(req.srcAddr,None)
+                self.queueRequest(req)
+            elif req.opcode==4:
+                #unlink
+                req.destAddr=struct.unpack('<I',await self.in2.read(4))[0]
+                self.queueRequest(req)
+            elif req.opcode==5:
+                #call
+                req.context=self
+                req.destAddr,req.funcAddr=struct.unpack('<II',await self.in2.read(8))
+                t1=self.refSlots.get(req.funcAddr,None)
+                req.callable=t1
+                await t1.readParameter(req)
+                self.queueRequest(req)
+            elif req.opcode==6:
+                #getFunc
+                req.destAddr,req.srcAddr=struct.unpack('<II',await self.in2.read(8))
+                self.queueRequest(req)
+            elif req.opcode==7:
+                #close
+                self.queueRequest(req)
+            elif req.opcode==8:
+                #getInfo
+                self.queueRequest(req)
+            elif req.opcode==9:
+                #sequence
+                req.destAddr=int.from_bytes(await self.in2.read(4),'little')
+                self.queueRequest(req)
+            elif req.opcode==10:
+                #buffer
+                self.queueRequest(req)
+            else :
+                pass
+            
         
         
 import inspect

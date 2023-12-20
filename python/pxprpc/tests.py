@@ -61,7 +61,7 @@ async def testClient(rpcconn:pxprpc.client.RpcConnection,name:str='default'):
         await testTableUnser(TableSerializer().setHeader('sil',['name','isdir','filesize'])\
                             .addRow(['1.txt',0,12345]).addRow(['docs',1,0]).build())
 
-    
+    print('expect wait 1 second')
     await wait1Sec()
     raiseError1=await client2.getFunc('test1.raiseError1')
     assert raiseError1!=None

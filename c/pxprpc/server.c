@@ -180,7 +180,6 @@ static void _pxprpc__queueRequest(pxprpc_request *r){
 static void _pxprpc__finishRequest(pxprpc_request *r){
     r->finishCount--;
     if(r->finishCount)return;
-    struct _pxprpc__ServCo *self=r->server_context;
     if(r->inSequence){
         if(r->lastReq!=NULL){
             r->lastReq->nextReq=r->nextReq;
@@ -393,11 +392,15 @@ static void _pxprpc__stepGetFunc1(struct _pxprpc__ServCo *self){
 }
 
 
-//Close handler
-static int _pxprpc__stepClose1(struct _pxprpc__ServCo *self){
-    pxprpc_close(self);
+static void _pxprpc__stepClose2(pxprpc_request *r){
+    pxprpc_close(r->server_context);
 }
-
+static void _pxprpc__stepClose1(struct _pxprpc__ServCo *self){
+    pxprpc_request *r=_pxprpc__newRequest(self,self->hdr.session);
+    r->nextStep=_pxprpc__stepClose2;
+    _pxprpc__queueRequest(r);
+    _pxprpc__step1(self);
+}
 
 
 //GetInfo handler
@@ -427,15 +430,23 @@ static void _pxprpc__stepSequence3(pxprpc_request *r){
     if(sessionMask==0xffffffff){
         self->sequenceSessionMask=0xffffffff;
         pxprpc_request *req;
-        req=self->pendingReqTail;
-        while(req!=NULL){
-            req->nextStep(req);
-            req=req->lastReq;
+        pxprpc_request *req2;
+        for(req=self->pendingReqTail;req!=NULL;req=req2){
+            req2=req->lastReq;
+            /* discard all queued request */
+            if(req2!=NULL && (req2->session&0xffffff00)==(req->session&0xffffff00)){
+                pxprpc__free(req);
+            }else{
+                req->nextReq=NULL;
+                req->lastReq=NULL;
+            }
         }
+        self->pendingReqTail=NULL;
     }else{
         self->sequenceMaskBitsCnt=sessionMask&0xff;
         self->sequenceSessionMask=sessionMask>>(32-self->sequenceMaskBitsCnt);
     }
+    _pxprpc__responseStart(r,(void *)_pxprpc__finishRequest,r);
 }
 
 static void _pxprpc__stepSequence2(struct _pxprpc__ServCo *self){
@@ -449,15 +460,6 @@ static void _pxprpc__stepSequence1(struct _pxprpc__ServCo *self){
     self->io1->read(self->io1,8,(uint8_t*)&self->hdr.addr1,(void *)&_pxprpc__stepSequence2,self);
 }
 
-static void _pxprpc_stepClose2(pxprpc_request *r){
-    pxprpc_close(r->server_context);
-}
-static void _pxprpc_stepClose1(struct _pxprpc__ServCo *self){
-    pxprpc_request *r=_pxprpc__newRequest(self,self->hdr.session);
-    r->nextStep=_pxprpc_stepClose2;
-    _pxprpc__queueRequest(r);
-    _pxprpc__step1(self);
-}
 
 #include <stdio.h>
 static void _pxprpc__step2(struct _pxprpc__ServCo *self){

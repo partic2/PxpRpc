@@ -36,15 +36,20 @@ public class Serializer2 {
         buf.putDouble(val);
         return this;
     }
-    public Serializer2 putBytes(byte[] b, int offset, int len){
-        if(len>=0xff){
-            buf=Utils.ensureBuffer(buf,len+5);
+    public Serializer2 putVarint(int val){
+        if(val>=0xff){
+            buf=Utils.ensureBuffer(buf,5);
             buf.put((byte)0xff);
-            buf.putInt(len);
+            buf.putInt(val);
         }else{
-            buf=Utils.ensureBuffer(buf,len+1);
-            buf.put((byte)len);
+            buf=Utils.ensureBuffer(buf,1);
+            buf.put((byte)val);
         }
+        return this;
+    }
+    public Serializer2 putBytes(byte[] b, int offset, int len){
+        putVarint(len);
+        Utils.ensureBuffer(buf,len);
         buf.put(b,offset,len);
         return this;
     }
@@ -70,11 +75,15 @@ public class Serializer2 {
     public double getDouble(){
         return buf.getDouble();
     }
-    public byte[] getBytes(){
-        int len=buf.get()&0xff;
-        if(len==255){
-            len=buf.getInt();
+    public int getVarint(){
+        int val=buf.get()&0xff;
+        if(val==255){
+            val=buf.getInt();
         }
+        return val;
+    }
+    public byte[] getBytes(){
+        int len=getVarint();
         byte[] b = new byte[len];
         buf.get(b);
         return b;
