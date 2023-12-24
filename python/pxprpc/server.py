@@ -9,6 +9,8 @@ import typing
 from typing import Optional
 from dataclasses import dataclass
 
+from .common import Serializer
+
 @dataclass
 class PxpRequest(object):
     context:Optional['ServerContext']=None
@@ -198,33 +200,33 @@ class ServerContext(object):
             req.opcode=req.session&0xff
             if req.opcode==1:
                 # push
-                req.destAddr,size=struct.unpack('<II',await self.in2.read(8))
-                req.parameter=await self.in2.read(size)
+                req.destAddr,size=struct.unpack('<II',await self.in2.readexactly(8))
+                req.parameter=await self.in2.readexactly(size)
                 self.queueRequest(req)
             elif req.opcode==2:
                 #pull
-                req.srcAddr=struct.unpack('<I',await self.in2.read(4))[0]
+                req.srcAddr=struct.unpack('<I',await self.in2.readexactly(4))[0]
                 self.queueRequest(req)
             elif req.opcode==3:
                 #assign
-                req.destAddr,req.srcAddr=struct.unpack('<II',await self.in2.read(8))
+                req.destAddr,req.srcAddr=struct.unpack('<II',await self.in2.readexactly(8))
                 self.refSlots[req.destAddr]=self.refSlots.get(req.srcAddr,None)
                 self.queueRequest(req)
             elif req.opcode==4:
                 #unlink
-                req.destAddr=struct.unpack('<I',await self.in2.read(4))[0]
+                req.destAddr=struct.unpack('<I',await self.in2.readexactly(4))[0]
                 self.queueRequest(req)
             elif req.opcode==5:
                 #call
                 req.context=self
-                req.destAddr,req.funcAddr=struct.unpack('<II',await self.in2.read(8))
+                req.destAddr,req.funcAddr=struct.unpack('<II',await self.in2.readexactly(8))
                 t1=self.refSlots.get(req.funcAddr,None)
                 req.callable=t1
                 await t1.readParameter(req)
                 self.queueRequest(req)
             elif req.opcode==6:
                 #getFunc
-                req.destAddr,req.srcAddr=struct.unpack('<II',await self.in2.read(8))
+                req.destAddr,req.srcAddr=struct.unpack('<II',await self.in2.readexactly(8))
                 self.queueRequest(req)
             elif req.opcode==7:
                 #close
@@ -234,7 +236,7 @@ class ServerContext(object):
                 self.queueRequest(req)
             elif req.opcode==9:
                 #sequence
-                req.destAddr=int.from_bytes(await self.in2.read(4),'little')
+                req.destAddr=int.from_bytes(await self.in2.readexactly(4),'little')
                 self.queueRequest(req)
             elif req.opcode==10:
                 #buffer
@@ -246,40 +248,68 @@ class ServerContext(object):
         
 import inspect
 
+class decorator:
+    @staticmethod
+    def signature(sign):
+         def fn2(fn):
+            fn._pxprpc__PyCallableWrapSignature=sign
+            return fn
+         return fn2
+
+
 class PyCallableWrap(PxpCallable):
     
+    
     def __init__(self,c:typing.Callable,classMethod:bool):
-        self._argsInfo:inspect.FullArgSpec=inspect.getfullargspec(c)
-        self.argsType=[]
+        self.tParam=''
+        self.tResult=''
         self.callable=c
-        if 'return' in self._argsInfo.annotations:
-            self.retType=self._argsInfo.annotations['return']
+        if hasattr(c,'_pxprpc__PyCallableWrapSignature'):
+            self.signature(c._pxprpc__PyCallableWrapSignature)
         else:
-            self.retType=type(None)
-
-        if hasattr(self._argsInfo,'args'):
-            for argName in (self._argsInfo.args[1:] if classMethod else self._argsInfo.args):
-                self.argsType.append(self._argsInfo.annotations[argName])
+            argsInfo:inspect.FullArgSpec=inspect.getfullargspec(c)
+            argsig={
+                int:'l',float:'d',bool:'c',bytes:'b',str:'s'
+            }
+            if hasattr(argsInfo,'args'):
+                for argName in (argsInfo.args[1:] if classMethod else argsInfo.args):
+                    t1=argsInfo.annotations[argName]
+                    self.tParam+=argsig.get(t1,'o')
+                    
+            if 'return' in argsInfo.annotations:
+                t1=argsInfo.annotations['return']
+                self.tResult+=argsig.get(t1,'o')
             
-        
+    def signature(self,sign:str)->'PyCallableWrap':
+        self.tParam,self.tResult=sign.split('->')
+        return self
+    
     async def readParameter(self,req:PxpRequest):
         req.context=NotNone(req.context)
         req.parameter=[]
-        for t1 in self.argsType:
-            if t1==int:
-                req.parameter.append(
-                    struct.unpack('<q',await req.context.in2.read(8)))[0]
-            elif t1==float:
-                req.parameter.append(
-                    struct.unpack('<d',await req.context.in2.read(8)))[0]
-            elif t1==bool:
-                req.parameter.append(
-                    bool(struct.unpack('<I',await req.context.in2.read(4))))[0]
+        len=int.from_bytes(await req.context.in2.readexactly(4),'little')
+        ser=Serializer().prepareUnserializing(await req.context.in2.readexactly(len&0x7fffffff))
+        if (len&0x80000000)!=0:
+            ser.getBytes()
+
+        for t1 in self.tParam:
+            if t1=='i':
+                req.parameter.append(ser.getInt())
+            elif t1=='l':
+                req.parameter.append(ser.getLong())
+            elif t1=='f':
+                req.parameter.append(ser.getFloat())
+            elif t1=='d':
+                req.parameter.append(ser.getDouble())
+            elif t1=='c':
+                req.parameter.append(ser.getVarint()!=0)
+            elif t1=='b':
+                req.parameter.append(ser.getBytes())
+            elif t1=='s':
+                req.parameter.append(ser.getString())
             else:
-                t2=struct.unpack('<i',await req.context.in2.read(4))[0]
+                t2=ser.getInt()
                 t3=req.context.refSlots[t2]
-                if t1==str and type(t3)==bytes:
-                    t3=t3.decode('utf-8')
                 req.parameter.append(t3)
     
     async def call(self,req:PxpRequest):
@@ -291,18 +321,38 @@ class PyCallableWrap(PxpCallable):
             return ex2
     
     async def writeResult(self,req:PxpRequest):
-        req.context=NotNone(req.context)
-        t1=type(req.result)
-        if t1==int:
-            req.context.out2.write(struct.pack('<q',req.result))
-        elif t1==float:
-            req.context.out2.write(struct.pack('<d',req.result))
-        elif t1==bool:
-            req.context.out2.write(struct.pack('<i',req.result))
-        elif issubclass(t1,Exception):
-            req.context.out2.write(struct.pack('<i',1))
+        assert req.context!=None
+        ser=Serializer().prepareSerializing()
+        t1=self.tResult
+        if isinstance(req.result,Exception):
+            b=ser.putString(str(req.result)).build()
+            req.context.out2.write((len(b)|0x80000000).to_bytes(4,'little'))
+            req.context.out2.write(b)
         else:
-            req.context.out2.write(struct.pack('<i',0))
+            if t1=='i':
+                ser.putInt(req.result)
+            elif t1=='l':
+                ser.putLong(req.result)
+            elif t1=='f':
+                ser.putFloat(req.result)
+            elif t1=='d':
+                ser.putDouble(req.result)
+            elif t1=='b':
+                ser.putBytes(req.result)
+            elif t1=='c':
+                ser.putVarint(1 if req.result else 0)
+            elif t1=='s':
+                ser.putString(req.result)
+            elif t1=='o':
+                ser.putInt(req.destAddr)
+            elif t1=='':
+                pass
+            else:
+                assert False,'Unreachable'
+            
+            b=ser.build()
+            req.context.out2.write((len(b)).to_bytes(4,'little'))
+            req.context.out2.write(b)
         
 
 
@@ -311,12 +361,6 @@ def fillFuncMapBuiltIn(funcMap:typing.Dict):
     class builtinFuncs:
         async def anyToString(self,obj:object):
             return str(obj)
-
-        async def checkException(self,obj:object):
-            if isinstance(obj,Exception):
-                return str(obj)
-            else:
-                return ''
 
         async def listLength(self,obj:typing.List):
             return len(obj)

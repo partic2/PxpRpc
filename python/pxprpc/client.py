@@ -10,6 +10,8 @@ from pxprpc.common import NotNone
 
 log1=logging.getLogger(__name__)
 
+from .common import Serializer
+
 class RpcConnection(object):
     
     def __init__(self):
@@ -94,20 +96,21 @@ class RpcConnection(object):
         await respFut
         NotNone(self.__readingResp).set_result(None)
 
-    async def call(self,destAddr:int,fnAddr:int,argsData:bytes,returnLength:int=4,sid:int=0x100):
+    async def call(self,destAddr:int,fnAddr:int,argsData:typing.List[bytes],onResponse:typing.Callable[[asyncio.StreamReader],typing.Awaitable[typing.Any]],sid:int=0x100):
         sid=sid|5
         respFut=asyncio.Future()
         self.__waitingSession[sid]=respFut
         await self.__writeLock.acquire()
         try:
             self.out2.write(struct.pack('<III',sid,destAddr,fnAddr))
-            self.out2.write(argsData)
+            for buf in argsData:
+                self.out2.write(buf)
         finally:
             self.__writeLock.release()
         await respFut
-        data=await self.in2.readexactly(returnLength)
+        if onResponse!=None:
+            await onResponse(self.in2)
         NotNone(self.__readingResp).set_result(None)
-        return data
 
     async def getFunc(self,destAddr:int,fnName:int,sid:int=0x100):
         sid=sid|6
@@ -224,9 +227,9 @@ available type signature characters:
   f  float(32bit float)
   d  double(64bit float)
   o  object(32bit reference address)
-  b  bytes(32bit address refer to a bytes buffer)
+  b  bytes(bytes buffer)
 
-  z  boolean(pxprpc use 32bit to store boolean value)
+  c  boolean(pxprpc use 1byte(1/0) to store a boolean value)
   s  string(bytes will be decode to string)
         '''
         self.sign=sign
@@ -236,80 +239,79 @@ available type signature characters:
     async def __call__(self,*args)->typing.Any:
         assert self.value is not None
         sign=self.sign
-        freeBeforeReturn=[]
         t1=0
-        fmtstr=''
         args2=[]
         retType=''
         try:
+            ser=Serializer().prepareSerializing()
             for t1 in range(0,len(sign)):
-                if sign[t1]=='l':
-                    fmtstr+='q'
-                    args2.append(args[t1])
+                if sign[t1]=='i':
+                    ser.putInt(args[t1])
+                elif sign[t1]=='l':
+                    ser.putLong(args[t1])
+                elif sign[t1]=='f':
+                    ser.putFloat(args[t1])
+                elif sign[t1]=='d':
+                    ser.putDouble(args[t1])
                 elif sign[t1]=='o':
-                    fmtstr+='i'
-                    args2.append(args[t1].value)
-                elif sign[t1]=='z':
-                    fmtstr+='i'
-                    args2.append(1 if args[t1] else 0)
-                elif sign[t1] in('b','s'):
-                    fmtstr+='i'
-                    t2=await self.client.allocSlot()
-                    freeBeforeReturn.append(t2)
-                    if sign[t1]=='s':
-                        await self.client.conn.push(t2,args[t1].encode('utf-8'))
-                    else:
-                        await self.client.conn.push(t2,args[t1])
-                    args2.append(t2)
+                    ser.putInt(args[t1].value)
+                elif sign[t1]=='c':
+                    ser.putVarint(1 if args[t1] else 0)
+                elif sign[t1]=='s':
+                    ser.putString(args[t1])
+                elif sign[t1]=='b':
+                    ser.putBytes(args[t1])
                 elif sign[t1]=='-':
                     if sign[t1+1]=='>':
                         if len(sign)>t1+2:
                             retType=sign[t1+2]
                         break
                 else:
-                    fmtstr+=sign[t1]
-                    args2.append(args[t1])
-            
-            packed=struct.pack('<'+fmtstr,*args2) if len(fmtstr)>0 else bytes()
+                    raise IOError('Unknown sign character')
 
-            if retType!='' and retType in 'ilfdz':
-                result=await self.client.conn.call(0,self.value,packed,4 if retType in 'ifvz' else 6)
-                if retType=='l':
-                    return struct.unpack('<q',result)[0]
-                elif retType=='z':
-                    return result!=bytes((0,0,0,0))
-                else:
-                    return struct.unpack('<'+retType,result)[0]
-            else:
+            packed=ser.build()
+            destAddr=0
+            if retType=='o':
                 destAddr=await self.client.allocSlot()
-                status=struct.unpack('<i',await self.client.conn.call(destAddr,self.value,packed,4))[0]
-                result=RpcExtendClientObject(self.client,destAddr)
-                if retType=='s':
-                    freeBeforeReturn.append(result)
-                    if(status==1):
-                        await self.client.checkException(result)
-                        return None
-                    else:
-                        t3=await result.tryPull()
-                        return t3 if t3==None else t3.decode('utf-8')
-                elif retType=='b':
-                    if(status==1):
-                        await self.client.checkException(result)
-                        return None
-                    freeBeforeReturn.append(result)
-                    t2=await result.tryPull()
-                    return t2
+
+            getResp=asyncio.Future()
+            async def onResponse(in2:asyncio.StreamReader):
+                len=int.from_bytes(await in2.readexactly(4),'little')
+                if (len&0x80000000)!=0:
+                    getResp.set_result([False,await in2.readexactly(len&0x7fffffff)])
                 else:
-                    if(status==1):
-                        raise RpcExtendError(result)
-                    return result
+                    getResp.set_result([True,await in2.readexactly(len)])
+
+            await self.client.conn.call(destAddr,self.value,[len(packed).to_bytes(4,'little'),packed],onResponse)
+
+            succ,data=await getResp
+
+            ser=Serializer().prepareUnserializing(data)
+            if succ:
+                if retType=='i':
+                    return ser.getInt()
+                elif retType=='l':
+                    return ser.getLong()
+                elif retType=='f':
+                    return ser.getFloat()
+                elif retType=='d':
+                    return ser.getDouble()
+                elif retType=='b':
+                    return ser.getBytes()
+                elif retType=='s':
+                    return ser.getString()
+                elif retType=='c':
+                    return ser.getVarint()!=0
+                elif retType=='o':
+                    return RpcExtendClientObject(self.client,ser.getInt())
+                elif retType=='':
+                    return None
+                else:
+                    raise IOError('Unknown Type')
+            else:
+                raise RpcExtendError(ser.getString())
         finally:
-            for t1 in freeBeforeReturn:
-                t2=type(t1)
-                if t2==int:
-                    await self.client.freeSlot(t1)
-                elif issubclass(t2,RpcExtendClientObject):
-                    await t1.free()
+            pass
 
 
 

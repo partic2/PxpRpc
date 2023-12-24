@@ -10,16 +10,15 @@ export async function testAsClient(){
         await new WebSocketIo().connect('ws://127.0.0.1:1345/pxprpc'))).init();
     console.log(await client2.conn.getInfo());
     let get1234=(await client2.getFunc('test1.get1234'))!
-    get1234.signature('->s');
-    console.log(await get1234.call())
     get1234.signature('->o');
     let str1=await get1234.call() as RpcExtendClientObject;
     let printString=(await client2.getFunc('test1.printString'))!;
     printString.signature('o->')
     await printString.call(str1);
-    printString.signature('s->')
-    await printString.call('4567');
     await str1.free()
+    let testPrintArg=(await client2.getFunc('test1.testPrintArg'))!
+    testPrintArg.signature('cilfdb->')
+    await testPrintArg.call(true,123,BigInt('1122334455667788'),123.5,123.123,new TextEncoder().encode('bytes'));
     let testUnser=(await client2.getFunc('test1.testUnser'))!;
     testUnser.signature('b->')
     let serdata=new Serializer().prepareSerializing(8)
@@ -42,8 +41,8 @@ export async function testAsClient(){
 export async function testAsServer(){
     let server2=await new RpcExtendServer1(new Server(
         await new WebSocketIo().connect('ws://127.0.0.1:1345/pxprpcClient')));
-    server2.addFunc('test1.get1234',new RpcExtendServerCallable(async()=>'1234').signature('->s'))
-    server2.addFunc('test1.printString',new RpcExtendServerCallable(async(s:string)=>console.log(s)).signature('s->'))
+    server2.addFunc('test1.get1234',new RpcExtendServerCallable(async()=>'1234').signature('->o'))
+    server2.addFunc('test1.printString',new RpcExtendServerCallable(async(s:string)=>console.log(s)).signature('o->'))
     server2.addFunc('test1.testUnser',new RpcExtendServerCallable(async(b:ArrayBuffer)=>{
         let ser=new Serializer().prepareUnserializing(b);
         console.log(ser.getInt(),ser.getLong(),ser.getFloat(),ser.getDouble(),ser.getString(),new TextDecoder().decode(ser.getBytes()))
@@ -59,5 +58,7 @@ export async function testAsServer(){
         ()=>new Promise((resolve)=>setTimeout(resolve,1000))).signature('->'));
     server2.addFunc('test1.raiseError1',new RpcExtendServerCallable(
         async ()=>{throw new Error('dummy io error')}).signature('->'));
+    server2.addFunc('test1.testPrintArg',new RpcExtendServerCallable(
+        async (a,b,c,d,e,f)=>{console.log(a,b,c,d,e,new TextDecoder().decode(f))}).signature('cilfdb->'));
     await server2.serve();
 }

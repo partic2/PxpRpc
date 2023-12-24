@@ -3,142 +3,171 @@ package pursuer.pxprpc;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.nio.ByteBuffer;
 import java.nio.channels.ByteChannel;
 
 public class MethodCallable implements PxpCallable{
 
 	public Method method;
 
-	public int[] argList;
-	public int returnType;
+	public char[] argList;
+	public char returnType;
 
 	protected int firstInputParamIndex=0;
 
-	public void writeResult(PxpRequest req) throws IOException{
-		ServerContext ctx = req.context;
-		Object obj=req.result;
-		switch(returnType) {
-			//primitive type
-			//boolean
-			case 1:
-				Utils.writeInt32(req.getChan(),(Boolean)obj?1:0);
-				break;
-			//int
-			case 2:
-				Utils.writeInt32(req.getChan(),(Integer)obj);
-				break;
-			//long
-			case 3:
-				Utils.writeInt64(req.getChan(),(Long)obj);
-				break;
-			//float
-			case 4:
-				Utils.writeFloat32(req.getChan(),(Float)obj);
-				break;
-			//double
-			case 5:
-				Utils.writeFloat64(req.getChan(),(Double)obj);
-				break;
-			//reference type
-			case 6:
-			case 7:
-			case 8:
-				if(Exception.class.isInstance(req.result)) {
-					Utils.writeInt32(req.getChan(),1);
-				}else {
-					Utils.writeInt32(req.getChan(),0);
-				}
-				break;
-			default :
-				throw new UnsupportedOperationException();
-		}
-
-	}
+	public void writeResult(PxpRequest req) throws IOException {
+        Object obj = req.result;
+        PxpChannel chan = req.getChan();
+        Serializer2 ser = new Serializer2().prepareSerializing(32);
+        ByteBuffer buf;
+        if (obj instanceof Exception) {
+            buf = ser.putString(((Exception) obj).getMessage()).build();
+            Utils.writeInt32(chan, 0x80000000 | buf.remaining());
+            Utils.writef(chan, buf);
+        } else {
+			writeNext(req,returnType,ser,obj);
+            buf = ser.build();
+			Utils.writeInt32(chan,buf.remaining());
+			Utils.writef(chan,buf);
+        }
+    }
 
 	public MethodCallable(Method method) {
 		this.method=method;
-		Class<?>[] params = method.getParameterTypes();
-		argList=new int[params.length];
-		if(params.length>0&&(params[0]==AsyncReturn.class||params[0]==PxpRequest.class)) {
-			firstInputParamIndex=1;
+		Class<?>[] paramsType = method.getParameterTypes();
+		argList=new char[paramsType.length];
+
+		if (paramsType.length>0 && (paramsType[0] == AsyncReturn.class || paramsType[0] == PxpRequest.class)) {
+			firstInputParamIndex = 1;
+			returnType = javaTypeToSwitchId(method.getReturnType());
+		}else if(returnType==0){
+			returnType = javaTypeToSwitchId(method.getReturnType());
 		}
-		for(int i=firstInputParamIndex;i<params.length;i++) {
-			Class<?> pc = params[i];
+
+		for(int i=firstInputParamIndex;i<paramsType.length;i++) {
+			Class<?> pc = paramsType[i];
 			argList[i]=javaTypeToSwitchId(pc);
 		}
-		returnType=javaTypeToSwitchId(method.getReturnType());
 
 	}
 
 
 	public void readParameter(PxpRequest req) throws IOException {
 		ByteChannel chan=req.getChan();
-		final int thisObj=Utils.readInt32(chan);
+		int len=Utils.readInt32(chan);
+		ByteBuffer buf = ByteBuffer.allocate(len & 0x7fffffff);
+		Utils.readf(chan,buf);
+		Serializer2 ser = new Serializer2().prepareUnserializing(buf);
+		if((len&0x80000000)!=0){
+			//discard meta info
+			ser.getString();
+		}
+		final int thisObj=ser.getInt();
 		final Object[] args=new Object[argList.length];
 		if(firstInputParamIndex>=1) {
 			args[0]=null;
 		}
 		for(int i=firstInputParamIndex;i<argList.length;i++) {
-			args[i]=readNext(req,argList[i]);
+			args[i]=readNext(req,argList[i],ser);
 		}
 		req.parameter=new Object[] {thisObj,args};
 	}
 
 
-	public int javaTypeToSwitchId(Class<?> jtype) {
+	public static char javaTypeToSwitchId(Class<?> jtype) {
 		if(jtype.isPrimitive()) {
 			String name = jtype.getName();
 			if(name.equals("boolean")) {
-				return 1;
+				return 'c';
 			}else if(name.equals("int")) {
-				return 2;
+				return 'i';
 			}else if(name.equals("long")) {
-				return 3;
+				return 'l';
 			}else if(name.equals("float")) {
-				return 4;
+				return 'f';
 			}else if(name.equals("double")) {
-				return 5;
+				return 'd';
 			}else{
-				return 6;
+				return 'o';
 			}
 		}else{
 			if(jtype.equals(byte[].class)) {
-				return 7;
+				return 'b';
 			}else if(jtype.equals(String.class)) {
-				return 8;
+				return 's';
+			}else if(jtype.equals(Void.class)){
+				//void
+				return 0;
 			}
-			return 6;
+			return 'o';
 		}
 	}
 
-	public Object readNext(PxpRequest req, int switchId) throws IOException {
+	public static Object readNext(PxpRequest req, char switchId,Serializer2 ser) throws IOException {
 		ByteChannel chan=req.getChan();
 		int addr=-1;
 		switch(switchId) {
 			//primitive type
-			case 1: //boolean
-				return Utils.readInt32(chan)!=0;
-			case 2: //int
-				return Utils.readInt32(chan);
-			case 3: //long
-				return Utils.readInt64(chan);
-			case 4: //float
-				return Utils.readFloat32(chan);
-			case 5: //double
-				return Utils.readFloat64(chan);
+			case 'c': //boolean
+				return ser.getVarint()!=0;
+			case 'i': //int
+				return ser.getInt();
+			case 'l': //long
+				return ser.getLong();
+			case 'f': //float
+				return ser.getFloat();
+			case 'd': //double
+				return ser.getDouble();
 			//reference type
-			case 6:
-				addr=Utils.readInt32(chan);
+			case 'o':
+				addr=ser.getInt();
 				return req.context.refSlots[addr].get();
-			case 7:
+			case 'b':
 				//byte[]
-				addr=Utils.readInt32(chan);
-				return req.context.getBytesAt(addr);
-			case 8:
+				return ser.getBytes();
+			case 's':
 				//String
-				addr=Utils.readInt32(chan);
-				return req.context.getStringAt(addr);
+				return ser.getString();
 			default :
+				throw new UnsupportedOperationException();
+		}
+	}
+
+	public static void writeNext(PxpRequest req, char switchId,Serializer2 ser,Object obj) throws IOException {
+		switch (switchId) {
+			//primitive type
+			//boolean
+			case 'c' :
+				ser.putVarint((boolean) obj ? 1 : 0);
+				break;
+			//int
+			case 'i' :
+				ser.putInt((int) obj);
+				break;
+			//long
+			case 'l' :
+				ser.putLong((long) obj);
+				break;
+			//float
+			case 'f' :
+				ser.putFloat((float) obj);
+				break;
+			//double
+			case 'd' :
+				ser.putDouble((double) obj);
+				break;
+			//reference type
+			case 'o' :
+				ser.putInt(req.destAddr);
+				break;
+			case 'b' :
+				byte[] b2 = (byte[]) obj;
+				ser.putBytes(b2, 0, b2.length);
+				break;
+			case 's' :
+				ser.putString((String) obj);
+				break;
+			default:
 				throw new UnsupportedOperationException();
 		}
 	}

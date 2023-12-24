@@ -49,7 +49,7 @@ public class Serializer2 {
     }
     public Serializer2 putBytes(byte[] b, int offset, int len){
         putVarint(len);
-        Utils.ensureBuffer(buf,len);
+        buf=Utils.ensureBuffer(buf,len);
         buf.put(b,offset,len);
         return this;
     }

@@ -15,6 +15,7 @@ import logging
 
 logging.basicConfig(level=logging.INFO)
 
+import typing
 
 EnableWebsocketServer=False
 EnableCSharpClient=False
@@ -40,11 +41,12 @@ async def testClient(rpcconn:pxprpc.client.RpcConnection,name:str='default'):
     t1=await get1234()
     await printString(t1)
     printString.signature('s->')
-    await printString('change signature test')
-    get1234.signature('->s')
-    print('expect client get:1234')
-    t1=await get1234()
-    print('client get:'+t1)
+
+    testPrintArg=await client2.getFunc('test1.testPrintArg')
+    assert testPrintArg!=None
+    testPrintArg.signature('cilfdb->')
+    await testPrintArg(True,123,1122334455667788,123.5,123.123,b'bytes')
+    
     testUnser=await client2.getFunc('test1.testUnser')
     assert testUnser!=None
     testUnser.signature('b->')
@@ -73,11 +75,13 @@ async def testClient(rpcconn:pxprpc.client.RpcConnection,name:str='default'):
         print('exception catched: '+str(ex1))
     print(name+' test done')
 
+from pxprpc.server import decorator
+
 async def amain():
     class test1:
-        async def get1234(self)->str:
+        async def get1234(self)->typing.Any:
             return '1234'
-        async def printString(self,s:str):
+        async def printString(self,s:typing.Any):
             print(s)
             
         async def testUnser(self,b:bytes):
@@ -95,6 +99,11 @@ async def amain():
             len=ser.getRowCount()
             for t1 in range(len):
                 print(*ser.getRow(t1),sep='\t')
+
+        @decorator.signature('cilfdb->')
+        async def testPrintArg(self,a:bool,b:int,c:int,d:float,e:float,f:bytes):
+            print(a,b,c,d,e,f)
+
                 
     
     funcMap['test1']=test1()

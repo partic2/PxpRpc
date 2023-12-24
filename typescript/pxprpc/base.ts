@@ -276,7 +276,7 @@ export class Client{
         await respFut;
         this.respReadingCb(null);
     }
-    public async call(destAddr:number,fnAddr:number,args:ArrayBufferLike,sizeOfReturn:number,sid:number=0x100){
+    public async call(destAddr:number,fnAddr:number,args:ArrayBufferLike[],onResponse:(io1:Io)=>Promise<void>,sid:number=0x100){
         let hdr=new ArrayBuffer(12);
         let hdr2=new DataView(hdr);
         sid=sid|5;
@@ -290,12 +290,13 @@ export class Client{
         });
         await this.writeLock.mutexDo(async ()=>{
             await this.io1.write(hdr);
-            await this.io1.write(args);
+            for(let buf of args){
+                await this.io1.write(buf);
+            }
         });
         await respFut;
-        let data1=await this.io1.read(sizeOfReturn);
+        await onResponse(this.io1);
         this.respReadingCb(null);
-        return data1
     }
     public async getFunc(destAddr:number,fnNameAddr:number,sid:number=0x100){
         let hdr=new ArrayBuffer(12);
