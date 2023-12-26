@@ -7,15 +7,12 @@ pxprpc high level abstract treat all callable as a model like below.
 (input arguments)->call->(output arguments)
 
 function signature
-format: 'parameters type->return type' 
+format: 'parameters type->returns type' 
 eg:
-a function defined in c:
-bool fn(uin32_t,uint64_t,float64_t,struct pxprpc_object *)
-defined in java:
-boolean fn(int,int,double,Object)
-...
+a function defined like:
+[bool,int] fn(uin32_t,uint64_t,float64_t,struct pxprpc_object *)
 it's pxprpc signature: 
-iido->c
+iido->ci
 
 available type signature characters:
 i  int(32bit integer)

@@ -17,8 +17,8 @@ export async function testAsClient(){
     await printString.call(str1);
     await str1.free()
     let testPrintArg=(await client2.getFunc('test1.testPrintArg'))!
-    testPrintArg.signature('cilfdb->')
-    await testPrintArg.call(true,123,BigInt('1122334455667788'),123.5,123.123,new TextEncoder().encode('bytes'));
+    testPrintArg.signature('cilfdb->il')
+    console.log('multi-result:',await testPrintArg.call(true,123,BigInt('1122334455667788'),123.5,123.123,new TextEncoder().encode('bytes')));
     let testUnser=(await client2.getFunc('test1.testUnser'))!;
     testUnser.signature('b->')
     let serdata=new Serializer().prepareSerializing(8)
@@ -59,6 +59,6 @@ export async function testAsServer(){
     server2.addFunc('test1.raiseError1',new RpcExtendServerCallable(
         async ()=>{throw new Error('dummy io error')}).signature('->'));
     server2.addFunc('test1.testPrintArg',new RpcExtendServerCallable(
-        async (a,b,c,d,e,f)=>{console.log(a,b,c,d,e,new TextDecoder().decode(f))}).signature('cilfdb->'));
+        async (a,b,c,d,e,f)=>{console.log(a,b,c,d,e,new TextDecoder().decode(f));return [100,BigInt('1234567890')]}).signature('cilfdb->il'));
     await server2.serve();
 }

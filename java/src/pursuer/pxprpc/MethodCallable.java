@@ -5,50 +5,56 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 import java.nio.channels.ByteChannel;
+import java.util.Arrays;
 
 public class MethodCallable implements PxpCallable{
 
 	public Method method;
 
-	public char[] argList;
-	public char returnType;
+	public char[] tParam;
+	public char[] tResult;
 
 	protected int firstInputParamIndex=0;
 
-	public void writeResult(PxpRequest req) throws IOException {
-        Object obj = req.result;
-        PxpChannel chan = req.getChan();
-        Serializer2 ser = new Serializer2().prepareSerializing(32);
-        ByteBuffer buf;
-        if (obj instanceof Exception) {
-            buf = ser.putString(((Exception) obj).getMessage()).build();
-            Utils.writeInt32(chan, 0x80000000 | buf.remaining());
-            Utils.writef(chan, buf);
-        } else {
-			writeNext(req,returnType,ser,obj);
-            buf = ser.build();
-			Utils.writeInt32(chan,buf.remaining());
-			Utils.writef(chan,buf);
-        }
-    }
+
 
 	public MethodCallable(Method method) {
 		this.method=method;
-		Class<?>[] paramsType = method.getParameterTypes();
-		argList=new char[paramsType.length];
+		parseMethod();
+	}
 
-		if (paramsType.length>0 && (paramsType[0] == AsyncReturn.class || paramsType[0] == PxpRequest.class)) {
-			firstInputParamIndex = 1;
-			returnType = javaTypeToSwitchId(method.getReturnType());
-		}else if(returnType==0){
-			returnType = javaTypeToSwitchId(method.getReturnType());
+	public boolean parseCustomSignature(){
+		MethodSignature customSign = method.getAnnotation(MethodSignature.class);
+		if(customSign!=null){
+			String sign=customSign.value()[0];
+			int delim=sign.indexOf("->");
+			tParam=sign.substring(0,delim).toCharArray();
+			tResult=sign.substring(delim+2).toCharArray();
+			return true;
+		}else{
+			return false;
 		}
-
-		for(int i=firstInputParamIndex;i<paramsType.length;i++) {
-			Class<?> pc = paramsType[i];
-			argList[i]=javaTypeToSwitchId(pc);
+	}
+	public void parseMethod(){
+		if(!parseCustomSignature()){
+			Class<?>[] paramsType = method.getParameterTypes();
+			if (paramsType.length>0 && (paramsType[0] == AsyncReturn.class || paramsType[0] == PxpRequest.class)) {
+				firstInputParamIndex = 1;
+			}
+			tParam=new char[paramsType.length+1-firstInputParamIndex];
+			if(tResult==null){
+				if(method.getReturnType()!=Void.class){
+					tResult = new char[]{javaTypeToSwitchId(method.getReturnType())};
+				}else{
+					tResult=new char[0];
+				}
+			}
+			tParam[0]='o';
+			for(int i=firstInputParamIndex;i<paramsType.length;i++) {
+				Class<?> pc = paramsType[i];
+				tParam[i-firstInputParamIndex+1]=javaTypeToSwitchId(pc);
+			}
 		}
-
 	}
 
 
@@ -57,22 +63,69 @@ public class MethodCallable implements PxpCallable{
 		int len=Utils.readInt32(chan);
 		ByteBuffer buf = ByteBuffer.allocate(len & 0x7fffffff);
 		Utils.readf(chan,buf);
-		Serializer2 ser = new Serializer2().prepareUnserializing(buf);
-		if((len&0x80000000)!=0){
-			//discard meta info
-			ser.getString();
+		final Object[] args=new Object[tParam.length];
+		if(tParam.length==1 && tParam[0]=='b'){
+			args[0]=buf.array();
+		}else{
+			Serializer2 ser = new Serializer2().prepareUnserializing(buf);
+			for(int i=0;i<tParam.length;i++) {
+				args[i]=readNext(req,tParam[i],ser);
+			}
 		}
-		final int thisObj=ser.getInt();
-		final Object[] args=new Object[argList.length];
-		if(firstInputParamIndex>=1) {
-			args[0]=null;
-		}
-		for(int i=firstInputParamIndex;i<argList.length;i++) {
-			args[i]=readNext(req,argList[i],ser);
-		}
-		req.parameter=new Object[] {thisObj,args};
+		req.parameter=args;
 	}
 
+
+	public void call(PxpRequest req,AsyncReturn<Object> asyncRet) throws IOException {
+		ServerContext ctx = req.context;
+		try {
+			Object result=null;
+			Object[] args = (Object[])req.parameter;
+			Object[] args2=new Object[firstInputParamIndex+args.length-1];
+			System.arraycopy(args,1,args2,firstInputParamIndex,args.length-1);
+			if(firstInputParamIndex==1){
+				args2[0]=asyncRet;
+			}
+			result=method.invoke(args[0],args2);
+			if(firstInputParamIndex==0) {
+				asyncRet.result(result);
+			}
+		} catch (InvocationTargetException e) {
+			asyncRet.result(e.getCause());
+		} catch (IllegalAccessException e) {
+			asyncRet.result(e);
+		}
+	}
+
+	public void writeResult(PxpRequest req) throws IOException {
+		Object obj = req.result;
+		PxpChannel chan = req.getChan();
+		Serializer2 ser = new Serializer2().prepareSerializing(32);
+		ByteBuffer buf;
+		if (obj instanceof Exception) {
+			buf = ser.putString(((Exception) obj).getMessage()).build();
+			Utils.writeInt32(chan, 0x80000000 | buf.remaining());
+			Utils.writef(chan, buf);
+		} else {
+			if(tResult.length==1 && tResult[0]=='b'){
+				buf=ByteBuffer.wrap((byte[])obj);
+				Utils.writeInt32(chan,buf.remaining());
+				Utils.writef(chan,buf);
+			}else{
+				if(tResult.length==1){
+					writeNext(req,tResult[0],ser,obj);
+				}else{
+					Object[] multi=(Object[]) obj;
+					for(int i=0;i<tResult.length;i++){
+						writeNext(req,tResult[i],ser,multi[i]);
+					}
+				}
+				buf = ser.build();
+				Utils.writeInt32(chan,buf.remaining());
+				Utils.writef(chan,buf);
+			}
+		}
+	}
 
 	public static char javaTypeToSwitchId(Class<?> jtype) {
 		if(jtype.isPrimitive()) {
@@ -138,23 +191,23 @@ public class MethodCallable implements PxpCallable{
 			//primitive type
 			//boolean
 			case 'c' :
-				ser.putVarint((boolean) obj ? 1 : 0);
+				ser.putVarint((Boolean) obj ? 1 : 0);
 				break;
 			//int
 			case 'i' :
-				ser.putInt((int) obj);
+				ser.putInt((Integer) obj);
 				break;
 			//long
 			case 'l' :
-				ser.putLong((long) obj);
+				ser.putLong((Long) obj);
 				break;
 			//float
 			case 'f' :
-				ser.putFloat((float) obj);
+				ser.putFloat((Float) obj);
 				break;
 			//double
 			case 'd' :
-				ser.putDouble((double) obj);
+				ser.putDouble((Double) obj);
 				break;
 			//reference type
 			case 'o' :
@@ -172,24 +225,5 @@ public class MethodCallable implements PxpCallable{
 		}
 	}
 
-
-	public void call(PxpRequest req,AsyncReturn<Object> asyncRet) throws IOException {
-		ServerContext ctx = req.context;
-		try {
-			Object result=null;
-			Object[] args = (Object[])((Object[])req.parameter)[1];
-			if(firstInputParamIndex>=1) {
-				args[0]=req;
-			}
-			result=method.invoke(ctx.refSlots[(Integer)((Object[])req.parameter)[0]],args);
-			if(firstInputParamIndex==0) {
-				asyncRet.result(result);
-			}
-		} catch (InvocationTargetException e) {
-			asyncRet.result(e.getCause());
-		} catch (IllegalAccessException e) {
-			asyncRet.result(e);
-		}
-	}
 
 }

@@ -91,6 +91,10 @@ public class PxpRpc {
 		public void throwError() throws IOException {
 			throw new IOException("dummy exception");
 		}
+		@MethodSignature("->il")
+		public Object[] multiReturn(){
+			return new Object[]{100,1234567890l};
+		}
 	}
 	public static class TickEvent extends EventDispatcher{
 		public TickEvent() {
@@ -229,6 +233,13 @@ public class PxpRpc {
 			System.out.println("expect print 'free by server gc' if server support");
 			client.push(12, new byte[0]);
 
+			//set *11 = getFunc test1.printString
+			client.getFunc(11,"test1.multiReturn");
+			//push to 12, so *11 should be free if server support.
+			System.out.println("expect print '100,1234567890'");
+			Serializer2 ser=client.callFunc(12, 11, new Object[0]);
+			System.out.println(ser.getInt()+","+ser.getLong());
+
 			client.sequence();
 			System.out.println("expect print 5678 in 1 second later.");
 			client.getFunc(11,"test1.waitOneTick");
@@ -292,33 +303,39 @@ public class PxpRpc {
 			Utils.writeInt32(chan,op);
 			Utils.writeInt32(chan,assignAddr);
 			Utils.writeInt32(chan,addr);
-			Serializer2 ser=new Serializer2().prepareSerializing(32);
-			for(Object p : params) {
-				if(p.getClass().equals(Integer.class)) {
-					ser.putInt((Integer) p);
-				}else if(p.getClass().equals(Long.class)) {
-					ser.putLong((Long) p);
-				}else if(p.getClass().equals(Float.class)) {
-					ser.putFloat((Float) p);
-				}else if(p.getClass().equals(Double.class)) {
-					ser.putDouble((Double)p);
-				} else if (p.getClass().equals(byte[].class)) {
-					byte[] b2= (byte[]) p;
-					ser.putBytes(b2,0,b2.length);
-				}else if(p.getClass().equals(String.class)){
-					ser.putString((String)p);
-				}else {
-					throw new UnsupportedOperationException();
+			ByteBuffer buf;
+			if(params.length==1 && params[0].getClass().equals(byte[].class)){
+				buf = ByteBuffer.wrap((byte[])params[0]);
+			}else{
+				Serializer2 ser=new Serializer2().prepareSerializing(32);
+				for(Object p : params) {
+					if(p.getClass().equals(Integer.class)) {
+						ser.putInt((Integer) p);
+					}else if(p.getClass().equals(Long.class)) {
+						ser.putLong((Long) p);
+					}else if(p.getClass().equals(Float.class)) {
+						ser.putFloat((Float) p);
+					}else if(p.getClass().equals(Double.class)) {
+						ser.putDouble((Double)p);
+					} else if (p.getClass().equals(byte[].class)) {
+						byte[] b2= (byte[]) p;
+						ser.putBytes(b2,0,b2.length);
+					}else if(p.getClass().equals(String.class)){
+						ser.putString((String)p);
+					}else {
+						throw new UnsupportedOperationException();
+					}
 				}
+				buf = ser.build();
 			}
-			ByteBuffer buf = ser.build();
 			Utils.writeInt32(chan,buf.remaining());
 			Utils.writef(chan,buf);
+
 			assert2(Utils.readInt32(chan)==op);
 			int len=Utils.readInt32(chan);
 			buf=ByteBuffer.allocate(len&0x7fffffff);
 			Utils.readf(chan,buf);
-			ser = new Serializer2().prepareUnserializing(buf);
+			Serializer2 ser = new Serializer2().prepareUnserializing(buf);
 			if((len&0x80000000)!=0){
 				throw new RuntimeException(ser.getString());
 			}else{
@@ -359,26 +376,31 @@ public class PxpRpc {
 			Utils.writeInt32(chan,op);
 			Utils.writeInt32(chan,assignAddr);
 			Utils.writeInt32(chan,addr);
-			Serializer2 ser=new Serializer2().prepareSerializing(32);
-			for(Object p : params) {
-				if(p.getClass().equals(Integer.class)) {
-					ser.putInt((Integer) p);
-				}else if(p.getClass().equals(Long.class)) {
-					ser.putLong((Long) p);
-				}else if(p.getClass().equals(Float.class)) {
-					ser.putFloat((Float) p);
-				}else if(p.getClass().equals(Double.class)) {
-					ser.putDouble((Double)p);
-				} else if (p.getClass().equals(byte[].class)) {
-					byte[] b2= (byte[]) p;
-					ser.putBytes(b2,0,b2.length);
-				}else if(p.getClass().equals(String.class)){
-					ser.putString((String)p);
-				}else {
-					throw new UnsupportedOperationException();
+			ByteBuffer buf;
+			if(params.length==1 && params[0].getClass().equals(byte[].class)){
+				buf = ByteBuffer.wrap((byte[])params[0]);
+			}else{
+				Serializer2 ser=new Serializer2().prepareSerializing(32);
+				for(Object p : params) {
+					if(p.getClass().equals(Integer.class)) {
+						ser.putInt((Integer) p);
+					}else if(p.getClass().equals(Long.class)) {
+						ser.putLong((Long) p);
+					}else if(p.getClass().equals(Float.class)) {
+						ser.putFloat((Float) p);
+					}else if(p.getClass().equals(Double.class)) {
+						ser.putDouble((Double)p);
+					} else if (p.getClass().equals(byte[].class)) {
+						byte[] b2= (byte[]) p;
+						ser.putBytes(b2,0,b2.length);
+					}else if(p.getClass().equals(String.class)){
+						ser.putString((String)p);
+					}else {
+						throw new UnsupportedOperationException();
+					}
 				}
+				buf = ser.build();
 			}
-			ByteBuffer buf = ser.build();
 			Utils.writeInt32(chan,buf.remaining());
 			Utils.writef(chan,buf);
 		}

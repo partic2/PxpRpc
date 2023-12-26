@@ -23,7 +23,8 @@ export class RpcExtendClientObject {
 }
 
 export class RpcExtendClientCallable extends RpcExtendClientObject {
-    protected sign: string = '->';
+    public tParam: string=''
+    public tResult:string=''
     public constructor(client: RpcExtendClient1, value: number | undefined) {
         super(client, value)
     }
@@ -52,19 +53,21 @@ c  boolean(pxprpc use 1byte(1/0) to store a boolean value)
 s  string(bytes will be decode to string)
 */
     public signature(sign: string) {
-        this.sign = sign;
+        [this.tParam,this.tResult]=sign.split('->');
         return this;
     }
 
     public async call(...args:any[]) {
-        let sign2 = this.sign
-        let argSign = sign2.substring(0, sign2.lastIndexOf('->'))
-        let retType = sign2.substring(argSign.length + 2)
-
-        let ser=new Serializer().prepareSerializing(32);
-        try {
-            for (let i1 = 0; i1 < argSign.length; i1++) {
-                switch (argSign.charAt(i1)) {
+        let buf:ArrayBuffer[]=[]
+        if(this.tParam==='b'){
+            let abuf=args[0] as ArrayBuffer
+            let lenbuf=new ArrayBuffer(4);
+            new DataView(lenbuf).setInt32(0,abuf.byteLength,true);
+            buf=[lenbuf,abuf];
+        }else{
+            let ser=new Serializer().prepareSerializing(32);
+            for (let i1 = 0; i1 < this.tParam.length; i1++) {
+                switch (this.tParam.charAt(i1)) {
                     case 'i':
                         ser.putInt(args[i1]);
                         break;
@@ -93,26 +96,31 @@ s  string(bytes will be decode to string)
                         throw new Error('Unknown type')
                 }
             }
-            let buf=ser.build()
+            let serbuf=ser.build()
             let lenbuf=new ArrayBuffer(4);
-            new DataView(lenbuf).setInt32(0,buf.byteLength,true);
-            let destAddr=0;
-            if(retType!=='o')destAddr=await this.client.allocSlot()
-            let resp:[boolean,ArrayBuffer]|null=null;
-            await this.client.conn.call( 0, this.value!, [lenbuf,buf],async (io1)=>{
-                let intbuf=await io1.read(4);
-                let len=new DataView(intbuf).getInt32(0,true); 
-                if((len&0x80000000)!==0){
-                    resp=[false,await io1.read(len&0x7fffffff)]
-                }else{
-                    resp=[true,await io1.read(len)]
-                }
-            });
-            if(resp![0]){
+            new DataView(lenbuf).setInt32(0,serbuf.byteLength,true);
+            buf=[lenbuf,serbuf];
+        }
+        let destAddr=0;
+        if(this.tResult!=='o')destAddr=await this.client.allocSlot()
+        let resp:[boolean,ArrayBuffer]|null=null;
+        await this.client.conn.call( destAddr, this.value!, buf,async (io1)=>{
+            let intbuf=await io1.read(4);
+            let len=new DataView(intbuf).getInt32(0,true); 
+            if((len&0x80000000)!==0){
+                resp=[false,await io1.read(len&0x7fffffff)]
+            }else{
+                resp=[true,await io1.read(len)]
+            }
+        });
+        if(resp![0]){
+            if(this.tResult==='b'){
+                return resp![1];
+            }else{
                 let ser=new Serializer().prepareUnserializing(resp![1]);
                 let rets=[]
-                for (let i1 = 0; i1 < retType.length; i1++) {
-                    switch (retType.charAt(i1)) {
+                for (let i1 = 0; i1 < this.tResult.length; i1++) {
+                    switch (this.tResult.charAt(i1)) {
                         case 'i':
                             rets.push(ser.getInt())
                             break;
@@ -148,10 +156,10 @@ s  string(bytes will be decode to string)
                 }else{
                     return rets;
                 }
-            }else{
-                throw new RpcExtendError(new Serializer().prepareUnserializing(resp![1]).getString())
             }
-        } finally {}
+        }else{
+            throw new RpcExtendError(new Serializer().prepareUnserializing(resp![1]).getString())
+        }
 
     }
 
@@ -260,41 +268,42 @@ export class RpcExtendServerCallable implements PxpCallable{
     public async readParameter (req: PxpRequest){
         let buflen=new DataView(await req.context.io1.read(4)).getUint32(0,true);
         let buf=await req.context.io1.read(buflen&0x7fffffff);
-        let ser=new Serializer().prepareUnserializing(buf);
-        if((buflen&0x80000000)!==0){
-            ser.getBytes();
-        }
-        let tParam=this.tParam;
         let param=[];
         let obj:any=null;
-        for(let i1=0;i1<tParam.length;i1++){
-            switch(tParam[i1]){
-                case 'i':
-                    param.push(ser.getInt());
-                    break;
-                case 'l':
-                    param.push(ser.getLong());
-                    break;
-                case 'f':
-                    param.push(ser.getFloat());
-                    break;
-                case 'd':
-                    param.push(ser.getDouble());
-                    break;
-                case 'o':
-                    obj=req.context.refSlots[ser.getInt()]!.get();
-                    break;
-                case 'b':
-                    param.push(ser.getBytes());
-                    break;
-                case 's':
-                    param.push(ser.getString());
-                    break;
-                case 'c':
-                    param.push(ser.getVarint()!==0);
-                    break;
-                default:
-                    throw new Error('Unsupported value type.');
+        if(this.tParam==='b'){
+            param=[buf];
+        }else{
+            let ser=new Serializer().prepareUnserializing(buf);
+            for(let i1=0;i1<this.tParam.length;i1++){
+                switch(this.tParam.charAt(i1)){
+                    case 'i':
+                        param.push(ser.getInt());
+                        break;
+                    case 'l':
+                        param.push(ser.getLong());
+                        break;
+                    case 'f':
+                        param.push(ser.getFloat());
+                        break;
+                    case 'd':
+                        param.push(ser.getDouble());
+                        break;
+                    case 'o':
+                        obj=req.context.refSlots[ser.getInt()]!.get();
+                        param.push(obj);
+                        break;
+                    case 'b':
+                        param.push(ser.getBytes());
+                        break;
+                    case 's':
+                        param.push(ser.getString());
+                        break;
+                    case 'c':
+                        param.push(ser.getVarint()!==0);
+                        break;
+                    default:
+                        throw new Error('Unsupported value type.');
+                }
             }
         }
         req.parameter=param;
@@ -313,36 +322,44 @@ export class RpcExtendServerCallable implements PxpCallable{
             let buflen=new ArrayBuffer(4);
             new DataView(buflen).setUint32(0,0x80000000|buf.byteLength,true);
             await Promise.all([req.context.io1.write(buflen),req.context.io1.write(buf)]);
+        }else if(this.tResult==='b'){
+            let buf=req.result;
+            let buflen=new ArrayBuffer(4);
+            new DataView(buflen).setUint32(0,buf.byteLength,true);
+            await Promise.all([req.context.io1.write(buflen),req.context.io1.write(buf)]);
         }else{
-            switch(this.tResult){
-                case 'i':
-                    ser.putInt(req.result);
-                    break;
-                case 'l':
-                    ser.putLong(req.result);
-                    break;
-                case 'f':
-                    ser.putFloat(req.result);
-                    break;
-                case 'd':
-                    ser.putDouble(req.result);
-                    break;
-                case 'o':
-                    ser.putInt(req.destAddr);
-                    break;
-                case 'b':
-                    ser.putBytes(req.result);
-                    break;
-                case 's':
-                    ser.putString(req.result);
-                    break;
-                case 'c':
-                    ser.putVarint(req.result?1:0);
-                    break;
-                case '':
-                    break;
-                default:
-                    throw new Error('Unsupported value type.');
+            let results=this.tResult.length>=1?req.result:[req.result]
+            for(let i=0;i<this.tResult.length;i++){
+                switch(this.tResult.charAt(i)){
+                    case 'i':
+                        ser.putInt(results[i]);
+                        break;
+                    case 'l':
+                        ser.putLong(results[i]);
+                        break;
+                    case 'f':
+                        ser.putFloat(results[i]);
+                        break;
+                    case 'd':
+                        ser.putDouble(results[i]);
+                        break;
+                    case 'o':
+                        ser.putInt(req.destAddr);
+                        break;
+                    case 'b':
+                        ser.putBytes(results[i]);
+                        break;
+                    case 's':
+                        ser.putString(results[i]);
+                        break;
+                    case 'c':
+                        ser.putVarint(results[i]?1:0);
+                        break;
+                    case '':
+                        break;
+                    default:
+                        throw new Error('Unsupported value type.');
+                }
             }
             let buf=ser.build();
             let buflen=new ArrayBuffer(4);
@@ -396,7 +413,7 @@ export class TableSerializer {
         let rowCnt=ser.getInt();
         this.headerType=ser.getString();
         let colCnt=this.headerType.length;
-        if((flag & this.FLAG_NO_HEADER_NAME)==0){
+        if((flag & this.FLAG_NO_HEADER_NAME)===0){
             this.headerName=[]
             for(let i1=0;i1<colCnt;i1++){
                 this.headerName.push(ser.getString());

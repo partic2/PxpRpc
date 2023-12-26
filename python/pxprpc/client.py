@@ -205,7 +205,7 @@ class RpcExtendClientObject():
             except Exception:
                 pass
             
-
+   
 class RpcExtendClientCallable(RpcExtendClientObject):
         
         
@@ -232,46 +232,40 @@ available type signature characters:
   c  boolean(pxprpc use 1byte(1/0) to store a boolean value)
   s  string(bytes will be decode to string)
         '''
-        self.sign=sign
-        return self;
+        self.tParam,self.tResult=sign.split('->')
+        return self
 
 
     async def __call__(self,*args)->typing.Any:
         assert self.value is not None
-        sign=self.sign
-        t1=0
-        args2=[]
-        retType=''
         try:
-            ser=Serializer().prepareSerializing()
-            for t1 in range(0,len(sign)):
-                if sign[t1]=='i':
-                    ser.putInt(args[t1])
-                elif sign[t1]=='l':
-                    ser.putLong(args[t1])
-                elif sign[t1]=='f':
-                    ser.putFloat(args[t1])
-                elif sign[t1]=='d':
-                    ser.putDouble(args[t1])
-                elif sign[t1]=='o':
-                    ser.putInt(args[t1].value)
-                elif sign[t1]=='c':
-                    ser.putVarint(1 if args[t1] else 0)
-                elif sign[t1]=='s':
-                    ser.putString(args[t1])
-                elif sign[t1]=='b':
-                    ser.putBytes(args[t1])
-                elif sign[t1]=='-':
-                    if sign[t1+1]=='>':
-                        if len(sign)>t1+2:
-                            retType=sign[t1+2]
-                        break
-                else:
-                    raise IOError('Unknown sign character')
+            if self.tParam=='b':
+                packed=args[0]
+            else:
+                ser=Serializer().prepareSerializing()
+                for t1,t2 in zip(self.tParam,args):
+                    if t1=='i':
+                        ser.putInt(t2)
+                    elif t1=='l':
+                        ser.putLong(t2)
+                    elif t1=='f':
+                        ser.putFloat(t2)
+                    elif t1=='d':
+                        ser.putDouble(t2)
+                    elif t1=='o':
+                        ser.putInt(t2.value)
+                    elif t1=='c':
+                        ser.putVarint(1 if t2 else 0)
+                    elif t1=='s':
+                        ser.putString(t2)
+                    elif t1=='b':
+                        ser.putBytes(t2)
+                    else:
+                        raise IOError('Unknown sign character')
 
-            packed=ser.build()
+                packed=ser.build()
             destAddr=0
-            if retType=='o':
+            if self.tResult=='o':
                 destAddr=await self.client.allocSlot()
 
             getResp=asyncio.Future()
@@ -285,29 +279,38 @@ available type signature characters:
             await self.client.conn.call(destAddr,self.value,[len(packed).to_bytes(4,'little'),packed],onResponse)
 
             succ,data=await getResp
-
-            ser=Serializer().prepareUnserializing(data)
+            
             if succ:
-                if retType=='i':
-                    return ser.getInt()
-                elif retType=='l':
-                    return ser.getLong()
-                elif retType=='f':
-                    return ser.getFloat()
-                elif retType=='d':
-                    return ser.getDouble()
-                elif retType=='b':
-                    return ser.getBytes()
-                elif retType=='s':
-                    return ser.getString()
-                elif retType=='c':
-                    return ser.getVarint()!=0
-                elif retType=='o':
-                    return RpcExtendClientObject(self.client,ser.getInt())
-                elif retType=='':
-                    return None
+                if self.tResult=='b':
+                    return data
                 else:
-                    raise IOError('Unknown Type')
+                    ser=Serializer().prepareUnserializing(data)
+                    results=[]
+                    for t1 in self.tResult:
+                        if t1=='i':
+                            results.append(ser.getInt())
+                        elif t1=='l':
+                            results.append(ser.getLong())
+                        elif t1=='f':
+                            results.append(ser.getFloat())
+                        elif t1=='d':
+                            results.append(ser.getDouble())
+                        elif t1=='b':
+                            results.append(ser.getBytes())
+                        elif t1=='s':
+                            results.append(ser.getString())
+                        elif t1=='c':
+                            results.append(ser.getVarint()!=0)
+                        elif t1=='o':
+                            results.append(RpcExtendClientObject(self.client,ser.getInt()))
+                        else:
+                            raise IOError('Unknown Type')
+                if len(results)==0:
+                    return None
+                elif len(results)==1:
+                    return results[0]
+                else:
+                    return results
             else:
                 raise RpcExtendError(ser.getString())
         finally:

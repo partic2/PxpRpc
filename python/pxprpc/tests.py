@@ -44,8 +44,8 @@ async def testClient(rpcconn:pxprpc.client.RpcConnection,name:str='default'):
 
     testPrintArg=await client2.getFunc('test1.testPrintArg')
     assert testPrintArg!=None
-    testPrintArg.signature('cilfdb->')
-    await testPrintArg(True,123,1122334455667788,123.5,123.123,b'bytes')
+    testPrintArg.signature('cilfdb->il')
+    print('multiresult:',await testPrintArg(True,123,1122334455667788,123.5,123.123,b'bytes'))
     
     testUnser=await client2.getFunc('test1.testUnser')
     assert testUnser!=None
@@ -100,9 +100,10 @@ async def amain():
             for t1 in range(len):
                 print(*ser.getRow(t1),sep='\t')
 
-        @decorator.signature('cilfdb->')
+        @decorator.signature('cilfdb->il')
         async def testPrintArg(self,a:bool,b:int,c:int,d:float,e:float,f:bytes):
             print(a,b,c,d,e,f)
+            return [100,1234567890]
 
                 
     

@@ -288,29 +288,31 @@ class PyCallableWrap(PxpCallable):
         req.context=NotNone(req.context)
         req.parameter=[]
         len=int.from_bytes(await req.context.in2.readexactly(4),'little')
-        ser=Serializer().prepareUnserializing(await req.context.in2.readexactly(len&0x7fffffff))
-        if (len&0x80000000)!=0:
-            ser.getBytes()
-
-        for t1 in self.tParam:
-            if t1=='i':
-                req.parameter.append(ser.getInt())
-            elif t1=='l':
-                req.parameter.append(ser.getLong())
-            elif t1=='f':
-                req.parameter.append(ser.getFloat())
-            elif t1=='d':
-                req.parameter.append(ser.getDouble())
-            elif t1=='c':
-                req.parameter.append(ser.getVarint()!=0)
-            elif t1=='b':
-                req.parameter.append(ser.getBytes())
-            elif t1=='s':
-                req.parameter.append(ser.getString())
-            else:
-                t2=ser.getInt()
-                t3=req.context.refSlots[t2]
-                req.parameter.append(t3)
+        buf=await req.context.in2.readexactly(len&0x7fffffff)
+        if self.tParam=='b':
+            req.parameter.append(buf)
+        else:
+            ser=Serializer().prepareUnserializing(buf)
+            
+            for t1 in self.tParam:
+                if t1=='i':
+                    req.parameter.append(ser.getInt())
+                elif t1=='l':
+                    req.parameter.append(ser.getLong())
+                elif t1=='f':
+                    req.parameter.append(ser.getFloat())
+                elif t1=='d':
+                    req.parameter.append(ser.getDouble())
+                elif t1=='c':
+                    req.parameter.append(ser.getVarint()!=0)
+                elif t1=='b':
+                    req.parameter.append(ser.getBytes())
+                elif t1=='s':
+                    req.parameter.append(ser.getString())
+                else:
+                    t2=ser.getInt()
+                    t3=req.context.refSlots[t2]
+                    req.parameter.append(t3)
     
     async def call(self,req:PxpRequest):
         try:
@@ -322,37 +324,41 @@ class PyCallableWrap(PxpCallable):
     
     async def writeResult(self,req:PxpRequest):
         assert req.context!=None
-        ser=Serializer().prepareSerializing()
-        t1=self.tResult
         if isinstance(req.result,Exception):
+            ser=Serializer().prepareSerializing()
             b=ser.putString(str(req.result)).build()
             req.context.out2.write((len(b)|0x80000000).to_bytes(4,'little'))
             req.context.out2.write(b)
         else:
-            if t1=='i':
-                ser.putInt(req.result)
-            elif t1=='l':
-                ser.putLong(req.result)
-            elif t1=='f':
-                ser.putFloat(req.result)
-            elif t1=='d':
-                ser.putDouble(req.result)
-            elif t1=='b':
-                ser.putBytes(req.result)
-            elif t1=='c':
-                ser.putVarint(1 if req.result else 0)
-            elif t1=='s':
-                ser.putString(req.result)
-            elif t1=='o':
-                ser.putInt(req.destAddr)
-            elif t1=='':
-                pass
+            if self.tResult=='b':
+                req.context.out2.write((len(req.result)).to_bytes(4,'little'))
+                req.context.out2.write(req.result)
             else:
-                assert False,'Unreachable'
-            
-            b=ser.build()
-            req.context.out2.write((len(b)).to_bytes(4,'little'))
-            req.context.out2.write(b)
+                ser=Serializer().prepareSerializing()
+                result2=[req.result] if len(self.tResult)<=1 else req.result
+                for t1,t2 in zip(self.tResult,result2):
+                    if t1=='i':
+                        ser.putInt(t2)
+                    elif t1=='l':
+                        ser.putLong(t2)
+                    elif t1=='f':
+                        ser.putFloat(t2)
+                    elif t1=='d':
+                        ser.putDouble(t2)
+                    elif t1=='b':
+                        ser.putBytes(t2)
+                    elif t1=='c':
+                        ser.putVarint(1 if t2 else 0)
+                    elif t1=='s':
+                        ser.putString(t2)
+                    elif t1=='o':
+                        ser.putInt(req.destAddr)
+                    else:
+                        assert False,'Unreachable'
+                
+                b=ser.build()
+                req.context.out2.write((len(b)).to_bytes(4,'little'))
+                req.context.out2.write(b)
         
 
 
