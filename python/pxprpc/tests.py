@@ -30,26 +30,26 @@ async def testClient(rpcconn:pxprpc.client.RpcConnection,name:str='default'):
     print(await rpcconn.getInfo())
     get1234=await client2.getFunc('test1.get1234')
     assert get1234!=None
-    get1234.signature('->o')
+    get1234.typedecl('->o')
     printString=await client2.getFunc('test1.printString')
     assert printString!=None
-    printString.signature('o->')
+    printString.typedecl('o->')
     wait1Sec=await client2.getFunc('test1.wait1Sec')
     assert wait1Sec!=None
-    wait1Sec.signature('->')
+    wait1Sec.typedecl('->')
     print('expect 1234')
     t1=await get1234()
     await printString(t1)
-    printString.signature('s->')
+    printString.typedecl('s->')
 
     testPrintArg=await client2.getFunc('test1.testPrintArg')
     assert testPrintArg!=None
-    testPrintArg.signature('cilfdb->il')
-    print('multiresult:',await testPrintArg(True,123,1122334455667788,123.5,123.123,b'bytes'))
+    testPrintArg.typedecl('cilfdb->il')
+    print('multi-result:',await testPrintArg(True,123,1122334455667788,123.5,123.123,b'bytes'))
     
     testUnser=await client2.getFunc('test1.testUnser')
     assert testUnser!=None
-    testUnser.signature('b->')
+    testUnser.typedecl('b->')
     print('expect 123,1122334455667788,123.5,123.123,abcdef,bytes')
     await testUnser(Serializer().prepareSerializing()\
         .putInt(123).putLong(1122334455667788).putFloat(123.5).putDouble(123.123).putString('abcdef').putBytes('bytes'.encode('utf-8'))\
@@ -58,16 +58,16 @@ async def testClient(rpcconn:pxprpc.client.RpcConnection,name:str='default'):
     testTableUnser=await client2.getFunc('test1.testTableUnser')
     #optional?
     if testTableUnser!=None:
-        testTableUnser.signature('b->')
+        testTableUnser.typedecl('b->')
         print('expect a table')
-        await testTableUnser(TableSerializer().setHeader('sil',['name','isdir','filesize'])\
-                            .addRow(['1.txt',0,12345]).addRow(['docs',1,0]).build())
+        await testTableUnser(TableSerializer().setHeader('iscl',['id','name','isdir','filesize'])\
+                            .addRow([1554,'1.txt',False,12345]).addRow([1555,'docs',True,0]).build())
 
     print('expect wait 1 second')
     await wait1Sec()
     raiseError1=await client2.getFunc('test1.raiseError1')
     assert raiseError1!=None
-    raiseError1.signature('->s')
+    raiseError1.typedecl('->s')
     try:
         print('expect dummy io error')
         t1=await raiseError1()
@@ -100,7 +100,7 @@ async def amain():
             for t1 in range(len):
                 print(*ser.getRow(t1),sep='\t')
 
-        @decorator.signature('cilfdb->il')
+        @decorator.typedecl('cilfdb->il')
         async def testPrintArg(self,a:bool,b:int,c:int,d:float,e:float,f:bytes):
             print(a,b,c,d,e,f)
             return [100,1234567890]
@@ -176,19 +176,19 @@ async def ctestmain():
     t1=await client2.getFunc('printString')
     assert t1!=None
     print('printString:',t1.value)
-    t1.signature('b->b')
+    t1.typedecl('b->b')
     print(await t1(b'12345')) 
 
     t1=await client2.getFunc('printStringUnderline')
     assert t1!=None
     print('printStringUnderline:',t1.value)
-    t1.signature('b->b')
+    t1.typedecl('b->b')
     print(await t1(b'45678'))
 
     t1=await client2.getFunc('printSerilizedArgs')
     assert t1!=None
     print('fnPrintSerilizedArgs:',t1.value)
-    t1.signature('b->')
+    t1.typedecl('b->')
     await t1(Serializer().prepareSerializing()\
         .putInt(123).putLong(1122334455667788).putFloat(123.5).putDouble(123.123).putString('abcdef').putBytes('bytes'.encode('utf-8'))\
             .build())

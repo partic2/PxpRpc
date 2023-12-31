@@ -89,7 +89,7 @@ class TsNamespaceGenerator:
         if(remotefunc==undefined){{
             remotefunc=await rpc__client.getFunc(RemoteName + '.{fn.name}');
             rpc__RemoteFuncs.{fn.name}=remotefunc
-            remotefunc!.signature('{sigstr}');
+            remotefunc!.typedecl('{sigstr}');
         }}
         '''
         code+=f"let result=await remotefunc!.call("

@@ -21,6 +21,11 @@ T=TypeVar('T')
 def NotNone(t:Optional[T])->T:
     return t; #type:ignore
 
+def pytypeToDeclChar(t:type):
+    typemap={
+                int:'l',float:'d',bool:'c',bytes:'b',str:'s'
+            }
+    return typemap.get(t,'o')
 
 class Serializer:
     def prepareSerializing(self)->'Serializer':
@@ -113,8 +118,10 @@ class TableSerializer:
     FLAG_NO_HEADER_NAME=1
     def __init__(self):
         self.rows:List[List[Any]]=[]
+        self.headerType=None
+        self.headerName=None
 
-    def setHeader(self,types:str,names:List[str]):
+    def setHeader(self,types:Optional[str],names:Optional[List[str]]):
         self.headerName=names
         self.headerType=types
         return self
@@ -132,7 +139,7 @@ class TableSerializer:
     def load(self,buf:bytes):
         ser=Serializer().prepareUnserializing(buf)
         flag=ser.getInt()
-        rowCnt=ser.getInt()
+        rowCnt=ser.getVarint()
         headerType=ser.getString()
         colCnt=len(headerType)
         if (flag & TableSerializer.FLAG_NO_HEADER_NAME)==0:
@@ -145,25 +152,28 @@ class TableSerializer:
             self.rows.append([None]*colCnt)
         
         for i1 in range(colCnt):
-            type=headerType[i1]
-            if type=='i':
+            typ=headerType[i1]
+            if typ=='i':
                 for i2 in range(rowCnt):
                     self.rows[i2][i1]=ser.getInt()
-            elif type=='l':
+            elif typ=='l':
                 for i2 in range(rowCnt):
                     self.rows[i2][i1]=ser.getLong()
-            elif type=='f':
+            elif typ=='f':
                 for i2 in range(rowCnt):
                     self.rows[i2][i1]=ser.getFloat()
-            elif type=='d':
+            elif typ=='d':
                 for i2 in range(rowCnt):
                     self.rows[i2][i1]=ser.getDouble()
-            elif type=='b':
+            elif typ=='b':
                 for i2 in range(rowCnt):
                     self.rows[i2][i1]=ser.getBytes()
-            elif type=='s':
+            elif typ=='s':
                 for i2 in range(rowCnt):
                     self.rows[i2][i1]=ser.getString()
+            elif typ=='c':
+                for i2 in range(rowCnt):
+                    self.rows[i2][i1]=ser.getVarint()!=0
             else:
                 raise IOError('Unknown Type')
         
@@ -172,6 +182,13 @@ class TableSerializer:
     def build(self):
         ser=Serializer().prepareSerializing()
         i1=0
+        if self.headerType==None:
+            if len(self.rows)>=1:
+                self.headerType=''
+                for t1 in self.rows[0]:
+                    self.headerType+=pytypeToDeclChar(type(t1))
+            else:
+                self.headerType=''
         colsCnt=len(self.headerType)
         flag=0
         if self.headerName==None:
@@ -179,32 +196,35 @@ class TableSerializer:
         
         ser.putInt(flag)
         rowCnt=len(self.rows)
-        ser.putInt(rowCnt)
+        ser.putVarint(rowCnt)
         ser.putString(self.headerType)
         if self.headerName!=None:
             for e in self.headerName:
                 ser.putString(e)
 
         for i1 in range(colsCnt):
-            type=self.headerType[i1]
-            if type=='i':
+            typ=self.headerType[i1]
+            if typ=='i':
                 for i2 in range(rowCnt):
                     ser.putInt(self.rows[i2][i1])
-            elif type=='l':
+            elif typ=='l':
                 for i2 in range(rowCnt):
                     ser.putLong(self.rows[i2][i1])
-            elif type=='f':
+            elif typ=='f':
                 for i2 in range(rowCnt):
                     ser.putFloat(self.rows[i2][i1])
-            elif type=='d':
+            elif typ=='d':
                 for i2 in range(rowCnt):
                     ser.putDouble(self.rows[i2][i1])
-            elif type=='b':
+            elif typ=='b':
                 for i2 in range(rowCnt):
                     ser.putBytes(self.rows[i2][i1])
-            elif type=='s':
+            elif typ=='s':
                 for i2 in range(rowCnt):
                     ser.putString(self.rows[i2][i1])
+            elif typ=='c':
+                for i2 in range(rowCnt):
+                    ser.putVarint(1 if self.rows[i2][i1] else 0)
             else:
                 raise IOError('Unknown Type')
 

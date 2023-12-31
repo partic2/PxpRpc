@@ -60,7 +60,7 @@ public class PxpRpc {
 		}
 		public void tableTest(byte[] bb){
 			TableSerializer ser=new TableSerializer().load(ByteBuffer.wrap(bb));
-			for(String e:ser.getHeaderName()){
+			for(String e:ser.headerName){
 				System.out.print(e+"\t");
 			}
 			System.out.println();
@@ -78,7 +78,7 @@ public class PxpRpc {
 			te.start();
 			return te;
 		}
-		//as Parameter class is support since 1.8, We have to use return type to identify the signature even for async callable.
+		//as Parameter class is support since 1.8, We have to use return type to identify the typedecl even for async callable.
 		public Object waitOneTick(final AsyncReturn<Object> asyncRet) {
 			tm.schedule(new TimerTask() {
 				@Override
@@ -91,7 +91,7 @@ public class PxpRpc {
 		public void throwError() throws IOException {
 			throw new IOException("dummy exception");
 		}
-		@MethodSignature("->il")
+		@MethodTypeDecl("->il")
 		public Object[] multiReturn(){
 			return new Object[]{100,1234567890l};
 		}
@@ -193,8 +193,8 @@ public class PxpRpc {
 			//serilizer test2
 			client.getFunc(11, "test1.tableTest");
 			System.out.println("expect print a table");
-			client.callFunc(13, 11, new Object[] {Utils.toBytes(new TableSerializer().setHeader("sil",new String[]{"name","isDir","size"})
-					.addRow(new Object[]{"1.txt",0,45l}).addRow(new Object[]{"docs",1,1122334455667788l}).build())});
+			client.callFunc(13, 11, new Object[] {Utils.toBytes(new TableSerializer().setHeader(null,new String[]{"name","isDir","size"})
+					.addRow(new Object[]{"1.txt",false,45l}).addRow(new Object[]{"docs",true,1122334455667788l}).build())});
 
 
 			System.out.println("sleep 1 tick, and expect print 'one tick done' ");

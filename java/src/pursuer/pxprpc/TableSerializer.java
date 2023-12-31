@@ -5,19 +5,26 @@ import java.util.ArrayList;
 
 public class TableSerializer {
     public static final int FLAG_NO_HEADER_NAME=1;
-    protected String[] headerName=null;
-    protected String headerType=null;
+    public String[] headerName=null;
+    public String headerType=null;
     protected ArrayList<Object[]> rows=new ArrayList<Object[]>();
+    //types: type string, or null to guess
+    //names: header name, or null for FLAG_NO_HEADER_NAME packet.
     public TableSerializer setHeader(String types, String[] names){
         headerName=names;
         headerType=types;
         return this;
     }
-    public String[] getHeaderName(){
-        return headerName;
-    }
     public Object[] getRow(int index){
         return this.rows.get(index);
+    }
+    public int getColIndex(String header){
+        for(int i=0;i<headerName.length;i++){
+            if(headerName[i].equals(header)){
+                return i;
+            }
+        }
+        return -1;
     }
     public int getRowCount() {
         return this.rows.size();
@@ -28,7 +35,7 @@ public class TableSerializer {
     public TableSerializer load(ByteBuffer buf){
         ser=new Serializer2().prepareUnserializing(buf);
         int flag=ser.getInt();
-        int rowCnt=ser.getInt();
+        int rowCnt=ser.getVarint();
         headerType=ser.getString();
         int colCnt=headerType.length();
         if((flag & FLAG_NO_HEADER_NAME)==0){
@@ -74,6 +81,11 @@ public class TableSerializer {
                         rows.get(i2)[i1]=ser.getString();
                     }
                     break;
+                case 'c':
+                    for(int i2=0;i2<rowCnt;i2++){
+                        rows.get(i2)[i1]=ser.getVarint()!=0;
+                    }
+                    break;
                 default:
                     throw new RuntimeException("Unknown Type");
             }
@@ -86,6 +98,20 @@ public class TableSerializer {
     public ByteBuffer build(){
         ser=new Serializer2().prepareSerializing(64);
         int i1=0;
+        if(headerType==null){
+            //guess type
+            if(rows.size()>0){
+                Object[] firstRow = rows.get(0);
+                char[] types=new char[firstRow.length];
+                for(int i=0;i<types.length;i++){
+                    types[i]=CommonCallable.javaTypeToSwitchId(firstRow[i].getClass());
+                }
+                headerType=new String(types);
+            }else{
+                headerType="";
+            }
+        }
+
         int colsCnt=headerType.length();
         int flag=0;
         if(headerName==null){
@@ -93,7 +119,7 @@ public class TableSerializer {
         }
         ser.putInt(flag);
         int rowCnt=rows.size();
-        ser.putInt(rowCnt);
+        ser.putVarint(rowCnt);
         ser.putString(headerType);
         if(headerName!=null){
             for(String e:headerName){
@@ -132,6 +158,11 @@ public class TableSerializer {
                 case 's':
                     for(int i2=0;i2<rowCnt;i2++){
                         ser.putString((String)rows.get(i2)[i1]);
+                    }
+                    break;
+                case 'c':
+                    for(int i2=0;i2<rowCnt;i2++){
+                        ser.putVarint(((boolean)rows.get(i2)[i1])?1:0);
                     }
                     break;
                 default:

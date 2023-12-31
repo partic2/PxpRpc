@@ -3,18 +3,16 @@ package pursuer.pxprpc;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 
 public class BuiltInFuncList {
-	public String asString(byte[] utf8) {
-		try {
-			return new String(utf8,"utf-8");
-		} catch (UnsupportedEncodingException e) {
-			return null;
-		}
-	}
+
 	public String anyToString(Object obj){
 		return obj.toString();
 	}
@@ -93,5 +91,19 @@ public class BuiltInFuncList {
 	public String listStringJoin(List<String> array,String sep){
 		return Utils.stringJoin(sep,array);
 	}
-
+	public byte[] listStaticConstField(Class<?> cls) throws IllegalAccessException {
+		ArrayList<String> hdrs = new ArrayList<String>();
+		ArrayList<Object> row = new ArrayList<Object>();
+		Field[] fields = cls.getFields();
+		for(Field f:fields){
+			if((f.getModifiers()& (Modifier.STATIC|Modifier.FINAL))==(Modifier.STATIC|Modifier.FINAL)){
+				if(f.getType().isPrimitive()||f.getType().equals(String.class)){
+					hdrs.add(f.getName());
+					row.add(f.get(null));
+				}
+			}
+		}
+		return Utils.toBytes(new TableSerializer().setHeader(null,hdrs.toArray(new String[0]))
+				.addRow(row.toArray(new Object[0])).build());
+	}
 }

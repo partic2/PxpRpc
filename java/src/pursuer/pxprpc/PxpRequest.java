@@ -31,6 +31,7 @@ public class PxpRequest implements AsyncReturn<Object> {
                 context.processRequest(context.finishRequest(this));
             }
         } catch (Exception ex) {
+            throw new RuntimeException(ex);
         }
     }
 

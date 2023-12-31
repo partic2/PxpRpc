@@ -3,8 +3,6 @@ package pursuer.pxprpc;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.nio.ByteBuffer;
-import java.nio.channels.ByteChannel;
 
 public class BoundMethodCallable extends MethodCallable{
 
@@ -16,18 +14,16 @@ public class BoundMethodCallable extends MethodCallable{
 
 	@Override
 	public void parseMethod() {
-		if(!parseCustomSignature()){
+		if(!parseCustomTypeDecl()){
 			Class<?>[] paramsType = method.getParameterTypes();
 			if (paramsType.length>0 && (paramsType[0] == AsyncReturn.class || paramsType[0] == PxpRequest.class)) {
 				firstInputParamIndex = 1;
 			}
 			tParam=new char[paramsType.length-firstInputParamIndex];
-			if(tResult==null){
-				if(method.getReturnType()!=Void.class){
-					tResult = new char[]{javaTypeToSwitchId(method.getReturnType())};
-				}else{
-					tResult=new char[0];
-				}
+			if(method.getReturnType()!=Void.class){
+				tResult = new char[]{javaTypeToSwitchId(method.getReturnType())};
+			}else{
+				tResult=new char[0];
 			}
 			for(int i=firstInputParamIndex;i<paramsType.length;i++) {
 				Class<?> pc = paramsType[i];

@@ -29,7 +29,7 @@ export class RpcExtendClientCallable extends RpcExtendClientObject {
         super(client, value)
     }
     /*
-function signature
+function typedecl
 format: 'parameters type->return type' 
 eg:
 a function defined in c:
@@ -37,10 +37,10 @@ bool fn(uin32_t,uint64_t,float64_t,struct pxprpc_object *)
 defined in java:
 boolean fn(int,int,double,Object)
 ...
-it's pxprpc signature: 
+it's pxprpc typedecl: 
 iido->c
 
-available type signature characters:
+available type typedecl characters:
 i  int(32bit integer)
 l  long(64bit integer) 
 f  float(32bit float)
@@ -52,8 +52,8 @@ b  bytes(bytes buffer)
 c  boolean(pxprpc use 1byte(1/0) to store a boolean value)
 s  string(bytes will be decode to string)
 */
-    public signature(sign: string) {
-        [this.tParam,this.tResult]=sign.split('->');
+    public typedecl(decl: string) {
+        [this.tParam,this.tResult]=decl.split('->');
         return this;
     }
 
@@ -258,9 +258,9 @@ export class RpcExtendServerCallable implements PxpCallable{
     protected tResult:string='';
     public constructor(public wrapped:(...args:any)=>Promise<any>){
     }
-    //See RpcExtendClientCallable.signature
-    public signature(sign: string) {
-        let [tParam,tResult]=sign.split('->');
+    //See RpcExtendClientCallable.typedecl
+    public typedecl(decl: string) {
+        let [tParam,tResult]=decl.split('->');
         this.tParam=tParam;
         this.tResult=tResult;
         return this;
@@ -393,7 +393,7 @@ export class TableSerializer {
     headerName:string[]|null=null;
     headerType:string|null=null;
     rows:any[]=[];
-    public setHeader(types:string,names:string[]){
+    public setHeader(types:string|null,names:string[]|null){
         this.headerName=names;
         this.headerType=types;
         return this;
@@ -410,7 +410,7 @@ export class TableSerializer {
     public load(buf:ArrayBuffer){
         let ser=new Serializer().prepareUnserializing(buf);
         let flag=ser.getInt();
-        let rowCnt=ser.getInt();
+        let rowCnt=ser.getVarint();
         this.headerType=ser.getString();
         let colCnt=this.headerType.length;
         if((flag & this.FLAG_NO_HEADER_NAME)===0){
@@ -455,6 +455,11 @@ export class TableSerializer {
                         this.rows[i2][i1]=ser.getString();
                     }
                     break;
+                case 'c':
+                    for(let i2=0;i2<rowCnt;i2++){
+                        this.rows[i2][i1]=ser.getVarint()!==0;
+                    }
+                    break;
                 default:
                     throw new Error("Unknown Type");
             }
@@ -466,6 +471,34 @@ export class TableSerializer {
     public build():ArrayBuffer{
         let ser=new Serializer().prepareSerializing(64);
         let i1=0;
+        if(this.headerType==null){
+            this.headerType=''
+            if(this.rows.length>=1){
+                for(let t1 of this.rows[0]){
+                    switch(typeof t1){
+                        case 'number':
+                            this.headerType+='d';
+                            break;
+                        case 'string':
+                            this.headerType+='s';
+                            break;
+                        case 'boolean':
+                            this.headerType+='c';
+                            break;
+                        case 'bigint':
+                            this.headerType+='l';
+                            break;
+                        default:
+                            if(t1 instanceof ArrayBuffer){
+                                this.headerType+='b'
+                            }else{
+                                this.headerType+='o'
+                            }
+                            break;
+                    }
+                }
+            }
+        }
         let colsCnt=this.headerType!.length;
         let flag=0;
         if(this.headerName==null){
@@ -473,7 +506,7 @@ export class TableSerializer {
         }
         ser.putInt(flag);
         let rowCnt=this.rows.length;
-        ser.putInt(rowCnt);
+        ser.putVarint(rowCnt);
         ser.putString(this.headerType!);
         if(this.headerName!=null){
             for(let e of this.headerName){
@@ -511,6 +544,11 @@ export class TableSerializer {
                 case 's':
                     for(let i2=0;i2<rowCnt;i2++){
                         ser.putString(this.rows[i2][i1]);
+                    }
+                    break;
+                case 'c':
+                    for(let i2=0;i2<rowCnt;i2++){
+                        ser.putVarint(this.rows[i2][i1]?1:0);
                     }
                     break;
                 default:

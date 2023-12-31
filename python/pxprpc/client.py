@@ -209,8 +209,8 @@ class RpcExtendClientObject():
 class RpcExtendClientCallable(RpcExtendClientObject):
         
         
-    def signature(self,sign:str):
-        ''' function signature
+    def typedecl(self,decl:str):
+        ''' function type declaration
 format: 'parameters type->return type' 
 eg:
 a function defined in c:
@@ -218,10 +218,10 @@ a function defined in c:
 defined in java:
     boolean fn(int,int,double,Object)
     ...
-it's pxprpc signature: 
+it's pxprpc typedecl: 
     iido->z
 
-available type signature characters:
+available type typedecl characters:
   i  int(32bit integer)
   l  long(64bit integer)
   f  float(32bit float)
@@ -232,7 +232,7 @@ available type signature characters:
   c  boolean(pxprpc use 1byte(1/0) to store a boolean value)
   s  string(bytes will be decode to string)
         '''
-        self.tParam,self.tResult=sign.split('->')
+        self.tParam,self.tResult=decl.split('->')
         return self
 
 
@@ -261,7 +261,7 @@ available type signature characters:
                     elif t1=='b':
                         ser.putBytes(t2)
                     else:
-                        raise IOError('Unknown sign character')
+                        raise IOError('Unknown typedecl character')
 
                 packed=ser.build()
             destAddr=0
@@ -374,7 +374,7 @@ class RpcExtendClient1:
             self.builtIn=dict()
             t1=await self.getFunc('builtin.checkException')
             if(t1!=None):
-                t1.signature('o->s')
+                t1.typedecl('o->s')
                 self.builtIn['checkException']=t1
             
     

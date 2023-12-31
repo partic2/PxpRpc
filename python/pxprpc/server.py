@@ -250,9 +250,9 @@ import inspect
 
 class decorator:
     @staticmethod
-    def signature(sign):
+    def typedecl(decl):
          def fn2(fn):
-            fn._pxprpc__PyCallableWrapSignature=sign
+            fn._pxprpc__PyCallableWrapTypedecl=decl
             return fn
          return fn2
 
@@ -264,24 +264,22 @@ class PyCallableWrap(PxpCallable):
         self.tParam=''
         self.tResult=''
         self.callable=c
-        if hasattr(c,'_pxprpc__PyCallableWrapSignature'):
-            self.signature(c._pxprpc__PyCallableWrapSignature)
+        if hasattr(c,'_pxprpc__PyCallableWrapTypedecl'):
+            self.typedecl(c._pxprpc__PyCallableWrapTypedecl)
         else:
+            from .common import pytypeToDeclChar
             argsInfo:inspect.FullArgSpec=inspect.getfullargspec(c)
-            argsig={
-                int:'l',float:'d',bool:'c',bytes:'b',str:'s'
-            }
             if hasattr(argsInfo,'args'):
                 for argName in (argsInfo.args[1:] if classMethod else argsInfo.args):
                     t1=argsInfo.annotations[argName]
-                    self.tParam+=argsig.get(t1,'o')
+                    self.tParam+=pytypeToDeclChar(t1)
                     
             if 'return' in argsInfo.annotations:
                 t1=argsInfo.annotations['return']
-                self.tResult+=argsig.get(t1,'o')
+                self.tResult+=pytypeToDeclChar(t1)
             
-    def signature(self,sign:str)->'PyCallableWrap':
-        self.tParam,self.tResult=sign.split('->')
+    def typedecl(self,decl:str)->'PyCallableWrap':
+        self.tParam,self.tResult=decl.split('->')
         return self
     
     async def readParameter(self,req:PxpRequest):

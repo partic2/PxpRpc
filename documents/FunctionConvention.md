@@ -6,15 +6,15 @@ pxprpc high level abstract treat all callable as a model like below.
 
 (input arguments)->call->(output arguments)
 
-function signature
+function typedecl
 format: 'parameters type->returns type' 
 eg:
 a function defined like:
 [bool,int] fn(uin32_t,uint64_t,float64_t,struct pxprpc_object *)
-it's pxprpc signature: 
+it's pxprpc typedecl: 
 iido->ci
 
-available type signature characters:
+available type typedecl characters:
 i  int(32bit integer)
 l  long(64bit integer) 
 f  float(32bit float)
