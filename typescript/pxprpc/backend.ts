@@ -1,29 +1,27 @@
 
-import { Client, Io } from "./base";
-import { RpcExtendError } from "./extend";
-
+import { Io } from "./base";
 
 
 export class WebSocketIo implements Io{
     public queuedData:Array<ArrayBufferLike>=new Array();
-    protected onmsg:null|(()=>void)=null;
+    protected onmsg:null|((err:Error|null)=>void)=null;
     public ws:WebSocket|null=null;
     public constructor(){
-    };
+    }
     public async wrap(ws:WebSocket){
         this.ws=ws;
         var that=this;
         this.ws.binaryType='arraybuffer'
         ws.addEventListener('message',function(ev){
             that.queuedData.push(ev.data as ArrayBuffer)
-            if(that.onmsg!=null)that.onmsg();
+            if(that.onmsg!=null)that.onmsg(null);
         });
         ws.addEventListener('close',function(ev){
-            if(that.onmsg!=null)that.onmsg();
+            if(that.onmsg!=null)that.onmsg(new Error('Websocket EOF'));
         });
         ws.addEventListener('error',function(ev){
             ws.close();
-            if(that.onmsg!=null)that.onmsg();
+            if(that.onmsg!=null)that.onmsg(new Error(String(ev)));
         })
         return this;
     }
@@ -50,47 +48,31 @@ export class WebSocketIo implements Io{
         await (await this.wrap(new WebSocket(url))).ensureConnected();
         return this;
     }
-    public async waitNewMessage(){
-        return new Promise((resolve)=>{
-            this.onmsg=()=>{
-                this.onmsg=null;
-                resolve(null);
-            }
-        });
-    }
-    public availableBytes(){
-        let sumBytes=0;
-        for(let i1=0;i1<this.queuedData.length;i1++){
-            sumBytes+=this.queuedData[i1].byteLength;
+    public async receive(): Promise<ArrayBuffer> {
+        if(this.queuedData.length>0){
+            return this.queuedData.shift()!;
+        }else{
+            let that=this;
+            await new Promise((resolve,reject)=>{
+                that.onmsg=(err)=>{
+                    if(err==null){
+                        resolve(null);
+                    }else{
+                        reject(err);
+                    }
+                }
+            });
+            return this.queuedData.shift()!;
         }
-        return sumBytes;
     }
-    public async read(size: number): Promise<ArrayBuffer> {
-        let remain=size;
-        let datar=new Uint8Array(new ArrayBuffer(size));
-        while(remain>0){
-            if(this.ws!.readyState!=WebSocket.OPEN){
-                throw new RpcExtendError('WebSocket EOF')
-            }
-            let data1=this.queuedData.shift();
-            if(data1==undefined){
-                await this.waitNewMessage();
-                continue;
-            }
-            if(data1.byteLength<=remain){
-                datar.set(new Uint8Array(data1),size-remain);
-                remain-=data1.byteLength;
-            }else{
-                datar.set(new Uint8Array(data1,0,remain),size-remain)
-                data1=data1.slice(remain)
-                this.queuedData.unshift(data1)
-                remain=0;
-            }
+    public async send(data: ArrayBufferLike[]): Promise<void> {
+        let len=data.reduce((prev,curr)=>prev+curr.byteLength,0);
+        let buf=new Uint8Array(new ArrayBuffer(len));
+        let pos=0;
+        for(let b of data){
+            buf.set(new Uint8Array(b),pos);
+            pos+=b.byteLength;
         }
-        return datar.buffer;
+        this.ws!.send(buf.buffer);
     }
-    public async write(data: ArrayBufferLike): Promise<void> {
-        this.ws!.send(data);
-    }
-
 }

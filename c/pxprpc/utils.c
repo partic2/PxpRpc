@@ -3,7 +3,7 @@
 
 /* config */
 
-#define MAX_REFSLOTS_COUNT 256
+#define REF_POOL_EXPAND_COUNT 64
 
 #include <pxprpc.h>
 

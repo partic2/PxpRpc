@@ -1,4 +1,6 @@
-package pursuer.pxprpc;
+package pxprpc.extend;
+
+import pxprpc.base.PxpRequest;
 
 import java.io.IOException;
 import java.util.LinkedList;
@@ -12,12 +14,13 @@ public class EventDispatcher extends CommonCallable {
 		this.tResult[0]=javaTypeToSwitchId(c);
 		return this;
 	}
-	protected Queue<AsyncReturn<Object>> receivers = new LinkedList<AsyncReturn<Object>>();
+	protected Queue<PxpRequest> receivers = new LinkedList<PxpRequest>();
 
 	public void fireEvent(Object evt) {
-		AsyncReturn<Object> r = receivers.poll();
+		PxpRequest r = receivers.poll();
 		if(r!=null) {
-			r.result(evt);
+			writeResult(r,evt);
+			r.done();
 		}
 	}
 
@@ -25,7 +28,8 @@ public class EventDispatcher extends CommonCallable {
 		receivers.clear();
 	}
 
-	public void call(PxpRequest req, AsyncReturn<Object> asyncRet) throws IOException {
-		receivers.offer(asyncRet);
+	@Override
+	public void call(PxpRequest req) throws IOException {
+		receivers.offer(req);
 	}
 }

@@ -1,4 +1,4 @@
-package pursuer.pxprpc;
+package pxprpc.extend;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;

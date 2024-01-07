@@ -22,103 +22,28 @@ uint8_t testFnWriteBuf[4];
 const int constZero=0;
 static void testNopCallback(void *p){};
 
-class fnPrintString:public pxprpc::NamedFunctionPP{
+using namespace pxprpc;
+
+class fnPrintString:public FunctionPPWithSerializer{
     public:
-    fnPrintString(std::string funcName):NamedFunctionPP(funcName){};
-    virtual void readParameter(pxprpc_request *r,std::function<void()> doneCallback){
-        auto buf=std::make_shared<std::vector<uint8_t>>(4);
-        auto iopp=new pxprpc::IoPP(r->io1);
-        iopp->read(4,buf->data(),[doneCallback,buf,r](pxprpc::IoPP *self,const char *error)->void{
-            if(error){
-                std::cout<<"get error:"<<error<<std::endl;
-                doneCallback();
-            }
-            auto addr=*reinterpret_cast<uint32_t *>(buf->data());
-            r->callable_data=pxprpc::RpcRawBytes::at(r->server_context,addr);
-            doneCallback();
-            delete self;
-        });
-        
-    };
-    virtual void call(pxprpc_request *r,std::function<void(pxprpc::RpcObject *)> onResult){
-        auto str1=static_cast<pxprpc::RpcRawBytes *>(r->callable_data);
-        std::cout<<str1->asString()<<std::endl;
-        delete str1;
-        onResult(new pxprpc::RpcRawBytes((uint8_t *)"hello client",strlen("hello client")));
-    };
-    virtual void writeResult(pxprpc_request *r,std::function<void()> doneCallback){
-        auto iopp=new pxprpc::IoPP(r->io1);
-        iopp->write(4,reinterpret_cast<const uint8_t *>(&constZero),[doneCallback](pxprpc::IoPP *self,const char *error)->void{
-            doneCallback();
-        });
-    };
+    virtual void callWithSer(PxpRequestWrap *r,Serializer *parameter,std::function<void(Serializer *result)> done){
+        std::cout<<parameter->getString()<<std::endl;
+        done((new Serializer())->prepareSerializing(32)->putString("hello client"));
+    }
 };
 
-class fnPrintStringUnderline:public pxprpc::NamedFunctionPP{
+class fnPrintSerilizedArgs:public FunctionPPWithSerializer{
     public:
-    fnPrintStringUnderline(std::string funcName):NamedFunctionPP(funcName){};
-    virtual void readParameter(pxprpc_request *r,std::function<void()> doneCallback){
-        auto buf=std::make_shared<std::vector<uint8_t>>(4);
-        auto iopp=new pxprpc::IoPP(r->io1);
-        iopp->read(4,buf->data(),[doneCallback,buf,r](pxprpc::IoPP *self,const char *error)->void{
-            if(error){
-                std::cout<<"get error:"<<error<<std::endl;
-                doneCallback();
-            }
-            auto addr=*reinterpret_cast<uint32_t *>(buf->data());
-            r->callable_data=pxprpc::RpcRawBytes::at(r->server_context,addr);
-            doneCallback();
-            delete self;
-        });
-    };
-    virtual void call(pxprpc_request *r,std::function<void(pxprpc::RpcObject *)> onResult){
-        auto str1=static_cast<pxprpc::RpcRawBytes *>(r->callable_data);
-        std::cout<<"__"<<str1->asString()<<std::endl;
-        delete str1;
-        onResult(new pxprpc::RpcRawBytes((uint8_t *)"hello client",strlen("hello client")));
-    };
-    virtual void writeResult(pxprpc_request *r,std::function<void()> doneCallback){
-        auto iopp=new pxprpc::IoPP(r->io1);
-        iopp->write(4,reinterpret_cast<const uint8_t *>(&constZero),[doneCallback](pxprpc::IoPP *self,const char *error)->void{
-            doneCallback();
-        });
-    };
-};
-
-class fnPrintSerilizedArgs:public pxprpc::NamedFunctionPP{
-    public:
-    fnPrintSerilizedArgs(std::string funcName):NamedFunctionPP(funcName){};
-    virtual void readParameter(pxprpc_request *r,std::function<void()> doneCallback){
-        auto buf=std::make_shared<std::vector<uint8_t>>(4);
-        auto iopp=new pxprpc::IoPP(r->io1);
-        iopp->read(4,buf->data(),[doneCallback,buf,r](pxprpc::IoPP *self,const char *error)->void{
-            if(error){
-                std::cout<<"get error:"<<error<<std::endl;
-                doneCallback();
-            }
-            auto addr=*reinterpret_cast<uint32_t *>(buf->data());
-            r->callable_data=pxprpc::RpcRawBytes::at(r->server_context,addr);
-            doneCallback();
-            delete self;
-        });
-    };
-    virtual void call(pxprpc_request *r,std::function<void(pxprpc::RpcObject *)> onResult){
-        pxprpc::Serializer ser;
-        auto arg0=static_cast<pxprpc::RpcRawBytes *>(r->callable_data);
-        ser.prepareUnserializing(arg0->data,arg0->size);
-        std::cout<<ser.getInt()<<","<<ser.getLong()<<","<<ser.getFloat()<<","<<ser.getDouble()<<",";
-        auto str1=ser.getBytes();
-        std::cout<<std::string(reinterpret_cast<char *>(std::get<1>(str1)),std::get<0>(str1))<<",";
-        str1=ser.getBytes();
-        std::cout<<std::string(reinterpret_cast<char *>(std::get<1>(str1)),std::get<0>(str1))<<",";
-        onResult(nullptr);
-    };
-    virtual void writeResult(pxprpc_request *r,std::function<void()> doneCallback){
-        auto iopp=new pxprpc::IoPP(r->io1);
-        iopp->write(4,reinterpret_cast<const uint8_t *>(&constZero),[doneCallback](pxprpc::IoPP *self,const char *error)->void{
-            doneCallback();
-        });
-    };
+    virtual void callWithSer(PxpRequestWrap *r,Serializer *parameter,std::function<void(Serializer *result)> done){
+        auto i=parameter->getInt();
+        auto l=parameter->getLong();
+        auto f=parameter->getFloat();
+        auto d=parameter->getDouble();
+        auto s=parameter->getString();
+        auto b=parameter->getString();
+        std::cout<<i<<","<<l<<","<<f<<","<<d<<","<<s<<","<<b<<std::endl;
+        done(nullptr);
+    }
 };
 
 
@@ -140,13 +65,14 @@ int main(int argc,char *argv[]){
         printf("uv_tcp_bind failed.");
     }
 
-    fnPrintString fn1(std::string("printString"));
-    fnPrintStringUnderline fn2(std::string("printStringUnderline"));
-    fnPrintSerilizedArgs fn3(std::string("printSerilizedArgs"));
-    pxprpc_namedfunc namedfns[3]={
-        *fn2.cNamedFunc(),*fn1.cNamedFunc(),*fn3.cNamedFunc()
+    fnPrintString fn1;
+    fn1.setName("printString");
+    fnPrintSerilizedArgs fn3;
+    fn3.setName("printSerilizedArgs");
+    pxprpc_namedfunc namedfns[2]={
+        *fn1.cNamedFunc(),*fn3.cNamedFunc()
     };
-    auto tbrpc=srvtbox->new_server(loop,(uv_stream_t *)&servTcp,namedfns,3);
+    auto tbrpc=srvtbox->new_server(loop,(uv_stream_t *)&servTcp,namedfns,2);
     srvtbox->serve_start(tbrpc);
     uv_run(loop,UV_RUN_DEFAULT);
     printf("libuv finish.");

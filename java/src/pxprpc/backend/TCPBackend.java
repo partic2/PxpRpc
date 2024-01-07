@@ -1,10 +1,8 @@
-package pursuer.pxprpc_ex;
+package pxprpc.backend;
 
 import java.io.Closeable;
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.net.ServerSocket;
-import java.net.Socket;
 import java.nio.channels.AsynchronousCloseException;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
@@ -14,7 +12,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
-import pursuer.pxprpc.ServerContext;
+import pxprpc.base.ServerContext;
 
 public class TCPBackend implements Closeable{
 	public TCPBackend() {
@@ -34,7 +32,7 @@ public class TCPBackend implements Closeable{
 		@Override
 		public void run() {
 			try {
-				sc.init(s);
+				sc.init(new ChannelIo(s));
 				s.configureBlocking(true);
 				sc.serve();
 			} catch (Exception e) {

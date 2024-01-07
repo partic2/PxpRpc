@@ -1,18 +1,18 @@
-package pursuer.pxprpc;
+package pxprpc.extend;
 
-import java.io.IOException;
+import pxprpc.base.PxpCallable;
+import pxprpc.base.PxpRef;
+import pxprpc.base.PxpRequest;
+import pxprpc.base.Serializer2;
+
 import java.nio.ByteBuffer;
-import java.nio.channels.ByteChannel;
 
-public abstract class CommonCallable implements PxpCallable{
+public abstract class CommonCallable implements PxpCallable {
     public char[] tParam=new char[0];
     public char[] tResult=new char[0];
 
-    public void readParameter(PxpRequest req) throws IOException {
-        ByteChannel chan=req.getChan();
-        int len=Utils.readInt32(chan);
-        ByteBuffer buf = ByteBuffer.allocate(len & 0x7fffffff);
-        Utils.readf(chan,buf);
+    public Object[] readParameter(PxpRequest req) {
+        ByteBuffer buf = req.parameter;
         final Object[] args=new Object[tParam.length];
         if(tParam.length==1 && tParam[0]=='b'){
             args[0]=buf.array();
@@ -22,41 +22,35 @@ public abstract class CommonCallable implements PxpCallable{
                 args[i]=readNext(req,tParam[i],ser);
             }
         }
-        req.parameter=args;
+        return args;
     }
 
 
-    public void writeResult(PxpRequest req) throws IOException {
-        Object obj = req.result;
-        PxpChannel chan = req.getChan();
+    public void writeResult(PxpRequest req,Object result) {
         Serializer2 ser = new Serializer2().prepareSerializing(32);
         ByteBuffer buf;
-        if (obj instanceof Exception) {
-            buf = ser.putString(((Exception) obj).getMessage()).build();
-            Utils.writeInt32(chan, 0x80000000 | buf.remaining());
-            Utils.writef(chan, buf);
+        if (result instanceof Exception) {
+            buf = ser.putString(((Exception) result).getMessage()).build();
         } else {
             if(tResult.length==1 && tResult[0]=='b'){
-                buf=ByteBuffer.wrap((byte[])obj);
-                Utils.writeInt32(chan,buf.remaining());
-                Utils.writef(chan,buf);
+                buf=ByteBuffer.wrap((byte[])result);
             }else{
                 if(tResult.length==1){
-                    writeNext(req,tResult[0],ser,obj);
+                    writeNext(req,tResult[0],ser,result);
                 }else{
                     Object[] multi = null;
                     if(tResult.length>1){
-                        multi=(Object[]) obj;
+                        multi=(Object[]) result;
                     }
                     for(int i=0;i<tResult.length;i++){
                         writeNext(req,tResult[i],ser,multi[i]);
                     }
                 }
                 buf = ser.build();
-                Utils.writeInt32(chan,buf.remaining());
-                Utils.writef(chan,buf);
             }
         }
+        req.result=new ByteBuffer[]{buf};
+
     }
 
 
@@ -98,8 +92,7 @@ public abstract class CommonCallable implements PxpCallable{
         }
     }
 
-    public static Object readNext(PxpRequest req, char switchId,Serializer2 ser) throws IOException {
-        ByteChannel chan=req.getChan();
+    public static Object readNext(PxpRequest req, char switchId,Serializer2 ser) {
         int addr=-1;
         switch(switchId) {
             //primitive type
@@ -116,7 +109,7 @@ public abstract class CommonCallable implements PxpCallable{
             //reference type
             case 'o':
                 addr=ser.getInt();
-                return req.context.refSlots[addr].get();
+                return req.context.refPool[addr].get();
             case 'b':
                 //byte[]
                 return ser.getBytes();
@@ -128,7 +121,7 @@ public abstract class CommonCallable implements PxpCallable{
         }
     }
 
-    public static void writeNext(PxpRequest req, char switchId,Serializer2 ser,Object obj) throws IOException {
+    public static void writeNext(PxpRequest req, char switchId,Serializer2 ser,Object obj){
         switch (switchId) {
             //primitive type
             //boolean
@@ -153,7 +146,9 @@ public abstract class CommonCallable implements PxpCallable{
                 break;
             //reference type
             case 'o' :
-                ser.putInt(req.destAddr);
+                PxpRef ref2 = req.context.allocRef();
+                ref2.set(obj);
+                ser.putInt(ref2.index);
                 break;
             case 'b' :
                 byte[] b2 = (byte[]) obj;
@@ -166,6 +161,5 @@ public abstract class CommonCallable implements PxpCallable{
                 throw new UnsupportedOperationException();
         }
     }
-
 
 }

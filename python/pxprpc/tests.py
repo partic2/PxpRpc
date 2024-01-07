@@ -20,35 +20,42 @@ import typing
 EnableWebsocketServer=False
 EnableCSharpClient=False
 EnableCClient=False
+EnableJavaClient=False
 
 funcMap=dict()
 
 async def testClient(rpcconn:pxprpc.client.RpcConnection,name:str='default'):
-    
+    print('================'+name+'====================')
     
     client2=pxprpc.client.RpcExtendClient1(rpcconn)
     print(await rpcconn.getInfo())
     get1234=await client2.getFunc('test1.get1234')
     assert get1234!=None
+    print('get1234:',get1234.value)
     get1234.typedecl('->o')
     printString=await client2.getFunc('test1.printString')
     assert printString!=None
+    print('printString:',printString.value)
     printString.typedecl('o->')
     wait1Sec=await client2.getFunc('test1.wait1Sec')
     assert wait1Sec!=None
-    wait1Sec.typedecl('->')
+    print('test1.wait1Sec:',wait1Sec.value)
+    wait1Sec.typedecl('->s')
     print('expect 1234')
     t1=await get1234()
     await printString(t1)
-    printString.typedecl('s->')
 
+    del get1234
+    await asyncio.sleep(0.2)
     testPrintArg=await client2.getFunc('test1.testPrintArg')
+    print('testPrintArg:',testPrintArg.value)
     assert testPrintArg!=None
     testPrintArg.typedecl('cilfdb->il')
     print('multi-result:',await testPrintArg(True,123,1122334455667788,123.5,123.123,b'bytes'))
     
     testUnser=await client2.getFunc('test1.testUnser')
     assert testUnser!=None
+    print('testUnser:',testUnser.value)
     testUnser.typedecl('b->')
     print('expect 123,1122334455667788,123.5,123.123,abcdef,bytes')
     await testUnser(Serializer().prepareSerializing()\
@@ -58,6 +65,7 @@ async def testClient(rpcconn:pxprpc.client.RpcConnection,name:str='default'):
     testTableUnser=await client2.getFunc('test1.testTableUnser')
     #optional?
     if testTableUnser!=None:
+        print('testTableUnser:',testTableUnser.value)
         testTableUnser.typedecl('b->')
         print('expect a table')
         await testTableUnser(TableSerializer().setHeader('iscl',['id','name','isdir','filesize'])\
@@ -73,6 +81,8 @@ async def testClient(rpcconn:pxprpc.client.RpcConnection,name:str='default'):
         t1=await raiseError1()
     except Exception as ex1:
         print('exception catched: '+str(ex1))
+
+    t1=await client2.getFunc('test1.missingfunc')
     print(name+' test done')
 
 from pxprpc.server import decorator
@@ -109,8 +119,9 @@ async def amain():
     
     funcMap['test1']=test1()
     
-    async def fn():
+    async def fn()->str:
         await asyncio.sleep(1)
+        return 'tick'
     funcMap['test1.wait1Sec']=fn
     async def fn():
         raise IOError('dummy io error')
@@ -122,8 +133,16 @@ async def amain():
 
     client1=pxprpc.backend.TcpClient('127.0.0.1',1344)
     await client1.start()
-
     await testClient(client1.rpcconn,'python local pxprpc')
+    await client1.stop()
+
+    if EnableJavaClient:
+        client1=pxprpc.backend.TcpClient('127.0.0.1',1064)
+        await client1.start()
+        await testClient(client1.rpcconn,'java pxprpc')
+        await client1.stop()
+
+    await asyncio.sleep(1)
 
     if EnableCClient:
         await ctestmain();
@@ -132,32 +151,32 @@ async def amain():
         await cstestmain()
     
     if EnableWebsocketServer:
-        await wstunnel4test()
+        await test4wstunnel()
     else:
         await server1.stop()
 
+    print('all test done')
 
-async def wstunnel4test():
+
+async def test4wstunnel():
     from aiohttp import web_app
     from aiohttp import web
     from aiohttp import web_request
     from aiohttp import web_ws
     from aiohttp import http_websocket
     from aiohttp import web_runner
-    from pxprpc.backend import ServerWebsocketTransport,StreamsFromTransport
+    from pxprpc.backend import WebSocketClientIo,WebSocketServerIo
 
     async def wshandler(req:web_request.Request):
-        r,w=StreamsFromTransport(ServerWebsocketTransport(req))
         srv=pxprpc.server.ServerContext()
         srv.funcMap.update(funcMap)
-        srv.backend1(r,w)
+        srv.backend1(WebSocketServerIo(req))
         await srv.serve()
         return web.Response()
 
     async def wshandlerClient(req:web_request.Request):
-        r,w=StreamsFromTransport(ServerWebsocketTransport(req))
         client1=pxprpc.client.RpcConnection()
-        client1.backend1(r,w)
+        client1.backend1(WebSocketServerIo(req))
         asyncio.create_task(client1.run())
         await testClient(client1,'websocketClient')
         return web.Response()
@@ -168,23 +187,19 @@ async def wstunnel4test():
     await web._run_app(app1,host='127.0.0.1',port=1345)
 
 async def ctestmain():
-    print('c test main start')
+    print('===============c test main start================')
     client1=pxprpc.backend.TcpClient('127.0.0.1',1089)
     await client1.start()
     print('start client')
     client2=pxprpc.client.RpcExtendClient1(client1.rpcconn)
+    print(await client1.rpcconn.getInfo())
     t1=await client2.getFunc('printString')
     assert t1!=None
     print('printString:',t1.value)
-    t1.typedecl('b->b')
-    print(await t1(b'12345')) 
-
-    t1=await client2.getFunc('printStringUnderline')
-    assert t1!=None
-    print('printStringUnderline:',t1.value)
-    t1.typedecl('b->b')
-    print(await t1(b'45678'))
-
+    t1.typedecl('s->s')
+    print(await t1('12345')) 
+    await t1.free()
+    await asyncio.sleep(1)
     t1=await client2.getFunc('printSerilizedArgs')
     assert t1!=None
     print('fnPrintSerilizedArgs:',t1.value)
@@ -209,4 +224,6 @@ if __name__=='__main__':
         EnableCSharpClient=True
     if 'enable-c-client' in sys.argv:
         EnableCClient=True
+    if 'enable-java-client' in sys.argv:
+        EnableJavaClient=True
     asyncio.run(amain())

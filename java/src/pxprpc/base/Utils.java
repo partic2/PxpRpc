@@ -1,4 +1,4 @@
-package pursuer.pxprpc;
+package pxprpc.base;
 
 import java.io.EOFException;
 import java.io.IOException;

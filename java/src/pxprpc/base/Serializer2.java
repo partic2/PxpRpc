@@ -1,4 +1,4 @@
-package pursuer.pxprpc;
+package pxprpc.base;
 
 import java.nio.Buffer;
 import java.nio.ByteBuffer;

@@ -1,4 +1,6 @@
-package pursuer.pxprpc;
+package pxprpc.extend;
+
+import pxprpc.base.Serializer2;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;

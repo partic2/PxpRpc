@@ -49,40 +49,81 @@ struct _pxprpc_tbox_sockconn{
 };
 
 
-static void __sockAbsIo1Read(struct pxprpc_abstract_io *self1,uint32_t length,uint8_t *buf,void (*onCompleted)(void *p),void *p){
+static void __sockAbsIo1Receive(struct pxprpc_abstract_io *self1,struct pxprpc_buffer_part *buf,void (*onCompleted)(void *p),void *p){
     struct _pxprpc_tbox_sockconn *self=(void *)self1-offsetof(struct _pxprpc_tbox_sockconn,io1);
-    if(tb_socket_brecv(self->sock,buf,length)){
-        self->readError=NULL;
-    }else{
-        self->readError="socket receive failed";
+    uint32_t packetRemain=0;
+    self->readError=NULL;
+    if(self->readError==NULL){
+        if(!tb_socket_brecv(self->sock,(void *)&packetRemain,4)){
+            self->readError="socket receive failed";
+        }
+    }
+    struct pxprpc_buffer_part *curbuf=buf;
+    while(curbuf!=NULL && self->readError==NULL){
+        if(curbuf->next_part==NULL){
+            /* last part, fill remain data */
+            break;
+        }
+        if(curbuf->bytes.length==0)continue;
+        if(!tb_socket_brecv(self->sock,curbuf->bytes.base,curbuf->bytes.length)){
+            self->readError="tbox socket receive failed";
+        }
+        packetRemain-=curbuf->bytes.length;
+        curbuf=curbuf->next_part;
+    }
+    if(curbuf!=NULL&&self->readError==NULL&&packetRemain>0){
+        curbuf->bytes.length=packetRemain;
+        curbuf->bytes.base=pxprpc__malloc(packetRemain);
+        if(!tb_socket_brecv(self->sock,curbuf->bytes.base,curbuf->bytes.length)){
+            self->readError="tbox socket receive failed";
+        }
     }
     self->nextFn=onCompleted;
     self->nextFnArg0=p;
 }
-static void __sockAbsIo1Write(struct pxprpc_abstract_io *self1,uint32_t length,const uint8_t *buf,void (*onCompleted)(void *p),void *p){
+static void __sockAbsIo1Send(struct pxprpc_abstract_io *self1,struct pxprpc_buffer_part *buf,void (*onCompleted)(void *p),void *p){
     struct _pxprpc_tbox_sockconn *self=(void *)self1-offsetof(struct _pxprpc_tbox_sockconn,io1);
-    if(tb_socket_bsend(self->sock,buf,length)){
-        self->writeError=NULL;
-    }else{
-        self->writeError="socket send failed";
+    uint32_t packetSize=0;
+    struct pxprpc_buffer_part *curbuf=buf;
+    self->writeError=NULL;
+    while(curbuf!=NULL){
+        packetSize+=curbuf->bytes.length;
+        curbuf=curbuf->next_part;
+    }
+    if(!tb_socket_bsend(self->sock,(void *)&packetSize,4)){
+        self->writeError="tbox socket send failed";
+    }
+    curbuf=buf;
+    while(curbuf!=NULL && self->writeError==NULL){
+        if(!tb_socket_bsend(self->sock,curbuf->bytes.base,curbuf->bytes.length)){
+            self->writeError="tbox socket send failed";
+        }
+        curbuf=curbuf->next_part;
     }
     self->nextFn=onCompleted;
     self->nextFnArg0=p;
 }
 static const char *__sockAbsIo1GetError(struct pxprpc_abstract_io *self1,void *fn){
     struct _pxprpc_tbox_sockconn *self=(void *)self1-offsetof(struct _pxprpc_tbox_sockconn,io1);
-    if(fn==self1->read){
+    if(fn==self1->receive){
         return self->readError;
-    }else if(fn==self1->write){
+    }else if(fn==self1->send){
         return self->writeError;
     }
 }
 
+static const void __sockAbsIo1Close(struct pxprpc_abstract_io *self1){
+    struct _pxprpc_tbox_sockconn *self=(void *)self1-offsetof(struct _pxprpc_tbox_sockconn,io1);
+    tb_socket_exit(self->sock);
+}
+
 static struct _pxprpc_tbox_sockconn * __buildTboxSockconn(tb_socket_ref_t sock,struct _pxprpc_tbox *sCtx){
     struct _pxprpc_tbox_sockconn *sockconn=pxprpc__malloc(sizeof(struct _pxprpc_tbox_sockconn));
-    sockconn->io1.read=&__sockAbsIo1Read;
-    sockconn->io1.write=&__sockAbsIo1Write;
+    sockconn->io1.send=&__sockAbsIo1Send;
+    sockconn->io1.receive=&__sockAbsIo1Receive;
     sockconn->io1.get_error=&__sockAbsIo1GetError;
+    sockconn->io1.buf_free=&pxprpc__free;
+    sockconn->io1.close=&__sockAbsIo1Close;
     sockconn->nextFn=NULL;
     sockconn->nextFnArg0=NULL;
     sockconn->sock=sock;

@@ -9,6 +9,24 @@ import traceback
 import logging
 log1=logging.getLogger(__name__)
 
+from .common import AbstractIo
+
+class StreamIo(AbstractIo):
+    def __init__(self,r:asyncio.StreamReader,w:asyncio.StreamWriter):
+        self.r=r
+        self.w=w
+
+    async def receive(self)->bytes:
+        len=int.from_bytes(await self.r.readexactly(4),'little')
+        return await self.r.readexactly(len)
+    
+    async def send(self,buf:bytes):
+        self.w.write(len(buf).to_bytes(4,'little'))
+        self.w.write(buf)
+
+    def close(self):
+        self.w.close()
+
 try:
     from . import server
     class TcpServer:
@@ -23,7 +41,7 @@ try:
                 ctx=server.ServerContext()
                 self.ctxs.append(ctx)
                 try:
-                    ctx.backend1(r,w)
+                    ctx.backend1(StreamIo(r,w))
                     ctx.funcMap.update(self.funcMap)
                     await ctx.serve()
                 except asyncio.exceptions.IncompleteReadError:
@@ -41,7 +59,7 @@ try:
         async def stop(self):
             for t1 in self.ctxs:
                 t1.running=False
-                t1.out2.close()
+                t1.io1.close()
             self.srv1.close()
 
 except ImportError:
@@ -50,6 +68,7 @@ except ImportError:
 
 try:
     from . import client
+    
     class TcpClient:
         def __init__(self,host:str,port:int):
             self.host=host
@@ -58,7 +77,7 @@ try:
         async def start(self):
             r,w=await asyncio.open_connection(self.host,self.port)
             self.rpcconn=client.RpcConnection()
-            self.rpcconn.backend1(r,w)
+            self.rpcconn.backend1(StreamIo(r,w))
             self.runtask=asyncio.create_task(self.rpcconn.run())
             self.__running=True
 
@@ -82,6 +101,54 @@ try:
     from aiohttp import http_websocket
     from aiohttp import web_runner
     import aiohttp
+
+
+    class WebSocketServerIo(AbstractIo):
+        def __init__(self,req:web_request.Request,asServer:bool=True):
+            super().__init__()
+            self.req=req
+            self.writequeue=asyncio.Queue(0)
+            self.asServer=asServer
+            self.ready=asyncio.Future()
+            asyncio.create_task(self._prepare())
+
+        async def _prepare(self):
+            ws1=web_ws.WebSocketResponse()
+            self.ws1=ws1
+            await ws1.prepare(self.req)
+            self.ready.set_result(None)
+
+        async def receive(self)->bytes:
+            await self.ready
+            while not self.ws1.closed:
+                msg=await self.ws1.receive()
+                if msg.type==http_websocket.WSMsgType.BINARY:
+                    return msg.data
+            raise IOError('websocket closed')
+        
+        async def send(self,buf:bytes):
+            await self.ready
+            await self.ws1.send_bytes(buf)
+
+        def close(self):
+            asyncio.create_task(self.ws1.close())
+
+    class WebSocketClientIo(AbstractIo):
+        def __init__(self,wsconn:aiohttp.ClientWebSocketResponse,asServer:bool=False):
+            self.ws1=wsconn
+
+        async def receive(self)->bytes:
+            while self.ws1.closed:
+                msg=await self.ws1.receive()
+                if msg.type==http_websocket.WSMsgType.BINARY:
+                    return msg.data
+            raise IOError('websocket closed')
+        
+        async def send(self,buf:bytes):
+            await self.ws1.send_bytes(buf)
+
+        def close(self):
+            asyncio.create_task(self.ws1.close())
 
     class ServerWebsocketTransport(asyncio.Transport):
         

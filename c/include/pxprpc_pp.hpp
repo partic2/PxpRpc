@@ -7,158 +7,13 @@ extern "C"{
 #include <pxprpc.h>
 }
 
+#include <string>
 #include <functional>
 #include <tuple>
 #include <vector>
 
 namespace pxprpc{
     
-
-
-static void __wrap_readParameter(pxprpc_callable *self,pxprpc_request *r,void (*doneCallback)(pxprpc_request *r));
-
-
-static void __wrap_call(pxprpc_callable *self,pxprpc_request *r,void (*onResult)(pxprpc_request *r,pxprpc_object *result));
-
-
-static void __wrap_writeResult(pxprpc_callable *self,pxprpc_request *r,void (*doneCallback)(pxprpc_request *r));
-
-pxprpc_server_api *servapi;
-
-extern void init(){
-    pxprpc_server_query_interface(&servapi);
-}
-
-static uint32_t __wrap_object_addRef(pxprpc_object *self);
-static uint32_t __wrap_object_release(pxprpc_object *self);
-
-class RpcObject{
-    pxprpc_object cObj;
-    public:
-    static RpcObject *at(pxprpc_server_context context,int index){
-        return (RpcObject *)servapi->context_exports(context)->ref_slots[index]->object1;
-    }
-    virtual ~RpcObject(){
-    }
-    virtual int addRef(){
-        this->cObj.count++;
-        return this->cObj.count;
-    }
-    virtual int release(){
-        this->cObj.count--;
-        if(this->cObj.count<=0){
-            delete this;
-            return 0;
-        }else{
-            return this->cObj.count;
-        }
-    }
-    RpcObject(){
-        this->cObj.object1=this;
-        this->cObj.count=0;
-        this->cObj.addRef=&__wrap_object_addRef;
-        this->cObj.release=&__wrap_object_release;
-    }
-    virtual pxprpc_object *cObject(){
-        return &cObj;
-    }
-};
-
-class RpcRawBytes:public RpcObject{
-    public:
-    static RpcRawBytes *at(pxprpc_server_context context,int index){
-        pxprpc_bytes *obj=(pxprpc_bytes *)servapi->context_exports(context)->ref_slots[index]->object1;
-        auto rrb=new RpcRawBytes((uint8_t *)&obj->data,obj->length);
-        return rrb;
-    }
-    virtual ~RpcRawBytes(){
-    }
-    uint8_t *data;
-    int size;
-    RpcRawBytes(uint8_t *data,int size):RpcObject(){
-        this->data=data;
-        this->size=size;
-    }
-    virtual pxprpc_object *cObject(){
-        auto r1=pxprpc::servapi->new_bytes_object(this->size);
-        pxprpc::servapi->fill_bytes_object(r1,this->data,this->size);
-        delete this;
-        return r1;
-    }
-    std::string asString(){
-        return std::string(reinterpret_cast<char *>(this->data),size);
-    }
-};
-
-
-
-static uint32_t __wrap_object_addRef(pxprpc_object *self){
-    auto rpcObj=static_cast<RpcObject *>(self->object1);
-    rpcObj->addRef();
-}
-
-static uint32_t __wrap_object_release(pxprpc_object *self){
-    auto rpcObj=static_cast<RpcObject *>(self->object1);
-    rpcObj->release();
-}
-
-
-
-class NamedFunctionPP{
-    
-    protected:
-    pxprpc_callable callable;
-    struct pxprpc_namedfunc mCNamedFunc;
-    std::string name;
-    public:
-    virtual void readParameter(pxprpc_request *r,std::function<void()> doneCallback)=0;
-    virtual void call(pxprpc_request *r,std::function<void(RpcObject *)> onResult)=0;
-    virtual void writeResult(pxprpc_request *r,std::function<void()> doneCallback)=0;
-    NamedFunctionPP(std::string funcName){
-        this->callable.userData=this;
-        this->callable.readParameter=__wrap_readParameter;
-        this->callable.call=__wrap_call;
-        this->callable.writeResult=__wrap_writeResult;
-        this->mCNamedFunc.callable=&this->callable;
-        this->name=funcName;
-        this->mCNamedFunc.name=this->name.c_str();
-    }
-    virtual struct pxprpc_namedfunc *cNamedFunc(){
-        return &mCNamedFunc;
-    }
-    virtual ~NamedFunctionPP(){
-    }
-};
-
-class IoPP;
-
-static void __wrap_io_readCompleted(IoPP *p);
-static void __wrap_io_writeCompleted(IoPP *p);
-
-class IoPP{
-    public:
-    pxprpc_abstract_io *wrapped;
-    IoPP(pxprpc_abstract_io *io){
-        this->wrapped=io;
-    }
-    std::function<void(IoPP *,const char *)> onReadDone;
-    void read(uint32_t length,uint8_t *buf,std::function<void(IoPP *,const char *)> onCompleted){
-        this->onReadDone=onCompleted;
-        this->wrapped->read(this->wrapped,length,buf,(void (*)(void *))__wrap_io_readCompleted,this);
-    }
-    std::function<void(IoPP *,const char *)> onWriteDone;
-    void write(uint32_t length,const uint8_t *buf,std::function<void(IoPP *,const char *)> onCompleted){
-        this->onWriteDone=onCompleted;
-        this->wrapped->write(this->wrapped,length,buf,(void (*)(void *))__wrap_io_writeCompleted,this);
-    }
-};
-
-static void __wrap_io_readCompleted(IoPP *p){
-    p->onReadDone(p,p->wrapped->get_error(p->wrapped,(void *)p->wrapped->read));
-}
-static void __wrap_io_writeCompleted(IoPP *p){
-    p->onWriteDone(p,p->wrapped->get_error(p->wrapped,(void *)p->wrapped->write));
-}
 
 class Serializer{
     public:
@@ -219,6 +74,11 @@ class Serializer{
         uint8_t *val=pxprpc_ser_get_bytes(&this->wrapped,&size);
         return std::tuple<int,uint8_t*>(size,val);
     }
+    std::string getString(){
+        auto strbuf=getBytes();
+        std::string str(reinterpret_cast<char *>(std::get<1>(strbuf)),std::get<0>(strbuf));
+        return str;
+    }
     Serializer *putInt(int32_t val){
         pxprpc_ser_put_int(&this->wrapped,&val,1);
         return this;
@@ -235,37 +95,166 @@ class Serializer{
         pxprpc_ser_put_double(&this->wrapped,&val,1);
         return this;
     }
-    Serializer *putBytes(std::tuple<int,uint8_t*> val){
-        pxprpc_ser_put_bytes(&this->wrapped,std::get<1>(val),std::get<0>(val));
+    Serializer *putBytes(uint8_t *buf,uint32_t length){
+        pxprpc_ser_put_bytes(&this->wrapped,buf,length);
         return this;
+    }
+    Serializer *putString(std::string val){
+        putBytes((uint8_t *)val.c_str(),val.size());
+        return this;
+    }
+    std::tuple<int,uint8_t*> build(){
+        uint32_t size;
+        auto *buf=pxprpc_ser_build(&this->wrapped,&size);
+        return std::tuple<int,uint8_t*>((int)size,buf);
+    }
+    static Serializer *fromPxpBytes(struct pxprpc_bytes *bytes){
+        auto ser=new Serializer();
+        ser->prepareUnserializing(static_cast<uint8_t *>(bytes->base),bytes->length);
+        return ser;
+    }
+    void buildPxpBytes(struct pxprpc_bytes *bytes){
+        auto bb=build();
+        bytes->base=std::get<1>(bb);
+        bytes->length=std::get<0>(bb);
     }
 };
 
+static void __wrap_call(pxprpc_callable *self,pxprpc_request *r);
 
+pxprpc_server_api *servapi;
 
+extern void init(){
+    pxprpc_server_query_interface(&servapi);
+}
 
+class PxpServContext;
 
-
-static void __wrap_readParameter(pxprpc_callable *self,pxprpc_request *r,void (*doneCallback)(pxprpc_request *r)){
-    NamedFunctionPP *selfpp=static_cast<NamedFunctionPP *>(self->userData);
-    selfpp->readParameter(r,[doneCallback,r]()->void{doneCallback(r);});
+class PxpObject{
+    public:
+    virtual ~PxpObject(){}
 };
 
 
-static void __wrap_call(pxprpc_callable *self,pxprpc_request *r,void (*onResult)(pxprpc_request *r,pxprpc_object *result)){
-    NamedFunctionPP *selfpp=static_cast<NamedFunctionPP *>(self->userData);
-    selfpp->call(r,[onResult,r](pxprpc::RpcObject *resultObj)->void{
-        if(resultObj==NULL)
-            onResult(r,NULL);
-        else
-            onResult(r,resultObj->cObject());
-    });
+static void __wrap_ref_on_free(pxprpc_ref *ref){
+    PxpObject *obj=static_cast<PxpObject *>(ref->object);
+    delete obj;
 }
 
-static void __wrap_writeResult(pxprpc_callable *self,pxprpc_request *r,void (*doneCallback)(pxprpc_request *r)){
-    NamedFunctionPP *selfpp=static_cast<NamedFunctionPP *>(self->userData);
-    selfpp->writeResult(r,[doneCallback,r]()->void{doneCallback(r);});
+class PxpServContextWrap{
+    public:
+    pxprpc_server_context ctx;
+    static PxpServContextWrap wrap(pxprpc_server_context ctx){
+        PxpServContextWrap r;
+        r.ctx=ctx;
+        return r;
+    }
+    uint32_t allocRef(PxpObject *obj){
+        uint32_t index;
+        auto cref=servapi->alloc_ref(this->ctx,&index);
+        cref->object=obj;
+        cref->on_free=__wrap_ref_on_free;
+        return index;
+    }
+    void freeRef(uint32_t index){
+        servapi->free_ref(this->ctx,&servapi->context_exports(ctx)->ref_pool[index]);
+    }
+    PxpObject *dereference(uint32_t index){
+        return static_cast<PxpObject *>(servapi->context_exports(ctx)->ref_pool[index].object);
+    }
+};
+
+class PxpRequestWrap;
+
+void __wrap_requestOnFree(pxprpc_request *r);
+
+class PxpRequestWrap{
+    public:
+    pxprpc_request *req=NULL;
+    void *callableDataPP=NULL;
+    std::function<void(PxpRequestWrap *)> onFreePP=[](PxpRequestWrap *)->void{};
+    static PxpRequestWrap *wrap(pxprpc_request *req){
+        if(req->callable_data!=NULL){
+            return static_cast<PxpRequestWrap *>(req->callable_data);
+        }else{
+            auto r=new PxpRequestWrap();
+            r->req=req;
+            req->callable_data=r;
+            return r;
+        }
+    }
+    PxpServContextWrap context(){
+        PxpServContextWrap::wrap(req->server_context);
+    }
+    void nextStep(){
+        req->next_step(req);
+    }
+    struct pxprpc_bytes *parameter(){
+        return &req->parameter;
+    }
+    void onWrapFree(){
+        this->onFreePP(this);
+        delete this;
+    }
+};
+
+void __wrap_requestOnFree(pxprpc_request *r){
+    auto wrap=static_cast<PxpRequestWrap *>(r->callable_data);
+    wrap->onWrapFree();
 }
 
+class NamedFunctionPP{
+    struct pxprpc_namedfunc mCNamedFunc;
+    public:
+    pxprpc_callable callable;
+    std::string name;
+
+    NamedFunctionPP(){
+        this->callable.user_data=this;
+        this->callable.call=__wrap_call;
+        this->mCNamedFunc.callable=&this->callable;
+    }
+
+    NamedFunctionPP *setName(std::string funcName){
+        this->name=funcName;
+        this->mCNamedFunc.name=this->name.c_str();
+        return this;
+    }
+    
+    virtual void call(PxpRequestWrap *r)=0;
+    virtual struct pxprpc_namedfunc *cNamedFunc(){
+        return &mCNamedFunc;
+    }
+    virtual ~NamedFunctionPP(){}
+};
+
+
+class FunctionPPWithSerializer:public NamedFunctionPP{
+    public:
+    virtual void callWithSer(PxpRequestWrap *r,Serializer *parameter,std::function<void(Serializer *result)> done)=0;
+    virtual void call(PxpRequestWrap *r){
+        auto ser=Serializer::fromPxpBytes(r->parameter());
+        r->onFreePP=[](PxpRequestWrap *r)->void{
+            /* use callableDataPP? */
+            pxprpc_ser_free_buf(r->req->result.bytes.base);
+        };
+        this->callWithSer(r,ser,[ser,r](Serializer *result)->void{
+            delete ser;
+            if(result!=nullptr){
+                result->buildPxpBytes(&r->req->result.bytes);
+                delete result;
+                r->req->result.next_part=NULL;
+            }else{
+                r->req->result.bytes.length=0;
+            }
+            r->nextStep();
+        });
+    }
+};
+
+static void __wrap_call(pxprpc_callable *self,pxprpc_request *r){
+    NamedFunctionPP *selfpp=static_cast<NamedFunctionPP *>(self->user_data);
+    selfpp->call(PxpRequestWrap::wrap(r));
+}
 
 }

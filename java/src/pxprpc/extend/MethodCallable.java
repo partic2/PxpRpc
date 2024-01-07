@@ -1,4 +1,7 @@
-package pursuer.pxprpc;
+package pxprpc.extend;
+
+import pxprpc.base.PxpRequest;
+import pxprpc.base.ServerContext;
 
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
@@ -36,7 +39,7 @@ public class MethodCallable extends CommonCallable {
 				firstInputParamIndex = 1;
 			}
 			tParam=new char[paramsType.length+1-firstInputParamIndex];
-			if(method.getReturnType()!=Void.class){
+			if(method.getReturnType()!=void.class){
 				tResult = new char[]{javaTypeToSwitchId(method.getReturnType())};
 			}else{
 				tResult=new char[0];
@@ -49,25 +52,37 @@ public class MethodCallable extends CommonCallable {
 		}
 	}
 
-
-	public void call(PxpRequest req,AsyncReturn<Object> asyncRet) throws IOException {
+	public void call(final PxpRequest req) throws IOException {
 		ServerContext ctx = req.context;
 		try {
-			Object result=null;
-			Object[] args = (Object[])req.parameter;
+			Object[] args=readParameter(req);
 			Object[] args2=new Object[firstInputParamIndex+args.length-1];
 			System.arraycopy(args,1,args2,firstInputParamIndex,args.length-1);
 			if(firstInputParamIndex==1){
-				args2[0]=asyncRet;
+				args2[0]=new AsyncReturn<Object>() {
+					@Override
+					public void resolve(Object result) {
+						MethodCallable.this.writeResult(req,result);
+						req.done();
+					}
+					@Override
+					public void reject(Exception ex) {
+						req.rejected=ex;
+						req.done();
+					}
+				};
 			}
-			result=method.invoke(args[0],args2);
+			Object result=method.invoke(args[0],args2);
 			if(firstInputParamIndex==0) {
-				asyncRet.result(result);
+				this.writeResult(req,result);
+				req.done();
 			}
 		} catch (InvocationTargetException e) {
-			asyncRet.result(e.getCause());
+			req.rejected=e.getCause();
+			req.done();
 		} catch (IllegalAccessException e) {
-			asyncRet.result(e);
+			req.rejected=e;
+			req.done();
 		}
 	}
 

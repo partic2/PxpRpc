@@ -6,6 +6,17 @@ zero32=bytes.fromhex('00000000')
 
 import struct
 
+class AbstractIo:
+    async def receive(self)->bytes:
+        raise NotImplemented()
+    
+    async def send(self,buf:bytes):
+        raise NotImplemented()
+    
+    def close(self):
+        raise NotImplemented()
+    
+
 def encodeToBytes(obj,addr32:int):
     t1=type(obj)
     if t1==int:

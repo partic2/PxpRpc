@@ -1,14 +1,14 @@
-package pursuer.pxprpc;
+package pxprpc.extend;
+
+import pxprpc.base.PxpCallable;
+import pxprpc.base.Utils;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.UnsupportedEncodingException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
 
 public class BuiltInFuncList {
@@ -16,7 +16,7 @@ public class BuiltInFuncList {
 	public String anyToString(Object obj){
 		return obj.toString();
 	}
-	public PxpCallable getMethod(Object obj,String methodName){
+	public PxpCallable getMethod(Object obj, String methodName){
 		Method found=null;
 		for(Method method:obj.getClass().getMethods()) {
 			if(method.getName().equals(methodName)) {
@@ -34,6 +34,9 @@ public class BuiltInFuncList {
 				break;
 			}
 		}
+		if(found==null){
+			return null;
+		}
 		return new BoundMethodCallable(found,obj);
 	}
 	public String checkException(Object obj) {
@@ -41,11 +44,6 @@ public class BuiltInFuncList {
 			return obj.toString();
 		}else{
 			return "";
-		}
-	}
-	public void ensureSlots(PxpRequest req,int count){
-		if(req.context.refSlots.length<count){
-			req.context.refSlots=Arrays.copyOf(req.context.refSlots,count);
 		}
 	}
 	public Class<?> findClass(String name){

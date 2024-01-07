@@ -1,8 +1,8 @@
 
 
 export interface Io{
-    read(size:number):Promise<ArrayBuffer>;
-    write(data:ArrayBufferLike):Promise<void>;
+    receive():Promise<ArrayBuffer>;
+    send(data:ArrayBufferLike[]):Promise<void>;
 }
 
 export class Serializer{
@@ -117,339 +117,117 @@ export class Serializer{
     }
 }
 
-class mutex{
-    protected locked:boolean=false;
-    protected unlockCb:Array<()=>void>=[];
-    constructor(){
-    }
-    public async lock(){
-        var that=this;
-        if(this.locked){
-            return new Promise<void>(function(resolve,reject){
-                that.unlockCb.push(resolve);
-            });
-        }else{
-            this.locked=true;
-            return;
-        }
-    }
-    public async unlock(){
-        if(this.unlockCb.length>0){
-            this.unlockCb.shift()!();
-        }else{
-            this.locked=false;
-        }
-    }
-    public async tryLock(){
-        if(!this.locked){
-            this.locked=true;
-            return true;
-        }else{
-            return false;
-        }
-    }
-    public async mutexDo(fn:()=>Promise<any>){
-        await this.lock();
-        try{await fn();}finally{await this.unlock()}
-    }
-}
+export class PxprpcRemoteError extends Error{}
 
 export class Client{
-    protected nextSid1=0;
-    protected writeLock=new mutex();
     public constructor(public io1:Io){
-        this.nextSid1=0;
     }
     protected running=false;
-    protected waitingSessionCb={} as {[key:number]:(e:Error|null)=>void}
+    protected waitingSessionCb={} as {[key:number]:(err:Error|null,result?:[number,ArrayBuffer])=>void}
     protected respReadingCb:(e:Error|null)=>void=()=>{};
     public async run(){
         this.running=true;
         try{
             while(this.running){
-                let sid=await this.readUint32();
-                let cb=this.waitingSessionCb[sid];
-                delete this.waitingSessionCb[sid];
-                let respReadingDone=new Promise<undefined>((resolve,reject)=>{
-                    this.respReadingCb=(e)=>{
-                        if(e==null){resolve(undefined)}else{reject(e)};
-                    }
-                });
-                cb(null);
-                await respReadingDone;
+                let packet=new DataView(await this.io1.receive());
+                let sid=packet.getUint32(0,true);
+                let cb=this.waitingSessionCb[sid&0x7fffffff];
+                delete this.waitingSessionCb[sid&0x7fffffff];
+                cb(null,[sid,packet.buffer.slice(4)]);
             }
         }catch(e){
             for(let k in this.waitingSessionCb){
                 let cb=this.waitingSessionCb[k];
                 cb(e as any);
             }
+        }finally{
+            this.running=false;
         }
     }
     public isRunning():boolean{
         return this.running;
     }
-    public async readUint32(){
-        let buf=await this.io1.read(4);
-        return new DataView(buf).getUint32(0,true);
-    }
-    public async readInt32(){
-        let buf=await this.io1.read(4);
-        return new DataView(buf).getInt32(0,true); 
-    }
-    public async push(destAddr:number,data:ArrayBufferLike,sid:number=0x100){
-        let hdr=new ArrayBuffer(12);
-        let hdr2=new DataView(hdr);
-        sid=sid|1;
-        hdr2.setUint32(0,sid,true);
-        hdr2.setUint32(4,destAddr,true);
-        hdr2.setUint32(8,data.byteLength,true);
-        let respFut=new Promise((resolve,reject)=>{
-            this.waitingSessionCb[sid]=(e)=>{
-                if(e==null){resolve(e);}else{reject(e)};
-            }
-        });
-        await this.writeLock.mutexDo(async ()=>{
-            await this.io1.write(hdr);
-            await this.io1.write(data);
-        })
-        await respFut;
-        this.respReadingCb(null);
-    }
-    public async pull(srcAddr:number,sid:number=0x100){
+    public async call(callableIndex:number,parameter:ArrayBuffer[],sid:number=0x100):Promise<ArrayBuffer>{
         let hdr=new ArrayBuffer(8);
         let hdr2=new DataView(hdr);
-        sid=sid|2;
         hdr2.setUint32(0,sid,true);
-        hdr2.setUint32(4,srcAddr,true)
-        let respFut=new Promise((resolve,reject)=>{
-            this.waitingSessionCb[sid]=(e)=>{
-                if(e==null){resolve(e);}else{reject(e)};
+        hdr2.setInt32(4,callableIndex,true)
+        let respFut=new Promise<[number,ArrayBuffer]>((resolve,reject)=>{
+            this.waitingSessionCb[sid]=(err,resp)=>{
+                if(err==null){resolve(resp!);}else{reject(err)};
             }
         });
-        await this.writeLock.mutexDo(async ()=>{
-            await this.io1.write(hdr);
-        });
-        await this.writeLock.unlock();
-        await respFut;
-        let size=await this.readInt32();
-        let result:ArrayBufferLike|null
-        if(size==-1){
-            result=null;
-        }else{
-            result=await this.io1.read(size);
+        await this.io1.send([hdr,...parameter])
+        let [sid2,result]=await respFut;
+        if(sid!=sid2){
+            throw new PxprpcRemoteError(new TextDecoder().decode(result));
         }
-        this.respReadingCb(null);
         return result;
     }
-    public async assign(destAddr:number,srcAddr:number,sid:number=0x100){
-        let hdr=new ArrayBuffer(12);
-        let hdr2=new DataView(hdr);
-        sid=sid|3;
-        hdr2.setUint32(0,sid,true);
-        hdr2.setUint32(4,destAddr,true);
-        hdr2.setUint32(8,srcAddr,true);
-        let respFut=new Promise((resolve,reject)=>{
-            this.waitingSessionCb[sid]=(e)=>{
-                if(e==null){resolve(e);}else{reject(e)};
-            }
-        });
-        await this.writeLock.mutexDo(async ()=>{
-            await this.io1.write(hdr);
-        });
-        await respFut;
-        this.respReadingCb(null);
+    public async getFunc(funcName:string,sid:number=0x100){
+        let result=await this.call(-1,[new TextEncoder().encode(funcName)],sid)
+        return new DataView(result).getInt32(0,true);
     }
-    public async unlink(destAddr:number,sid:number=0x100){
-        let hdr=new ArrayBuffer(8);
-        let hdr2=new DataView(hdr);
-        sid=sid|4;
-        hdr2.setUint32(0,await sid,true);
-        hdr2.setUint32(4,destAddr,true)
-        let respFut=new Promise((resolve,reject)=>{
-            this.waitingSessionCb[sid]=(e)=>{
-                if(e==null){resolve(e);}else{reject(e)};
-            }
-        });
-        await this.writeLock.mutexDo(async ()=>{
-            await this.io1.write(hdr);
-        });
-        await respFut;
-        this.respReadingCb(null);
-    }
-    public async call(destAddr:number,fnAddr:number,args:ArrayBufferLike[],onResponse:(io1:Io)=>Promise<void>,sid:number=0x100){
-        let hdr=new ArrayBuffer(12);
-        let hdr2=new DataView(hdr);
-        sid=sid|5;
-        hdr2.setUint32(0,await sid,true);
-        hdr2.setUint32(4,destAddr,true)
-        hdr2.setUint32(8,fnAddr,true)
-        let respFut=new Promise((resolve,reject)=>{
-            this.waitingSessionCb[sid]=(e)=>{
-                if(e==null){resolve(e);}else{reject(e)};
-            }
-        });
-        await this.writeLock.mutexDo(async ()=>{
-            await this.io1.write(hdr);
-            for(let buf of args){
-                await this.io1.write(buf);
-            }
-        });
-        await respFut;
-        await onResponse(this.io1);
-        this.respReadingCb(null);
-    }
-    public async getFunc(destAddr:number,fnNameAddr:number,sid:number=0x100){
-        let hdr=new ArrayBuffer(12);
-        let hdr2=new DataView(hdr);
-        sid=sid|6;
-        hdr2.setUint32(0,sid,true);
-        hdr2.setUint32(4,destAddr,true);
-        hdr2.setUint32(8,fnNameAddr,true);
-        let respFut=new Promise((resolve,reject)=>{
-            this.waitingSessionCb[sid]=(e)=>{
-                if(e==null){resolve(e);}else{reject(e)};
-            }
-        });
-        await this.writeLock.mutexDo(async ()=>{
-            await this.io1.write(hdr);
-        });
-        await respFut;
-        let data1=await this.readUint32()
-        this.respReadingCb(null);
-        return data1
+    public async freeRef(index:number,sid:number=0x100){
+        let para=new DataView(new ArrayBuffer(4));
+        para.setInt32(0,index,true);
+        await this.call(-2,[para.buffer],sid);
     }
     public async close(sid:number=0x100){
-        let hdr=new ArrayBuffer(4);
+        let hdr=new ArrayBuffer(8);
         let hdr2=new DataView(hdr);
-        sid=sid|7
         hdr2.setUint32(0,sid,true);
-        await this.writeLock.mutexDo(async ()=>{
-            await this.io1.write(hdr);
+        hdr2.setInt32(4,-3,true)
+        let respFut=new Promise<[number,ArrayBuffer]>((resolve,reject)=>{
+            this.waitingSessionCb[sid]=(err,resp)=>{
+                if(err==null){resolve(resp!);}else{reject(err)};
+            }
         });
+        await this.io1.send([hdr])
         this.running=false;
     }
     public async getInfo(sid:number=0x100){
-        let hdr=new ArrayBuffer(4);
-        let hdr2=new DataView(hdr);
-        sid=sid|8;
-        hdr2.setUint32(0,sid,true);
-        let respFut=new Promise((resolve,reject)=>{
-            this.waitingSessionCb[sid]=(e)=>{
-                if(e==null){resolve(e);}else{reject(e)};
-            }
-        });
-        await this.writeLock.mutexDo(async ()=>{
-            await this.io1.write(hdr);
-        });
-        await respFut;
-        let size=await this.readUint32();
-        let data1=new TextDecoder().decode(await this.io1.read(size));
-        this.respReadingCb(null);
-        return data1;
+        let result=await this.call(-4,[],sid);
+        return new TextDecoder().decode(result);
     }
     public async sequence(mask:number,maskCnt:number=24,sid:number=0x100){
-        let hdr=new ArrayBuffer(8);
-        let hdr2=new DataView(hdr);
-        sid=sid|9;
-        hdr2.setUint32(0,sid,true);
-        hdr2.setUint32(4,mask|maskCnt,true);
-        let respFut=new Promise((resolve,reject)=>{
-            this.waitingSessionCb[sid]=(e)=>{
-                if(e==null){resolve(e);}else{reject(e)};
-            }
-        });
-        await this.writeLock.mutexDo(async ()=>{
-            await this.io1.write(hdr);
-        });
-        await respFut;
-        this.respReadingCb(null);
-    }
-    public async buffer(sid:number=0x100){
         let hdr=new ArrayBuffer(4);
-        let hdr2=new DataView(hdr);
-        sid=sid|10;
-        hdr2.setUint32(0,sid,true);
-        await this.writeLock.mutexDo(async ()=>{
-            await this.io1.write(hdr);
-        });
+        new DataView(hdr).setUint32(0,mask|maskCnt,true);
+        return await this.call(-5,[hdr],sid);
     }
 }
 
 export class PxpRequest{
-    public destAddr=0;
-    public srcAddr=0;
-    public funcAddr=0;
-    public parameter:any;
-    public result:any;
-    public callable:PxpCallable|null=null;
-    public opcode:number=0;
+    public callableIndex=-1;
+    public parameter?:ArrayBuffer;
+    public result:ArrayBuffer[]=[];
+    public rejected:Error|null=null;
     public nextPending:PxpRequest|null=null;
     public inSequence=false;
-    public constructor(public context:Server,public session:number){
-        this.opcode=session&0xff;
-    }
+    public constructor(public context:Server,public session:number){}
+}
+
+export class PxpRef{
+    public object:any;
+    public nextFree:PxpRef|null=null;
+    public constructor(public index:number){}
 }
 
 export interface PxpCallable{
-    readParameter:(req:PxpRequest)=>Promise<void>,
     call:(req:PxpRequest)=>Promise<any>,
-    writeResult:(req:PxpRequest)=>Promise<void>
 }
 
-
-export class PxpObject{
-	protected count:number=0;
-	protected content:any;
-	public constructor(c:any) {
-		this.count=0;
-		this.content=c;
-	}
-	public addRef() {
-		return ++this.count;
-	}
-	public release() {
-		this.count--;
-		if(this.count==0) {
-			this.close();
-		}
-		return this.count;
-	}
-	public get() {
-		return this.content;
-	}
-	public close(){
-		if(this.content!==null && typeof this.content=='object' && 'close' in this.content) {
-			this.content.close();
-		}
-	}
-}
-
+let RefPoolExpandCount=256;
 
 export class Server{
-    public refSlots=new Array<PxpObject|null>();
+    public refPool=new Array<PxpRef>();
     public sequenceSession=0xffffffff;
     public sequenceMaskBitsCnt=0;
+    public freeRefEntry:PxpRef|null=null;
     public constructor(public io1:Io){
     }
     public running=false;
-    public async readUint32(){
-        let buf=await this.io1.read(4);
-        return new DataView(buf).getUint32(0,true);
-    }
-    public async readInt32(){
-        let buf=await this.io1.read(4);
-        return new DataView(buf).getInt32(0,true); 
-    }
-    public async writeUint32(u32:number){
-        let buf=new ArrayBuffer(4);
-        new DataView(buf).setUint32(0,u32,true);
-        await this.io1.write(buf);
-    }
-    public async writeInt32(i32:number){
-        let buf=new ArrayBuffer(4);
-        new DataView(buf).setInt32(0,i32,true);
-        await this.io1.write(buf);
-    }
+    
     pendingRequests:{[sid:number]:PxpRequest}={};
     public queueRequest(r:PxpRequest){
         if(this.sequenceSession==0xffffffff || (r.session>>(32-this.sequenceMaskBitsCnt)!=this.sequenceSession)){
@@ -482,39 +260,59 @@ export class Server{
             return null;
         }
     }
+    public expandRefPools(){
+        let start=this.refPool.length;
+        let end=this.refPool.length+RefPoolExpandCount-1;
+        for(let i=start;i<=end;i++){
+            this.refPool.push(new PxpRef(i));
+        }
+        for(let i=start;i<end;i++){
+            this.refPool[i].nextFree=this.refPool[i+1];
+        }
+        this.refPool[end].nextFree=this.freeRefEntry;
+        this.freeRefEntry =this.refPool[start];
+    }
+    public allocRef(){
+        if(this.freeRefEntry==null){
+            this.expandRefPools();
+        }
+        let ref2 = this.freeRefEntry;
+        this.freeRefEntry = this.freeRefEntry!.nextFree;
+        return ref2!;
+    }
+    public freeRef(ref2:PxpRef){
+        if(ref2.object!=null && 'close' in ref2.object){
+            ref2.object.close();
+        }
+        ref2.object=null;
+        ref2.nextFree=this.freeRefEntry;
+        this.freeRefEntry=ref2;
+    }
+    public getRef(index:number){
+        return this.refPool[index];
+    }
+    public async freeRefHandler(r:PxpRequest){
+        let index=new DataView(r.parameter!).getInt32(0,true);
+        this.freeRef(this.getRef(index));
+    }
+    public async closeHandler(r:PxpRequest){
+        this.close();
+    }
+    protected builtInCallable=[null,this.getFunc,this.freeRefHandler,this.closeHandler,this.getInfo,this.sequence]
     public async processRequest(r:PxpRequest|null) {
         while(r!=null){
-            switch(r.opcode){
-                case 1:
-                    await this.push(r);
-                    break;
-                case 2:
-                    await this.pull(r);
-                    break;
-                case 3:
-                    await this.assign(r);
-                    break;
-                case 4:
-                    await this.unlink(r);
-                    break;
-                case 5:
-                    await this.call(r);
-                    break;
-                case 6:
-                    await this.getFunc(r);
-                    break;
-                case 7:
-                    this.close(r);
-                    break;
-                case 8:
-                    await this.getInfo(r);
-                    break;
-                case 9:
-                    await this.sequence(r);
-                    break;
-                case 10:
-                    await this.buffer(r);
-                    break;
+            if(r.callableIndex>=0){
+                await (this.getRef(r.callableIndex).object as PxpCallable).call(r);
+            }else{
+                await this.builtInCallable[-r.callableIndex]!.call(this,r);
+            }
+            let sid=new DataView(new ArrayBuffer(4));
+            if(r.rejected==null){
+                sid.setUint32(0,r.session,true);
+                await this.io1.send([sid.buffer,...r.result])
+            }else{
+                sid.setUint32(0,r.session^0x80000000,true);
+                await this.io1.send([sid.buffer,new TextEncoder().encode(String(r.rejected))])
             }
             r=this.finishRequest(r);
         }
@@ -522,155 +320,35 @@ export class Server{
     public async serve(){
         this.running=true;
 		while(this.running) {
-			let session=await this.readUint32();
-            let r=new PxpRequest(this,session);
-			switch(r.opcode) {
-			case 1:
-				r.destAddr=await this.readInt32();
-				let len=await this.readInt32();
-				r.parameter=await this.io1.read(len);
-				this.queueRequest(r);
-				break;
-			case 2:
-				r.srcAddr=await this.readInt32();
-				this.queueRequest(r);
-				break;
-			case 3:
-				r.destAddr=await this.readInt32();
-				r.srcAddr=await this.readInt32();
-				this.queueRequest(r);
-				break;
-			case 4:
-				r.destAddr=await this.readInt32();
-				this.queueRequest(r);
-				break;
-			case 5:
-				r.destAddr=await this.readInt32();
-				r.srcAddr=await this.readInt32();
-				r.callable=await this.refSlots[r.srcAddr]!.get() as PxpCallable;
-				await r.callable.readParameter(r);
-				this.queueRequest(r);
-				break;
-			case 6:
-				r.destAddr=await this.readInt32();
-				r.srcAddr=await this.readInt32();
-				this.queueRequest(r);
-				break;
-			case 7:
-                this.queueRequest(r);
-				break;
-			case 8:
-				this.queueRequest(r);
-				break;
-            case 9:
-                r.destAddr=await this.readUint32();
-                this.queueRequest(r);
-                break;
-            case 10:
-                this.queueRequest(r);
-                break;
-			}
+            let packet=new DataView(await this.io1.receive());
+            let r=new PxpRequest(this,packet.getUint32(0,true));
+            r.callableIndex=packet.getInt32(4,true);
+            r.parameter=packet.buffer.slice(8);
+			this.queueRequest(r);
 		}
 		this.running=false;
 	}
-    
-	protected putRefSlots(addr:number,r:PxpObject|null) {
-		if(this.refSlots[addr]!=null) 
-			this.refSlots[addr]!.release();
-		if(r!=null)
-			r.addRef();
-		this.refSlots[addr]=r;
-	}
-    public getStringAt(addr:number):string {
-		if(this.refSlots[addr]===null) {
-			return "";
-		}
-		let o=this.refSlots[addr]!.get();
-		if(o instanceof ArrayBuffer) {
-			return new TextDecoder().decode(o);
-		}else {
-			return o.toString();
-		}
-	}
-	
-
-	protected writeLock=new mutex();
-
-	public async push(r:PxpRequest) {
-		this.putRefSlots(r.destAddr,new PxpObject(r.parameter));
-		await this.writeLock.mutexDo(async()=>{
-            await this.writeUint32(r.session);
-        });
-	}
-	public async pull(r:PxpRequest){
-		let o:any=null;
-		if(this.refSlots[r.srcAddr]!=null) {
-			o=this.refSlots[r.srcAddr]!.get();
-		}
-        await this.writeLock.mutexDo(async ()=>{
-            await this.writeUint32(r.session);
-            if(o instanceof ArrayBuffer) {
-                this.writeInt32(o.byteLength);
-                await this.io1.write(o);
-            }else if(typeof(o) === 'string'){
-                let b=new TextEncoder().encode(o);
-                this.writeInt32(b.byteLength);
-                await this.io1.write(b);
-            }else {
-                await this.writeInt32(-1);
-            }
-        });
-	}
-	public async assign(r:PxpRequest) {
-		this.putRefSlots(r.destAddr, this.refSlots[r.srcAddr]);
-		await this.writeLock.mutexDo(async()=>{
-            await this.writeUint32(r.session);
-        });
-	}
-	public async unlink(r:PxpRequest){
-		this.putRefSlots(r.destAddr, null);
-		await this.writeLock.mutexDo(async()=>{
-            await this.writeUint32(r.session);
-        });
-	}
-	public async call(r:PxpRequest){
-		let result=await r.callable!.call(r);
-        r.result=result;
-        this.putRefSlots(r.destAddr,new PxpObject(result));
-        await this.writeLock.mutexDo(async()=>{
-            await this.writeUint32(r.session);
-            await r.callable!.writeResult(r);
-        });
-	}
     public funcMap:((name:string)=>PxpCallable|null)|null=null;
 	public async getFunc(r:PxpRequest){
-		let name=this.getStringAt(r.srcAddr);
+		let name=new TextDecoder().decode(r.parameter!);
 		let found=this.funcMap?.(name);
-		await this.writeLock.mutexDo(async()=>{
-            if(found==null) {
-                await this.writeUint32(r.session);
-                await this.writeInt32(0);
-            }else {
-                this.putRefSlots(r.destAddr, new PxpObject(found));
-                await this.writeUint32(r.session);
-                await this.writeInt32(r.destAddr);
-            }
-        });
+        let res=new DataView(new ArrayBuffer(4));
+        if(found==null){
+           res.setInt32(0,-1,true);
+        }else{
+            let ref2=this.allocRef();
+            ref2.object=found;
+            res.setInt32(0,ref2.index,true);
+        }
+        r.result=[res.buffer];
 	}
 	public async getInfo(r:PxpRequest){
-		await this.writeLock.mutexDo(async()=>{
-            await this.writeUint32(r.session);
-            let b=new TextEncoder().encode(
+        r.result=[new TextEncoder().encode(
             "server name:pxprpc for typescript\n"+
-            "version:1.1\n"+
-            "reference slots capacity:4096\n"
-            );
-            await this.writeInt32(b.length);
-            await this.io1.write(b);
-        });
+        "version:1.1\n")]
 	}
     public async sequence(r:PxpRequest){
-        this.sequenceSession=r.destAddr
+        this.sequenceSession=new DataView(r.parameter!).getUint32(0,true);
         if(this.sequenceSession==0xffffffff){
             //discard pending request. execute immdiately mode, default value
             for(let i2 in this.pendingRequests){
@@ -682,18 +360,14 @@ export class Server{
             this.sequenceMaskBitsCnt=this.sequenceSession&0xff;
             this.sequenceSession=this.sequenceSession>>(32-this.sequenceMaskBitsCnt);
         }
-        await this.writeLock.mutexDo(async()=>{
-            await this.writeUint32(r.session);
-        });
     }
-    public async buffer(r:PxpRequest){
-        //Not implemented
-    }
-
-    public close(r:PxpRequest){
+    public close(){
         this.running=false;
-        for(let val of this.refSlots){
-            if(val!=null)val.release();
+        for(let ref2 of this.refPool){
+            if(ref2.object!=null && 'close' in ref2.object){
+                ref2.object.close();
+            }
+            ref2.object=null;
         }
     }
 }

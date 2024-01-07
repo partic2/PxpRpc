@@ -6,188 +6,86 @@ import struct
 import typing
 import traceback
 
+
+from typing import cast,Optional,Any,Tuple
+
 from pxprpc.common import NotNone
 
 log1=logging.getLogger(__name__)
 
-from .common import Serializer
+from .common import Serializer,AbstractIo
+
+
+class RpcRemoteError(Exception):
+    pass
 
 class RpcConnection(object):
     
     def __init__(self):
-        self.in2:asyncio.StreamReader=None #type:ignore
-        self.out2:asyncio.StreamWriter=None #type:ignore
-        self.__waitingSession:typing.Dict[int,asyncio.Future]=dict()
+        self.__waitingSession:typing.Dict[int,asyncio.Future[Tuple[int,bytes]]]=dict()
         self.__readingResp=None
         self.__writeLock=asyncio.Lock()
     
-    def backend1(self,r:asyncio.StreamReader,w:asyncio.StreamWriter):
-        self.in2=r
-        self.out2=w
+    def backend1(self,io1:AbstractIo):
+        self.io1=io1
         
     async def run(self):
         self.running=True
         try:
             while self.running:
-                sid=struct.unpack('<I',await self.in2.readexactly(4))[0]
+                pack=await self.io1.receive()
+                sid=struct.unpack('<I',pack[:4])[0]
                 log1.debug('client get sid:%s',hex(sid))
-                fut=self.__waitingSession[sid]
-                del self.__waitingSession[sid]
-                self.__readingResp=asyncio.Future()
-                fut.set_result(None)
-                await self.__readingResp
+                fut=self.__waitingSession[sid&0x7fffffff]
+                del self.__waitingSession[sid&0x7fffffff]
+                fut.set_result((sid,pack[4:]))
         except Exception as exc:
             for waiting in self.__waitingSession.values():
                 waiting.set_exception(exc)
             log1.debug('client error:%s',repr(exc))
+        finally:
             self.running=False
-        
-    async def push(self,destAddr:int,data:bytes,sid:int=0x100):
-        sid=sid|1
-        respFut=asyncio.Future()
-        self.__waitingSession[sid]=respFut
-        await self.__writeLock.acquire()
-        try:
-            self.out2.write(struct.pack('<III',sid,destAddr,len(data)))
-            self.out2.write(data)
-        finally:
-            self.__writeLock.release()
-        await respFut
-        NotNone(self.__readingResp).set_result(None)
-    
-    async def pull(self,srcAddr:int,sid:int=0x100)->bytes:
-        sid=sid|2
-        respFut=asyncio.Future()
-        self.__waitingSession[sid]=respFut
-        await self.__writeLock.acquire()
-        try:
-            self.out2.write(struct.pack('<II',sid,srcAddr))
-        finally:
-            self.__writeLock.release()
-        await respFut
-        size=struct.unpack('<i',await self.in2.readexactly(4))[0]
-        data=None
-        assert size!=-1,'data do NOT support pull'
-        data=await self.in2.readexactly(size)
-        NotNone(self.__readingResp).set_result(None)
-        return data
 
-    async def assign(self,destAddr:int,srcAddr:int,sid:int=0x100):
-        sid=sid|3
-        respFut=asyncio.Future()
-        self.__waitingSession[sid]=respFut
-        await self.__writeLock.acquire()
-        try:
-            self.out2.write(struct.pack('<III',sid,destAddr,srcAddr))
-        finally:
-            self.__writeLock.release()
-        await respFut
-        NotNone(self.__readingResp).set_result(None)
 
-    async def unlink(self,destAddr:int,sid:int=0x100):
-        sid=sid|4
+    async def call(self,callableIndex:int,parameter:bytes,sid:int=0x100)->bytes:
         respFut=asyncio.Future()
         self.__waitingSession[sid]=respFut
-        await self.__writeLock.acquire()
-        try:
-            self.out2.write(struct.pack('<II',sid,destAddr))
-        finally:
-            self.__writeLock.release()
-        await respFut
-        NotNone(self.__readingResp).set_result(None)
+        await self.io1.send(struct.pack('Ii',sid,callableIndex)+parameter)
+        sid2,result=await respFut
+        if sid==sid2:
+            return result
+        else:
+            raise RpcRemoteError(result.decode('utf-8'))
 
-    async def call(self,destAddr:int,fnAddr:int,argsData:typing.List[bytes],onResponse:typing.Callable[[asyncio.StreamReader],typing.Awaitable[typing.Any]],sid:int=0x100):
-        sid=sid|5
-        respFut=asyncio.Future()
-        self.__waitingSession[sid]=respFut
-        await self.__writeLock.acquire()
-        try:
-            self.out2.write(struct.pack('<III',sid,destAddr,fnAddr))
-            for buf in argsData:
-                self.out2.write(buf)
-        finally:
-            self.__writeLock.release()
-        await respFut
-        if onResponse!=None:
-            await onResponse(self.in2)
-        NotNone(self.__readingResp).set_result(None)
+    async def getFunc(self,fnName:str,sid:int=0x100)->int:
+        result=await self.call(-1,fnName.encode('utf-8'),sid)
+        return int.from_bytes(result,'little',signed=True)
 
-    async def getFunc(self,destAddr:int,fnName:int,sid:int=0x100):
-        sid=sid|6
-        respFut=asyncio.Future()
-        self.__waitingSession[sid]=respFut
-        await self.__writeLock.acquire()
-        try:
-            self.out2.write(struct.pack('<III',sid,destAddr,fnName))
-        finally:
-            self.__writeLock.release()
-        await respFut
-        t1=struct.unpack('<I',await self.in2.readexactly(4))[0]
-        NotNone(self.__readingResp).set_result(None)
-        return t1
-
-    async def getInfo(self,sid:int=0x100):
-        sid=sid|8
-        respFut=asyncio.Future()
-        self.__waitingSession[sid]=respFut
-        await self.__writeLock.acquire()
-        try:
-            self.out2.write(struct.pack('<I',sid))
-        finally:
-            self.__writeLock.release()
-        await respFut
-        size=struct.unpack('<i',await self.in2.readexactly(4))[0]
-        data=None
-        assert size!=-1,'get info return nothing'
-        data=await self.in2.readexactly(size)
-        NotNone(self.__readingResp).set_result(None)
-        return data.decode('utf-8')
+    async def freeRef(self,index:int,sid:int=0x100):
+        await self.call(-2,bytes(index.to_bytes(4,'little',signed=True)),sid)
 
     async def close(self,sid:int=0x100):
-        sid=sid|7
-        respFut=asyncio.Future()
-        await self.__writeLock.acquire()
-        try:
-            self.out2.write(struct.pack('<I',sid))
-        finally:
-            self.__writeLock.release()
-            self.out2.close()
+        #no return
+        await self.io1.send(struct.pack('Ii',sid,-3))
+        self.running=False
+
+    async def getInfo(self,sid:int=0x100):
+        result=await self.call(-4,bytes(),sid)
+        return result.decode('utf-8')
 
     async def sequence(self,mask:int,maskCnt:int=24,sid:int=0x100):
-        sid=sid|9
-        respFut=asyncio.Future()
-        self.__waitingSession[sid]=respFut
-        await self.__writeLock.acquire()
-        try:
-            self.out2.write(struct.pack('<II',sid,mask|maskCnt))
-        finally:
-            self.__writeLock.release()
-        await respFut
-        NotNone(self.__readingResp).set_result(None)
-
-    async def buffer(self,sid:int=0x100):
-        sid=sid|10
-        respFut=asyncio.Future()
-        await self.__writeLock.acquire()
-        try:
-            self.out2.write(struct.pack('<I',sid))
-        finally:
-            self.__writeLock.release()
+        await self.call(-5,(mask|maskCnt).to_bytes(4,'little',signed=False),sid)
 
 class RpcExtendClientObject():
     def __init__(self,client:'RpcExtendClient1',value:typing.Optional[int]=None):
         self.value=value
         self.client=client
 
-    async def tryPull(self)->bytes:
-        assert self.value is not None
-        return await self.client.conn.pull(self.value)
-
     async def free(self):
         if self.value is not None:
             val=self.value
             self.value=None
-            await self.client.freeSlot(val)
+            await self.client.conn.freeRef(val)
             
 
     async def asCallable(self):
@@ -197,13 +95,8 @@ class RpcExtendClientObject():
         return c1
             
     def __del__(self):
-        if self.value is not None:
-            val=self.value
-            self.value=None
-            try:
-                create_task(self.client.freeSlot(val))
-            except Exception:
-                pass
+        if self.client.conn.running:
+            create_task(self.client.freeRef(self))
             
    
 class RpcExtendClientCallable(RpcExtendClientObject):
@@ -238,83 +131,64 @@ available type typedecl characters:
 
     async def __call__(self,*args)->typing.Any:
         assert self.value is not None
-        try:
-            if self.tParam=='b':
-                packed=args[0]
+        if self.tParam=='b':
+            packed=args[0]
+        else:
+            ser=Serializer().prepareSerializing()
+            for t1,t2 in zip(self.tParam,args):
+                if t1=='i':
+                    ser.putInt(t2)
+                elif t1=='l':
+                    ser.putLong(t2)
+                elif t1=='f':
+                    ser.putFloat(t2)
+                elif t1=='d':
+                    ser.putDouble(t2)
+                elif t1=='o':
+                    ser.putInt(t2.value)
+                elif t1=='c':
+                    ser.putVarint(1 if t2 else 0)
+                elif t1=='s':
+                    ser.putString(t2)
+                elif t1=='b':
+                    ser.putBytes(t2)
+                else:
+                    raise IOError('Unknown typedecl character')
+
+            packed=ser.build()
+
+        result=await self.client.conn.call(self.value,packed)
+        if self.tResult=='b':
+            return result
+        else:
+            ser=Serializer().prepareUnserializing(result)
+            results=[]
+            for t1 in self.tResult:
+                if t1=='i':
+                    results.append(ser.getInt())
+                elif t1=='l':
+                    results.append(ser.getLong())
+                elif t1=='f':
+                    results.append(ser.getFloat())
+                elif t1=='d':
+                    results.append(ser.getDouble())
+                elif t1=='b':
+                    results.append(ser.getBytes())
+                elif t1=='s':
+                    results.append(ser.getString())
+                elif t1=='c':
+                    results.append(ser.getVarint()!=0)
+                elif t1=='o':
+                    results.append(RpcExtendClientObject(self.client,ser.getInt()))
+                else:
+                    assert False,'Unreachable'
+
+            if len(results)==0:
+                return None
+            elif len(results)==1:
+                return results[0]
             else:
-                ser=Serializer().prepareSerializing()
-                for t1,t2 in zip(self.tParam,args):
-                    if t1=='i':
-                        ser.putInt(t2)
-                    elif t1=='l':
-                        ser.putLong(t2)
-                    elif t1=='f':
-                        ser.putFloat(t2)
-                    elif t1=='d':
-                        ser.putDouble(t2)
-                    elif t1=='o':
-                        ser.putInt(t2.value)
-                    elif t1=='c':
-                        ser.putVarint(1 if t2 else 0)
-                    elif t1=='s':
-                        ser.putString(t2)
-                    elif t1=='b':
-                        ser.putBytes(t2)
-                    else:
-                        raise IOError('Unknown typedecl character')
-
-                packed=ser.build()
-            destAddr=0
-            if self.tResult=='o':
-                destAddr=await self.client.allocSlot()
-
-            getResp=asyncio.Future()
-            async def onResponse(in2:asyncio.StreamReader):
-                len=int.from_bytes(await in2.readexactly(4),'little')
-                if (len&0x80000000)!=0:
-                    getResp.set_result([False,await in2.readexactly(len&0x7fffffff)])
-                else:
-                    getResp.set_result([True,await in2.readexactly(len)])
-
-            await self.client.conn.call(destAddr,self.value,[len(packed).to_bytes(4,'little'),packed],onResponse)
-
-            succ,data=await getResp
-            
-            if succ:
-                if self.tResult=='b':
-                    return data
-                else:
-                    ser=Serializer().prepareUnserializing(data)
-                    results=[]
-                    for t1 in self.tResult:
-                        if t1=='i':
-                            results.append(ser.getInt())
-                        elif t1=='l':
-                            results.append(ser.getLong())
-                        elif t1=='f':
-                            results.append(ser.getFloat())
-                        elif t1=='d':
-                            results.append(ser.getDouble())
-                        elif t1=='b':
-                            results.append(ser.getBytes())
-                        elif t1=='s':
-                            results.append(ser.getString())
-                        elif t1=='c':
-                            results.append(ser.getVarint()!=0)
-                        elif t1=='o':
-                            results.append(RpcExtendClientObject(self.client,ser.getInt()))
-                        else:
-                            raise IOError('Unknown Type')
-                if len(results)==0:
-                    return None
-                elif len(results)==1:
-                    return results[0]
-                else:
-                    return results
-            else:
-                raise RpcExtendError(ser.getString())
-        finally:
-            pass
+                return results
 
 
 
@@ -325,49 +199,46 @@ class RpcExtendError(Exception):
 class RpcExtendClient1:
     def __init__(self,conn:RpcConnection):
         self.conn=conn
-        self.__usedSlots:typing.Set[int]=set()
-        self.__slotStart=1
-        self.__slotEnd=64
-        self.__nextSlots=self.__slotStart
+        self.__usedSid:typing.Set[int]=set()
+        self.__sidStart=1
+        self.__sidEnd=64
+        self.__nextSid=self.__sidStart
         self.builtIn=None
 
-    async def allocSlot(self)->int:
+    async def allocSid(self)->int:
         reachEnd=False
-        while self.__nextSlots in self.__usedSlots:
+        while self.__nextSid in self.__usedSid:
             # interuptable
             await asyncio.sleep(0)
-            self.__nextSlots+=1
-            if self.__nextSlots>=self.__slotEnd:
+            self.__nextSid+=1
+            if self.__nextSid>=self.__sidEnd:
                 if reachEnd:
                     raise RpcExtendError('No slot available')
                 else:
                     reachEnd=True
-                    self.__nextSlots=self.__slotStart
+                    self.__nextSid=self.__sidStart
 
-        t1=self.__nextSlots
-        self.__nextSlots+=1
-        if self.__nextSlots>=self.__slotEnd:
-            self.__nextSlots=self.__slotStart
-        self.__usedSlots.add(t1)
+        t1=self.__nextSid
+        self.__nextSid+=1
+        if self.__nextSid>=self.__sidEnd:
+            self.__nextSid=self.__sidStart
+        self.__usedSid.add(t1)
         return t1
 
-    async def freeSlot(self,index:int):
-        if self.conn.running:
-            await self.conn.unlink(index)
-        self.__usedSlots.remove(index)
+    async def freeSid(self,index:int):
+        self.__usedSid.remove(index)
+
+    async def freeRef(self,ref:RpcExtendClientObject):
+        if(ref.value!=None):
+            val=ref.value
+            ref.value=None
+            await self.conn.freeRef(val)
 
     async def getFunc(self,name:str)->typing.Optional[RpcExtendClientCallable]:
-        t1=await self.allocSlot()
-        await self.conn.push(t1,name.encode('utf8'))
-        t2=await self.allocSlot()
-        t3=await self.conn.getFunc(t2,t1)
-        if t3==0:
-            await self.freeSlot(t2)
-            await self.freeSlot(t1)
+        index=await self.conn.getFunc(name)
+        if index==-1:
             return None
-        else:
-            await self.freeSlot(t1)
-            return RpcExtendClientCallable(self,value=t2)
+        return RpcExtendClientCallable(self,value=index)
 
     async def ensureBuiltIn(self):
         if(self.builtIn==None):

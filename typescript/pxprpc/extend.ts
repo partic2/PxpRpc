@@ -1,16 +1,11 @@
-import { Client, PxpCallable, PxpObject, PxpRequest, Serializer, Server } from './base'
-
+import { Client, PxpCallable, PxpRequest, Serializer, Server } from './base'
 
 
 export class RpcExtendError extends Error {
-    public remoteException?:RpcExtendClientObject
 }
 
 export class RpcExtendClientObject {
     public constructor(public client: RpcExtendClient1, public value: number | undefined) {
-    }
-    public async tryPull() {
-        return this.client.conn.pull(this.value!);
     }
     public async free() {
         if (this.value != undefined) {
@@ -61,9 +56,7 @@ s  string(bytes will be decode to string)
         let buf:ArrayBuffer[]=[]
         if(this.tParam==='b'){
             let abuf=args[0] as ArrayBuffer
-            let lenbuf=new ArrayBuffer(4);
-            new DataView(lenbuf).setInt32(0,abuf.byteLength,true);
-            buf=[lenbuf,abuf];
+            buf=[abuf];
         }else{
             let ser=new Serializer().prepareSerializing(32);
             for (let i1 = 0; i1 < this.tParam.length; i1++) {
@@ -97,101 +90,72 @@ s  string(bytes will be decode to string)
                 }
             }
             let serbuf=ser.build()
-            let lenbuf=new ArrayBuffer(4);
-            new DataView(lenbuf).setInt32(0,serbuf.byteLength,true);
-            buf=[lenbuf,serbuf];
+            buf=[serbuf];
         }
-        let destAddr=0;
-        if(this.tResult!=='o')destAddr=await this.client.allocSlot()
-        let resp:[boolean,ArrayBuffer]|null=null;
-        await this.client.conn.call( destAddr, this.value!, buf,async (io1)=>{
-            let intbuf=await io1.read(4);
-            let len=new DataView(intbuf).getInt32(0,true); 
-            if((len&0x80000000)!==0){
-                resp=[false,await io1.read(len&0x7fffffff)]
-            }else{
-                resp=[true,await io1.read(len)]
-            }
-        });
-        if(resp![0]){
-            if(this.tResult==='b'){
-                return resp![1];
-            }else{
-                let ser=new Serializer().prepareUnserializing(resp![1]);
-                let rets=[]
-                for (let i1 = 0; i1 < this.tResult.length; i1++) {
-                    switch (this.tResult.charAt(i1)) {
-                        case 'i':
-                            rets.push(ser.getInt())
-                            break;
-                        case 'l':
-                            rets.push(ser.getLong())
-                            break;
-                        case 'f':
-                            rets.push(ser.getFloat())
-                            break;
-                        case 'd':
-                            rets.push(ser.getDouble())
-                            break;
-                        case 'o':
-                            rets.push(new RpcExtendClientObject(this.client,ser.getInt()))
-                            break;
-                        case 'b':
-                            rets.push(ser.getBytes())
-                            break
-                        case 's':
-                            rets.push(ser.getString())
-                            break;
-                        case 'c':
-                            rets.push(ser.getVarint()!==0)
-                            break;
-                        default:
-                            throw new Error('Unknown type');
-                    }
-                }
-                if(rets.length===1){
-                    return rets[0];
-                }else if(rets.length===0){
-                    return null;
-                }else{
-                    return rets;
-                }
-            }
+        let resp=await this.client.conn.call(this.value!,buf);
+        if(this.tResult==='b'){
+            return resp;
         }else{
-            throw new RpcExtendError(new Serializer().prepareUnserializing(resp![1]).getString())
+            let ser=new Serializer().prepareUnserializing(resp);
+            let rets=[]
+            for (let i1 = 0; i1 < this.tResult.length; i1++) {
+                switch (this.tResult.charAt(i1)) {
+                    case 'i':
+                        rets.push(ser.getInt())
+                        break;
+                    case 'l':
+                        rets.push(ser.getLong())
+                        break;
+                    case 'f':
+                        rets.push(ser.getFloat())
+                        break;
+                    case 'd':
+                        rets.push(ser.getDouble())
+                        break;
+                    case 'o':
+                        rets.push(new RpcExtendClientObject(this.client,ser.getInt()))
+                        break;
+                    case 'b':
+                        rets.push(ser.getBytes())
+                        break
+                    case 's':
+                        rets.push(ser.getString())
+                        break;
+                    case 'c':
+                        rets.push(ser.getVarint()!==0)
+                        break;
+                    default:
+                        throw new Error('Unknown type');
+                }
+            }
+            if(rets.length===1){
+                return rets[0];
+            }else if(rets.length===0){
+                return null;
+            }else{
+                return rets;
+            }
         }
-
     }
-
 }
 
 
 
 export class RpcExtendClient1 {
-    private __usedSlots: { [index: number]: boolean | undefined } = {};
-    private __nextSlots: number;
+    private __usedSid: { [index: number]: boolean | undefined } = {};
+    private __nextSid: number;
 
-    private __slotStart: number = 1;
-    private __slotEnd: number = 64;
+    private __sidStart: number = 1;
+    private __sidEnd: number = 64;
     
     public constructor(public conn: Client) {
-        this.__nextSlots = this.__slotStart;
+        this.__nextSid = this.__sidStart;
     }
 
-    public setAvailableSlotsRange(start:number,end:number){
-        this.__slotStart=start;
-        this.__slotEnd=end;
-        this.__nextSlots = this.__slotStart;
-    }
 
     public async init():Promise<this>{
         if(!this.conn.isRunning()){
             this.conn.run();
-        }
-        let info=await this.conn.getInfo();
-        let refSlotsCap=info.split('\n').find(v=>v.startsWith('reference slots capacity:'))
-        if(refSlotsCap!=undefined){
-            this.setAvailableSlotsRange(1,Number(refSlotsCap.split(':')[1])-1);
         }
         return this;
     }
@@ -204,47 +168,40 @@ export class RpcExtendClient1 {
     }
     public async allocSlot() {
         let reachEnd = false;
-        while (this.__usedSlots[this.__nextSlots]) {
-            this.__nextSlots += 1
-            if (this.__nextSlots >= this.__slotEnd) {
+        while (this.__usedSid[this.__nextSid]) {
+            this.__nextSid += 1
+            if (this.__nextSid >= this.__sidEnd) {
                 if (reachEnd) {
                     throw new RpcExtendError('No slot available')
                 } else {
                     reachEnd = true
-                    this.__nextSlots = this.__slotStart
+                    this.__nextSid = this.__sidStart
                 }
             }
         }
 
-        let t1 = this.__nextSlots
-        this.__nextSlots += 1
-        if(this.__nextSlots>=this.__slotEnd){
-            this.__nextSlots=this.__slotStart;
+        let t1 = this.__nextSid
+        this.__nextSid += 1
+        if(this.__nextSid>=this.__sidEnd){
+            this.__nextSid=this.__sidStart;
         }
-        this.__usedSlots[t1] = true;
+        this.__usedSid[t1] = true;
         return t1
     }
     public async freeSlot(index: number) {
         if (this.conn.isRunning()) {
-            await this.conn.unlink(index)
-            delete this.__usedSlots[index]
+            await this.conn.freeRef(index)
+            delete this.__usedSid[index]
         }
 
     }
     public async getFunc(name: string) {
-        let t1 = await this.allocSlot()
-        await this.conn.push(t1, new TextEncoder().encode(name))
-        let t2 = await this.allocSlot()
-        let resp=await this.conn.getFunc(t2, t1)
-        await this.freeSlot(t1)
-        if(resp==0){
-            return null;
-        }
-        return new RpcExtendClientCallable(this, resp)
+        let index=await this.conn.getFunc(name);
+        return new RpcExtendClientCallable(this, index)
     }
     public async close(){
-        for(let key in this.__usedSlots){
-            if(this.__usedSlots[key])
+        for(let key in this.__usedSid){
+            if(this.__usedSid[key])
                 this.freeSlot(Number(key));
         }
         await this.conn.close()
@@ -265,9 +222,8 @@ export class RpcExtendServerCallable implements PxpCallable{
         this.tResult=tResult;
         return this;
     }
-    public async readParameter (req: PxpRequest){
-        let buflen=new DataView(await req.context.io1.read(4)).getUint32(0,true);
-        let buf=await req.context.io1.read(buflen&0x7fffffff);
+    public readParameter (req: PxpRequest){
+        let buf=req.parameter!
         let param=[];
         let obj:any=null;
         if(this.tParam==='b'){
@@ -289,7 +245,7 @@ export class RpcExtendServerCallable implements PxpCallable{
                         param.push(ser.getDouble());
                         break;
                     case 'o':
-                        obj=req.context.refSlots[ser.getInt()]!.get();
+                        obj=req.context.getRef(ser.getInt()).object;
                         param.push(obj);
                         break;
                     case 'b':
@@ -306,29 +262,22 @@ export class RpcExtendServerCallable implements PxpCallable{
                 }
             }
         }
-        req.parameter=param;
+        return param;
     }
     public async call(req: PxpRequest) : Promise<any>{
         try{
-            return await this.wrapped.apply(this,req.parameter);
+            let r=await this.wrapped.apply(this,this.readParameter(req));
+            req.result=await this.writeResult(req,r);
         }catch(e){
-            return e;
+            return req.rejected=e as Error;
         }
     }
-    public async writeResult(req: PxpRequest){
+    public writeResult(req: PxpRequest,r:any):ArrayBuffer[]{
         let ser=new Serializer().prepareSerializing(8);
-        if(req.result instanceof Error){
-            let buf=ser.putString((req.result as Error).message).build();
-            let buflen=new ArrayBuffer(4);
-            new DataView(buflen).setUint32(0,0x80000000|buf.byteLength,true);
-            await Promise.all([req.context.io1.write(buflen),req.context.io1.write(buf)]);
-        }else if(this.tResult==='b'){
-            let buf=req.result;
-            let buflen=new ArrayBuffer(4);
-            new DataView(buflen).setUint32(0,buf.byteLength,true);
-            await Promise.all([req.context.io1.write(buflen),req.context.io1.write(buf)]);
+        if(this.tResult==='b'){
+            return [r]
         }else{
-            let results=this.tResult.length>=1?req.result:[req.result]
+            let results=this.tResult.length>=1?r:[r]
             for(let i=0;i<this.tResult.length;i++){
                 switch(this.tResult.charAt(i)){
                     case 'i':
@@ -344,7 +293,9 @@ export class RpcExtendServerCallable implements PxpCallable{
                         ser.putDouble(results[i]);
                         break;
                     case 'o':
-                        ser.putInt(req.destAddr);
+                        let ref2=req.context.allocRef();
+                        ref2.object=results[i];
+                        ser.putInt(ref2.index);
                         break;
                     case 'b':
                         ser.putBytes(results[i]);
@@ -364,7 +315,7 @@ export class RpcExtendServerCallable implements PxpCallable{
             let buf=ser.build();
             let buflen=new ArrayBuffer(4);
             new DataView(buflen).setUint32(0,buf.byteLength,true);
-            await Promise.all([req.context.io1.write(buflen),req.context.io1.write(buf)]);
+            return [buflen,buf];
         }
     }
 }

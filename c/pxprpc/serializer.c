@@ -18,6 +18,9 @@ extern void pxprpc_ser_prepare_ser(struct pxprpc_serializer *ser,int initBufSize
     ser->cap=initBufSize;
     ser->pos=0;
 }
+extern void pxprpc_ser_free_buf(void *buf){
+    pxprpc__free(buf);
+}
 extern void pxprpc_ser_prepare_unser(struct pxprpc_serializer *ser,void *buf,uint32_t size){
     ser->cap=size;
     ser->pos=0;

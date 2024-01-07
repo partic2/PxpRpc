@@ -46,6 +46,8 @@ struct _pxprpc_libuv_sockconn{
     void *readCbArgs;
     const char* readError;
     const char* writeError;
+    struct pxprpc_buffer_part *nextPxpBuf;
+    uint32_t packetRemain;
     uv_buf_t nextBuf;
     char internalBuf[__sockconn_internalBuf_len];
     uint16_t bufStart;
@@ -81,6 +83,32 @@ static void __sockUvAllocCb(uv_handle_t* handle,size_t suggested_size,uv_buf_t* 
         *buf=self->nextBuf;
     }
 }
+static void __sockAbsIo1ReceivePartCheckAndFlip(struct _pxprpc_libuv_sockconn *self){
+    if(self->nextBuf.len==0){
+        if(self->nextPxpBuf!=NULL){
+            if(self->nextPxpBuf->next_part==NULL){
+                /* last part, fill remain data */
+                self->nextPxpBuf->bytes.length=self->packetRemain;
+                if(self->packetRemain>0){
+                    self->nextPxpBuf->bytes.base=pxprpc__malloc(self->packetRemain);
+                }
+            }
+            self->nextBuf.base=self->nextPxpBuf->bytes.base;
+            self->nextBuf.len=self->nextPxpBuf->bytes.length;
+            self->packetRemain-=self->nextBuf.len;
+            self->nextPxpBuf=self->nextPxpBuf->next_part;
+            /* to skip zero length buffer */
+            __sockAbsIo1ReceivePartCheckAndFlip(self);
+        }else{
+            if(self->readCb!=NULL){
+                void (*readCb)(void*);
+                readCb=self->readCb;
+                self->readCb=NULL;
+                readCb(self->readCbArgs);
+            }
+        }
+    }
+}
 static void __sockUvReadCb(uv_stream_t* stream,ssize_t nread,const uv_buf_t* buf){
     struct _pxprpc_libuv_sockconn *self=(struct _pxprpc_libuv_sockconn*)uv_handle_get_data((uv_handle_t *)stream);
     if(nread>0){
@@ -92,19 +120,12 @@ static void __sockUvReadCb(uv_stream_t* stream,ssize_t nread,const uv_buf_t* buf
             self->bufEnd+=nread;
             __sockMoveInternalBufToNextBuf(self);
         }
-        if(self->nextBuf.len==0){
-            self->nextBuf.base=NULL;
-            if(self->readCb!=NULL){
-                void (*readCb)(void*);
-                readCb=self->readCb;
-                self->readCb=NULL;
-                readCb(self->readCbArgs);
-            }
-        }
+        __sockAbsIo1ReceivePartCheckAndFlip(self);
     }else if(nread<0){
-        self->readError="libuv read error";
+        self->readError=uv_strerror(nread);
         uv_read_stop((uv_stream_t *)&self->stream);
         self->nextBuf.base=NULL;
+        self->nextPxpBuf=NULL;
         if(self->readCb!=NULL){
             void (*readCb)(void*);
             readCb=self->readCb;
@@ -113,80 +134,103 @@ static void __sockUvReadCb(uv_stream_t* stream,ssize_t nread,const uv_buf_t* buf
         }
     }
 }
-static void __sockAbsIo1Read(struct pxprpc_abstract_io *self1,uint32_t length,uint8_t *buf,void (*onCompleted)(void *p),void *p){
+
+static void __sockAbsIo1Receive(struct pxprpc_abstract_io *self1,struct pxprpc_buffer_part *buf,void (*onCompleted)(void *p),void *p){
     struct _pxprpc_libuv_sockconn *self=(void *)self1-offsetof(struct _pxprpc_libuv_sockconn,io1);
-    if(self->nextBuf.base!=NULL){
+    if(self->nextPxpBuf!=NULL){
         self->readError="overlap read is not allowed";
         onCompleted(p);
         return;
     }
-    self->nextBuf.base=buf;
-    self->nextBuf.len=length;
+    self->nextPxpBuf=buf;
+    struct pxprpc_buffer_part *curbuf=buf;
+    uint32_t packetSize=0;
+    self->nextBuf.base=(char *)&self->packetRemain;
+    self->nextBuf.len=4;
     self->readCb=onCompleted;
     self->readCbArgs=p;
     self->readError=NULL;
     __sockMoveInternalBufToNextBuf(self);
-    if(self->nextBuf.len==0){
-        self->nextBuf.base=NULL;
-        if(self->readCb!=NULL){
-            void (*readCb)(void*);
-            readCb=self->readCb;
-            self->readCb=NULL;
-            readCb(self->readCbArgs);
-        }
-    }
+    __sockAbsIo1ReceivePartCheckAndFlip(self);
     if(!(self->status&__sockconn_status_uvreading)){
         uv_read_start((uv_stream_t *)&self->stream,__sockUvAllocCb,__sockUvReadCb);
         self->status|=__sockconn_status_uvreading;
     }
 }
 
-/*XXX: consider cross thread request*/
 struct __sockUvWriteReq{
     uv_write_t uvReq;
-    uv_buf_t buf;
     void (*onCompleted)(void *args);
     void *cbArgs;
     struct _pxprpc_libuv_sockconn *sockconn;
+    uint32_t packetSize;
+    /* following with uv_buf_t array */
 };
 void __sockUvWriteCb(uv_write_t *req, int status){
     struct __sockUvWriteReq *writeReq=uv_req_get_data((uv_req_t *)req);
     if(status<0){
-        writeReq->sockconn->writeError="libuv write error";
+        writeReq->sockconn->writeError=uv_strerror(status);
     }
-    writeReq->onCompleted(writeReq->cbArgs);
+    void (*onCompleted)(void *args);
+    void *cbArgs;
+    onCompleted=writeReq->onCompleted;
+    cbArgs=writeReq->cbArgs;
+    pxprpc__free(writeReq);
+    onCompleted(cbArgs);
 }
-static void __sockAbsIo1Write(struct pxprpc_abstract_io *self1,uint32_t length,const uint8_t *buf,void (*onCompleted)(void *args),void *p){
+static void __sockAbsIo1Send(struct pxprpc_abstract_io *self1,struct pxprpc_buffer_part *buf,void (*onCompleted)(void *args),void *p){
     struct _pxprpc_libuv_sockconn *self=(void *)self1-offsetof(struct _pxprpc_libuv_sockconn,io1);
-    struct __sockUvWriteReq *writeReq=(struct __sockUvWriteReq *)pxprpc__malloc(sizeof(struct __sockUvWriteReq));
-    memset(writeReq,0,sizeof(struct __sockUvWriteReq));
-    writeReq->buf.base=(char *)buf;
-    writeReq->buf.len=length;
+    int bufCnt=0;
+    int packetSize=0;
+    struct pxprpc_buffer_part *curbuf=buf;
+    while(curbuf!=NULL){
+        bufCnt++;
+        packetSize+=curbuf->bytes.length;
+        curbuf=curbuf->next_part;
+    }
+    /*reserve for packet size */
+    bufCnt++;
+    struct __sockUvWriteReq *writeReq=(struct __sockUvWriteReq *)pxprpc__malloc(sizeof(struct __sockUvWriteReq)+sizeof(uv_buf_t)*bufCnt);
+    memset(writeReq,0,sizeof(struct __sockUvWriteReq)+sizeof(uv_buf_t)*bufCnt);
+    writeReq->packetSize=packetSize;
+    uv_buf_t *bufsbase=(void *)writeReq+sizeof(struct __sockUvWriteReq);
+    bufsbase[0].base=(char *)&writeReq->packetSize;
+    bufsbase[0].len=4;
+    curbuf=buf;
+    for(int i=1;i<bufCnt;i++){
+        bufsbase[i].base=curbuf->bytes.base;
+        bufsbase[i].len=curbuf->bytes.length;
+        curbuf=curbuf->next_part;
+    }
     writeReq->onCompleted=onCompleted;
     writeReq->cbArgs=p;
-    uv_write(&writeReq->uvReq,(uv_stream_t *)&self->stream,&writeReq->buf,1,__sockUvWriteCb);
+    uv_write(&writeReq->uvReq,(uv_stream_t *)&self->stream,bufsbase,bufCnt,__sockUvWriteCb);
     uv_req_set_data((uv_req_t *)&writeReq->uvReq,writeReq);
 }
 static const char *__sockAbsIo1GetError(struct pxprpc_abstract_io *self1,void *fn){
     struct _pxprpc_libuv_sockconn *self=(void *)self1-offsetof(struct _pxprpc_libuv_sockconn,io1);
-    if(fn==self1->read){
+    if(fn==self1->receive){
         return self->readError;
-    }else if(fn==self1->write){
+    }else if(fn==self1->send){
         return self->writeError;
     }
 }
 
+static void __sockNopCb(void *ign){}
+
+static const void __sockAbsIo1Close(struct pxprpc_abstract_io *self1){
+    struct _pxprpc_libuv_sockconn *self=(void *)self1-offsetof(struct _pxprpc_libuv_sockconn,io1);
+    uv_close((uv_handle_t *)&self->stream,(void *)__sockNopCb);
+}
+
 static struct _pxprpc_libuv_sockconn * __buildLibuvSockconn(struct _pxprpc_libuv *sCtx){
     struct _pxprpc_libuv_sockconn *sockconn=pxprpc__malloc(sizeof(struct _pxprpc_libuv_sockconn));
-    sockconn->io1.read=&__sockAbsIo1Read;
-    sockconn->io1.write=&__sockAbsIo1Write;
+    memset(sockconn,0,sizeof(struct _pxprpc_libuv_sockconn));
+    sockconn->io1.send=&__sockAbsIo1Send;
+    sockconn->io1.receive=&__sockAbsIo1Receive;
     sockconn->io1.get_error=&__sockAbsIo1GetError;
-    sockconn->readCb=NULL;
-    sockconn->readCbArgs=NULL;
-    sockconn->nextBuf.len=0;
-    sockconn->nextBuf.base=NULL;
-    sockconn->bufStart=0;
-    sockconn->bufEnd=0;
+    sockconn->io1.close=&__sockAbsIo1Close;
+    sockconn->io1.buf_free=&pxprpc__free;
     memset(&sockconn->stream,0,sizeof(uv_stream_t));
     sockconn->readError=NULL;
     sockconn->writeError=NULL;
