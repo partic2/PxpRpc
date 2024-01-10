@@ -17,20 +17,22 @@ public class BoundMethodCallable extends MethodCallable{
 
 	@Override
 	public void parseMethod() {
+		Class<?>[] paramsType = method.getParameterTypes();
+		if (paramsType.length>0 && (paramsType[0] == AsyncReturn.class || paramsType[0] == PxpRequest.class)) {
+			firstInputParamIndex = 1;
+		}
 		if(!parseCustomTypeDecl()){
-			Class<?>[] paramsType = method.getParameterTypes();
-			if (paramsType.length>0 && (paramsType[0] == AsyncReturn.class || paramsType[0] == PxpRequest.class)) {
-				firstInputParamIndex = 1;
+			char[] t1 = new char[paramsType.length-firstInputParamIndex];
+			for(int i=firstInputParamIndex;i<paramsType.length;i++){
+				t1[i-firstInputParamIndex]= TypeDeclParser.jtypeToValueInfo(paramsType[i]);
 			}
-			tParam=new char[paramsType.length-firstInputParamIndex];
+			tParam=t1;
 			if(method.getReturnType()!=void.class){
-				tResult = new char[]{javaTypeToSwitchId(method.getReturnType())};
+				tResult = new char[]{
+						TypeDeclParser.jtypeToValueInfo(method.getReturnType())
+				};
 			}else{
 				tResult=new char[0];
-			}
-			for(int i=firstInputParamIndex;i<paramsType.length;i++) {
-				Class<?> pc = paramsType[i];
-				tParam[i-firstInputParamIndex]=javaTypeToSwitchId(pc);
 			}
 		}
 	}

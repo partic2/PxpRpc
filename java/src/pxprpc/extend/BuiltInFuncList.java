@@ -73,22 +73,7 @@ public class BuiltInFuncList {
 	public void listRemove(List<Object> array,int index) {
 		array.remove(index);
 	}
-	public byte[] listBytesJoin(List<byte[]> array,byte[] sep) throws IOException {
-		int size=array.size();
-		if(size==0){
-			return new byte[0];
-		}
-		ByteArrayOutputStream bais=new ByteArrayOutputStream();
-		bais.write(array.get(0));
-		for(int i1=1;i1<size;i1++){
-			bais.write(sep);
-			bais.write(array.get(i1));
-		}
-		return bais.toByteArray();
-	}
-	public String listStringJoin(List<String> array,String sep){
-		return Utils.stringJoin(sep,array);
-	}
+
 	public byte[] listStaticConstField(Class<?> cls) throws IllegalAccessException {
 		ArrayList<String> hdrs = new ArrayList<String>();
 		ArrayList<Object> row = new ArrayList<Object>();

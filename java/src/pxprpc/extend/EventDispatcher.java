@@ -11,7 +11,7 @@ public class EventDispatcher extends CommonCallable {
 		this.tResult=new char[]{'o'};
 	}
 	public EventDispatcher setEventType(Class<?> c){
-		this.tResult[0]=javaTypeToSwitchId(c);
+		this.tResult=new char[]{TypeDeclParser.jtypeToValueInfo(c)};
 		return this;
 	}
 	protected Queue<PxpRequest> receivers = new LinkedList<PxpRequest>();

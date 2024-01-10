@@ -25,6 +25,7 @@ class RpcConnection(object):
         self.__waitingSession:typing.Dict[int,asyncio.Future[Tuple[int,bytes]]]=dict()
         self.__readingResp=None
         self.__writeLock=asyncio.Lock()
+        self.running=False
     
     def backend1(self,io1:AbstractIo):
         self.io1=io1
@@ -95,6 +96,7 @@ class RpcExtendClientObject():
         return c1
             
     def __del__(self):
+        log1.debug('running:',self.client.conn.running)
         if self.client.conn.running:
             create_task(self.client.freeRef(self))
             
@@ -145,7 +147,10 @@ available type typedecl characters:
                 elif t1=='d':
                     ser.putDouble(t2)
                 elif t1=='o':
-                    ser.putInt(t2.value)
+                    if t2==None:
+                        ser.putInt(-1)
+                    else:
+                        ser.putInt(t2.value)
                 elif t1=='c':
                     ser.putVarint(1 if t2 else 0)
                 elif t1=='s':
@@ -156,8 +161,9 @@ available type typedecl characters:
                     raise IOError('Unknown typedecl character')
 
             packed=ser.build()
-
-        result=await self.client.conn.call(self.value,packed)
+        sid=self.client.allocSid()
+        result=await self.client.conn.call(self.value,packed,sid)
+        self.client.freeSid(sid)
         if self.tResult=='b':
             return result
         else:
@@ -179,7 +185,11 @@ available type typedecl characters:
                 elif t1=='c':
                     results.append(ser.getVarint()!=0)
                 elif t1=='o':
-                    results.append(RpcExtendClientObject(self.client,ser.getInt()))
+                    val=ser.getInt()
+                    if val==-1:
+                        results.append(None)
+                    else:
+                        results.append(RpcExtendClientObject(self.client,val))
                 else:
                     assert False,'Unreachable'
 
@@ -201,19 +211,17 @@ class RpcExtendClient1:
         self.conn=conn
         self.__usedSid:typing.Set[int]=set()
         self.__sidStart=1
-        self.__sidEnd=64
+        self.__sidEnd=256
         self.__nextSid=self.__sidStart
         self.builtIn=None
 
-    async def allocSid(self)->int:
+    def allocSid(self)->int:
         reachEnd=False
         while self.__nextSid in self.__usedSid:
-            # interuptable
-            await asyncio.sleep(0)
             self.__nextSid+=1
             if self.__nextSid>=self.__sidEnd:
                 if reachEnd:
-                    raise RpcExtendError('No slot available')
+                    raise RpcExtendError('No sid available')
                 else:
                     reachEnd=True
                     self.__nextSid=self.__sidStart
@@ -225,7 +233,7 @@ class RpcExtendClient1:
         self.__usedSid.add(t1)
         return t1
 
-    async def freeSid(self,index:int):
+    def freeSid(self,index:int):
         self.__usedSid.remove(index)
 
     async def freeRef(self,ref:RpcExtendClientObject):
@@ -235,25 +243,7 @@ class RpcExtendClient1:
             await self.conn.freeRef(val)
 
     async def getFunc(self,name:str)->typing.Optional[RpcExtendClientCallable]:
-        index=await self.conn.getFunc(name)
+        index=await self.conn.getFunc(name,self.__sidEnd+1)
         if index==-1:
             return None
         return RpcExtendClientCallable(self,value=index)
-
-    async def ensureBuiltIn(self):
-        if(self.builtIn==None):
-            self.builtIn=dict()
-            t1=await self.getFunc('builtin.checkException')
-            if(t1!=None):
-                t1.typedecl('o->s')
-                self.builtIn['checkException']=t1
-            
-    
-    async def checkException(self,obj:RpcExtendClientObject):
-        await self.ensureBuiltIn()
-        if 'checkException' in NotNone(self.builtIn):
-            err=await NotNone(self.builtIn)['checkException'](obj)
-            if(err!=''):
-                raise RpcExtendError(err)
-            
-    

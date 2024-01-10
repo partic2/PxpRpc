@@ -9,7 +9,7 @@ export class RpcExtendClientObject {
     }
     public async free() {
         if (this.value != undefined) {
-            await this.client.freeSlot(this.value);
+            await this.client.freeSid(this.value);
         }
     }
     public async asCallable():Promise<RpcExtendClientCallable>{
@@ -74,7 +74,11 @@ s  string(bytes will be decode to string)
                         ser.putDouble(args[i1]);
                         break;
                     case 'o':
-                        ser.putInt(args[i1].value);
+                        if(args[i1]!==null){
+                            ser.putInt(args[i1].value);
+                        }else{
+                            ser.putInt(-1);
+                        }
                         break;
                     case 'b':
                         ser.putBytes(args[i1]);
@@ -92,7 +96,9 @@ s  string(bytes will be decode to string)
             let serbuf=ser.build()
             buf=[serbuf];
         }
-        let resp=await this.client.conn.call(this.value!,buf);
+        let sid=this.client.allocSid();
+        let resp=await this.client.conn.call(this.value!,buf,sid);
+        this.client.freeSid(sid);
         if(this.tResult==='b'){
             return resp;
         }else{
@@ -113,7 +119,12 @@ s  string(bytes will be decode to string)
                         rets.push(ser.getDouble())
                         break;
                     case 'o':
-                        rets.push(new RpcExtendClientObject(this.client,ser.getInt()))
+                        let val=ser.getInt();
+                        if(val!==-1){
+                            rets.push(new RpcExtendClientObject(this.client,val))
+                        }else{
+                            rets.push(null)
+                        }
                         break;
                     case 'b':
                         rets.push(ser.getBytes())
@@ -146,7 +157,7 @@ export class RpcExtendClient1 {
     private __nextSid: number;
 
     private __sidStart: number = 1;
-    private __sidEnd: number = 64;
+    private __sidEnd: number = 256;
     
     public constructor(public conn: Client) {
         this.__nextSid = this.__sidStart;
@@ -166,13 +177,13 @@ export class RpcExtendClient1 {
             this.builtIn={}
         }
     }
-    public async allocSlot() {
+    public allocSid() {
         let reachEnd = false;
         while (this.__usedSid[this.__nextSid]) {
             this.__nextSid += 1
             if (this.__nextSid >= this.__sidEnd) {
                 if (reachEnd) {
-                    throw new RpcExtendError('No slot available')
+                    throw new RpcExtendError('No sid available')
                 } else {
                     reachEnd = true
                     this.__nextSid = this.__sidStart
@@ -188,22 +199,14 @@ export class RpcExtendClient1 {
         this.__usedSid[t1] = true;
         return t1
     }
-    public async freeSlot(index: number) {
-        if (this.conn.isRunning()) {
-            await this.conn.freeRef(index)
-            delete this.__usedSid[index]
-        }
-
+    public freeSid(index: number) {
+        delete this.__usedSid[index]
     }
     public async getFunc(name: string) {
-        let index=await this.conn.getFunc(name);
+        let index=await this.conn.getFunc(name,this.__sidEnd+1);
         return new RpcExtendClientCallable(this, index)
     }
     public async close(){
-        for(let key in this.__usedSid){
-            if(this.__usedSid[key])
-                this.freeSlot(Number(key));
-        }
         await this.conn.close()
     }
 
@@ -245,8 +248,13 @@ export class RpcExtendServerCallable implements PxpCallable{
                         param.push(ser.getDouble());
                         break;
                     case 'o':
-                        obj=req.context.getRef(ser.getInt()).object;
-                        param.push(obj);
+                        let val=ser.getInt();
+                        if(val!==-1){
+                            obj=req.context.getRef(val).object;
+                            param.push(obj);
+                        }else{
+                            param.push(null)
+                        }
                         break;
                     case 'b':
                         param.push(ser.getBytes());
@@ -277,7 +285,7 @@ export class RpcExtendServerCallable implements PxpCallable{
         if(this.tResult==='b'){
             return [r]
         }else{
-            let results=this.tResult.length>=1?r:[r]
+            let results=this.tResult.length>1?r:[r]
             for(let i=0;i<this.tResult.length;i++){
                 switch(this.tResult.charAt(i)){
                     case 'i':
@@ -293,9 +301,13 @@ export class RpcExtendServerCallable implements PxpCallable{
                         ser.putDouble(results[i]);
                         break;
                     case 'o':
-                        let ref2=req.context.allocRef();
-                        ref2.object=results[i];
-                        ser.putInt(ref2.index);
+                        if(results[i]!==null){
+                            let ref2=req.context.allocRef();
+                            ref2.object=results[i];
+                            ser.putInt(ref2.index);
+                        }else{
+                            ser.putInt(-1);
+                        }
                         break;
                     case 'b':
                         ser.putBytes(results[i]);
@@ -313,9 +325,8 @@ export class RpcExtendServerCallable implements PxpCallable{
                 }
             }
             let buf=ser.build();
-            let buflen=new ArrayBuffer(4);
-            new DataView(buflen).setUint32(0,buf.byteLength,true);
-            return [buflen,buf];
+            if(buf.byteLength==0)return [];
+            return [buf];
         }
     }
 }
@@ -459,7 +470,7 @@ export class TableSerializer {
         let rowCnt=this.rows.length;
         ser.putVarint(rowCnt);
         ser.putString(this.headerType!);
-        if(this.headerName!=null){
+        if(this.headerName!==null){
             for(let e of this.headerName){
                 ser.putString(e);
             }

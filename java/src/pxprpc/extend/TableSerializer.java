@@ -8,13 +8,13 @@ import java.util.ArrayList;
 public class TableSerializer {
     public static final int FLAG_NO_HEADER_NAME=1;
     public String[] headerName=null;
-    public String headerType=null;
+    public char[] headerType=null;
     protected ArrayList<Object[]> rows=new ArrayList<Object[]>();
     //types: type string, or null to guess
     //names: header name, or null for FLAG_NO_HEADER_NAME packet.
     public TableSerializer setHeader(String types, String[] names){
         headerName=names;
-        headerType=types;
+        headerType= TypeDeclParser.parseDeclText(types);
         return this;
     }
     public Object[] getRow(int index){
@@ -38,8 +38,8 @@ public class TableSerializer {
         ser=new Serializer2().prepareUnserializing(buf);
         int flag=ser.getInt();
         int rowCnt=ser.getVarint();
-        headerType=ser.getString();
-        int colCnt=headerType.length();
+        headerType= TypeDeclParser.parseDeclText(ser.getString());
+        int colCnt=headerType.length;
         if((flag & FLAG_NO_HEADER_NAME)==0){
             ArrayList<String> headerName2 = new ArrayList<String>();
             for(int i1=0;i1<colCnt;i1++){
@@ -51,7 +51,7 @@ public class TableSerializer {
             rows.add(new Object[colCnt]);
         }
         for(int i1=0;i1<colCnt;i1++){
-            char type=headerType.charAt(i1);
+            char type=headerType[i1];
             switch(type){
                 case 'i':
                     for(int i2=0;i2<rowCnt;i2++){
@@ -106,15 +106,15 @@ public class TableSerializer {
                 Object[] firstRow = rows.get(0);
                 char[] types=new char[firstRow.length];
                 for(int i=0;i<types.length;i++){
-                    types[i]=CommonCallable.javaTypeToSwitchId(firstRow[i].getClass());
+                    types[i]= TypeDeclParser.jtypeToValueInfo(firstRow[i].getClass());
                 }
-                headerType=new String(types);
+                headerType=types;
             }else{
-                headerType="";
+                headerType=new char[0];
             }
         }
 
-        int colsCnt=headerType.length();
+        int colsCnt=headerType.length;
         int flag=0;
         if(headerName==null){
             flag|=FLAG_NO_HEADER_NAME;
@@ -122,14 +122,14 @@ public class TableSerializer {
         ser.putInt(flag);
         int rowCnt=rows.size();
         ser.putVarint(rowCnt);
-        ser.putString(headerType);
+        ser.putString(TypeDeclParser.formatDeclText(headerType));
         if(headerName!=null){
             for(String e:headerName){
                 ser.putString(e);
             }
         }
         for(i1=0;i1<colsCnt;i1++){
-            char type=headerType.charAt(i1);
+            char type=headerType[i1];
             switch(type){
                 case 'i':
                     for(int i2=0;i2<rowCnt;i2++){

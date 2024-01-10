@@ -20,7 +20,7 @@ public class ServerContext implements Closeable {
     public PxpRef[] refPool = new PxpRef[0];
     public PxpRef freeRefEntry =null;
     public Object refPoolLock=new Object();
-    public Map<String, Object> funcMap = new HashMap<String, Object>();
+    public FuncMap funcMap;
     protected BuiltInFuncList builtIn;
     public static final Charset charset=Charset.forName("utf-8");
     public ConcurrentLinkedQueue eventQueue=new ConcurrentLinkedQueue();
@@ -59,11 +59,19 @@ public class ServerContext implements Closeable {
     public PxpRef getRef(int index){
         return this.refPool[index];
     }
-    public void init(AbstractIo chan) {
+    public void init(AbstractIo chan,FuncMap fnmap) {
         this.io2 = chan;
         this.expandRefPools();
         builtIn = new BuiltInFuncList();
-        funcMap.put("builtin", builtIn);
+        if(fnmap==null){
+            try {
+                Class<?> cls = Class.forName("pxprpc.extend.DefaultFuncMap");
+                this.funcMap=(FuncMap) cls.getMethod("getDefault").invoke(null);
+            } catch (Exception e) {
+            }
+        }else{
+            this.funcMap=fnmap;
+        }
     }
     public int sequenceSession=0xffffffff;
     public int sequenceMaskBitsCnt=0;
@@ -154,14 +162,7 @@ public class ServerContext implements Closeable {
 
     public void getFunc(final PxpRequest r){
         String name = new String(Utils.toBytes(r.parameter),charset);
-        int namespaceDelim = name.lastIndexOf(".");
-        String namespace = name.substring(0, namespaceDelim);
-        String func = name.substring(namespaceDelim + 1);
-        Object obj = funcMap.get(namespace);
-        PxpCallable found = null;
-        if (obj != null) {
-            found = builtIn.getBoundMethod(obj, func);
-        }
+        PxpCallable found = funcMap.get(name);
         Serializer2 ser=new Serializer2().prepareSerializing(4);
         if(found!=null){
             PxpRef ref2=allocRef();
@@ -183,7 +184,7 @@ public class ServerContext implements Closeable {
         byte[] b = (
                 "server name:pxprpc for java\n" +
                         "version:2.0\n"
-        ).getBytes("utf-8");
+        ).getBytes(charset);
         r.result=new ByteBuffer[]{ByteBuffer.wrap(b)};
         r.done();
     }

@@ -9,10 +9,7 @@ import java.util.TimerTask;
 import pxprpc.backend.TCPBackend;
 import pxprpc.base.Serializer2;
 import pxprpc.base.ServerContext;
-import pxprpc.extend.AsyncReturn;
-import pxprpc.extend.EventDispatcher;
-import pxprpc.extend.MethodTypeDecl;
-import pxprpc.extend.TableSerializer;
+import pxprpc.extend.*;
 
 public class PxpRpc {
 	
@@ -53,6 +50,12 @@ public class PxpRpc {
 				System.out.println();
 			}
 		}
+		public Object testNone(AsyncReturn<Object> r,Object para){
+			System.out.print("expect null:");
+			System.out.println(para);
+			r.resolve(null);
+			return new Object();
+		}
 
 		public TickEvent onTick() {
 			TickEvent te = new TickEvent();
@@ -91,7 +94,7 @@ public class PxpRpc {
 	public static void main(String[] args) {
 			final TCPBackend pxptcp = new TCPBackend();
 			int listenPort=1064;
-			pxptcp.funcMap.put("test1", new Handler1());
+			DefaultFuncMap.registered.put("test1", new Handler1());
 			pxptcp.bindAddr=new InetSocketAddress(listenPort);
 			Thread th=new Thread(new Runnable() {
 				@Override

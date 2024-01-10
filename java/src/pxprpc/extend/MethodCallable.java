@@ -25,29 +25,31 @@ public class MethodCallable extends CommonCallable {
 		if(typeDecl!=null){
 			String decl=typeDecl.value()[0];
 			int delim=decl.indexOf("->");
-			tParam=decl.substring(0,delim).toCharArray();
-			tResult=decl.substring(delim+2).toCharArray();
+			tParam=new TypeDeclParser(null).parseDeclText(decl.substring(0,delim));
+			tResult=new TypeDeclParser(null).parseDeclText(decl.substring(delim+2));
 			return true;
 		}else{
 			return false;
 		}
 	}
 	public void parseMethod(){
+		Class<?>[] paramsType = method.getParameterTypes();
+		if (paramsType.length>0 && (paramsType[0] == AsyncReturn.class || paramsType[0] == PxpRequest.class)) {
+			firstInputParamIndex = 1;
+		}
 		if(!parseCustomTypeDecl()){
-			Class<?>[] paramsType = method.getParameterTypes();
-			if (paramsType.length>0 && (paramsType[0] == AsyncReturn.class || paramsType[0] == PxpRequest.class)) {
-				firstInputParamIndex = 1;
+			char[] t1 = new char[paramsType.length-firstInputParamIndex+1];
+			t1[0]='o';
+			for(int i=firstInputParamIndex;i<paramsType.length;i++){
+				t1[i-firstInputParamIndex+1]= TypeDeclParser.jtypeToValueInfo(paramsType[i]);
 			}
-			tParam=new char[paramsType.length+1-firstInputParamIndex];
+			tParam=t1;
 			if(method.getReturnType()!=void.class){
-				tResult = new char[]{javaTypeToSwitchId(method.getReturnType())};
+				tResult = new char[]{
+						TypeDeclParser.jtypeToValueInfo(method.getReturnType())
+				};
 			}else{
 				tResult=new char[0];
-			}
-			tParam[0]='o';
-			for(int i=firstInputParamIndex;i<paramsType.length;i++) {
-				Class<?> pc = paramsType[i];
-				tParam[i-firstInputParamIndex+1]=javaTypeToSwitchId(pc);
 			}
 		}
 	}
@@ -56,7 +58,7 @@ public class MethodCallable extends CommonCallable {
 		ServerContext ctx = req.context;
 		try {
 			Object[] args=readParameter(req);
-			Object[] args2=new Object[firstInputParamIndex+args.length-1];
+			Object[] args2=new Object[+args.length-1];
 			System.arraycopy(args,1,args2,firstInputParamIndex,args.length-1);
 			if(firstInputParamIndex==1){
 				args2[0]=new AsyncReturn<Object>() {

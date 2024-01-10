@@ -47,6 +47,10 @@ async def testClient(rpcconn:pxprpc.client.RpcConnection,name:str='default'):
 
     del get1234
     await asyncio.sleep(0.2)
+    testNone=await client2.getFunc('test1.testNone')
+    assert testNone!=None
+    testNone.typedecl('o->o')
+    print('expect None:',await testNone(None))
     testPrintArg=await client2.getFunc('test1.testPrintArg')
     print('testPrintArg:',testPrintArg.value)
     assert testPrintArg!=None
@@ -72,7 +76,7 @@ async def testClient(rpcconn:pxprpc.client.RpcConnection,name:str='default'):
                             .addRow([1554,'1.txt',False,12345]).addRow([1555,'docs',True,0]).build())
 
     print('expect wait 1 second')
-    await wait1Sec()
+    print('expect tick:',await wait1Sec())
     raiseError1=await client2.getFunc('test1.raiseError1')
     assert raiseError1!=None
     raiseError1.typedecl('->s')
@@ -114,6 +118,10 @@ async def amain():
         async def testPrintArg(self,a:bool,b:int,c:int,d:float,e:float,f:bytes):
             print(a,b,c,d,e,f)
             return [100,1234567890]
+
+        async def testNone(self,noneValue:typing.Any)->typing.Any:
+            print('expect None:',noneValue)
+            return None
 
                 
     

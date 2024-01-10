@@ -12,13 +12,14 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
+import pxprpc.base.FuncMap;
 import pxprpc.base.ServerContext;
 
 public class TCPBackend implements Closeable{
 	public TCPBackend() {
 	}
 	public InetSocketAddress bindAddr;
-	public Map<String,Object> funcMap=new HashMap<String,Object>();
+	public FuncMap funcMap;
 	protected ServerSocketChannel ss;
 	public Set<WorkThread> runningContext=new HashSet<WorkThread>();
 	public static class WorkThread implements Runnable{
@@ -32,7 +33,7 @@ public class TCPBackend implements Closeable{
 		@Override
 		public void run() {
 			try {
-				sc.init(new ChannelIo(s));
+				sc.init(new ChannelIo(s), attached.funcMap);
 				s.configureBlocking(true);
 				sc.serve();
 			} catch (Exception e) {
@@ -62,7 +63,6 @@ public class TCPBackend implements Closeable{
 			while(ss.isOpen()) {
 				SocketChannel soc = ss.accept();
 				ServerContext sc = new ServerContext();
-				sc.funcMap=this.funcMap;
 				WorkThread wt = new WorkThread(soc, sc);
 				wt.attached=this;
 				runningContext.add(wt);

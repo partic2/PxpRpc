@@ -104,11 +104,10 @@ try:
 
 
     class WebSocketServerIo(AbstractIo):
-        def __init__(self,req:web_request.Request,asServer:bool=True):
+        def __init__(self,req:web_request.Request):
             super().__init__()
             self.req=req
             self.writequeue=asyncio.Queue(0)
-            self.asServer=asServer
             self.ready=asyncio.Future()
             asyncio.create_task(self._prepare())
 
@@ -134,11 +133,11 @@ try:
             asyncio.create_task(self.ws1.close())
 
     class WebSocketClientIo(AbstractIo):
-        def __init__(self,wsconn:aiohttp.ClientWebSocketResponse,asServer:bool=False):
+        def __init__(self,wsconn:aiohttp.ClientWebSocketResponse):
             self.ws1=wsconn
 
         async def receive(self)->bytes:
-            while self.ws1.closed:
+            while not self.ws1.closed:
                 msg=await self.ws1.receive()
                 if msg.type==http_websocket.WSMsgType.BINARY:
                     return msg.data
@@ -149,6 +148,8 @@ try:
 
         def close(self):
             asyncio.create_task(self.ws1.close())
+
+
 
     class ServerWebsocketTransport(asyncio.Transport):
         

@@ -16,6 +16,9 @@ export async function testAsClient(){
     printString.typedecl('o->')
     await printString.call(str1);
     await str1.free()
+    let testNone=(await client2.getFunc('test1.testNone'))!
+    testNone.typedecl('o->o');
+    console.log('expect null:',await testNone.call(null));
     let testPrintArg=(await client2.getFunc('test1.testPrintArg'))!
     testPrintArg.typedecl('cilfdb->il')
     console.log('multi-result:',await testPrintArg.call(true,123,BigInt('1122334455667788'),123.5,123.123,new TextEncoder().encode('bytes')));
@@ -55,10 +58,16 @@ export async function testAsServer(){
         }
     }).typedecl('b->'))
     server2.addFunc('test1.wait1Sec',new RpcExtendServerCallable(
-        ()=>new Promise((resolve)=>setTimeout(resolve,1000))).typedecl('->'));
+        ()=>new Promise((resolve)=>setTimeout(()=>{resolve('tick')},1000))
+        ).typedecl('->s'));
     server2.addFunc('test1.raiseError1',new RpcExtendServerCallable(
-        async ()=>{throw new Error('dummy io error')}).typedecl('->'));
+        async ()=>{throw new Error('dummy io error')}
+        ).typedecl('->'));
     server2.addFunc('test1.testPrintArg',new RpcExtendServerCallable(
-        async (a,b,c,d,e,f)=>{console.log(a,b,c,d,e,new TextDecoder().decode(f));return [100,BigInt('1234567890')]}).typedecl('cilfdb->il'));
+        async (a,b,c,d,e,f)=>{console.log(a,b,c,d,e,new TextDecoder().decode(f));return [100,BigInt('1234567890')]}
+        ).typedecl('cilfdb->il'));
+    server2.addFunc('test1.testNone',new RpcExtendServerCallable(
+        async (nullValue)=>{console.log('expect null',nullValue);return null;}
+        ).typedecl('o->o'));
     await server2.serve();
 }

@@ -251,7 +251,11 @@ class PyCallableWrap(PxpCallable):
                 elif t1=='s':
                     para.append(ser.getString())
                 elif t1=='o':
-                    para.append(req.context.getRef(ser.getInt()).object)
+                    idx=ser.getInt()
+                    if idx==-1:
+                        para.append(None)
+                    else:
+                        para.append(req.context.getRef(idx).object)
                 else:
                     assert False,'Unreachable'
         return para
@@ -287,9 +291,12 @@ class PyCallableWrap(PxpCallable):
                 elif t1=='s':
                     ser.putString(t2)
                 elif t1=='o':
-                    ref2=req.context.allocRef()
-                    ref2.object=t2
-                    ser.putInt(ref2.index)
+                    if t2==None:
+                        ser.putInt(-1)
+                    else:
+                        ref2=req.context.allocRef()
+                        ref2.object=t2
+                        ser.putInt(ref2.index)
                 else:
                     assert False,'Unreachable'
             
