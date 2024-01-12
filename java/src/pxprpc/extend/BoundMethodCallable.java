@@ -18,7 +18,7 @@ public class BoundMethodCallable extends MethodCallable{
 	@Override
 	public void parseMethod() {
 		Class<?>[] paramsType = method.getParameterTypes();
-		if (paramsType.length>0 && (paramsType[0] == AsyncReturn.class || paramsType[0] == PxpRequest.class)) {
+		if (paramsType.length>0 && paramsType[0] == AsyncReturn.class) {
 			firstInputParamIndex = 1;
 		}
 		if(!parseCustomTypeDecl()){
@@ -54,6 +54,11 @@ public class BoundMethodCallable extends MethodCallable{
 					public void reject(Exception ex) {
 						req.rejected=ex;
 						req.done();
+					}
+
+					@Override
+					public PxpRequest getRequest() {
+						return req;
 					}
 				};
 			}

@@ -1,6 +1,7 @@
 package pxprpc.test;
 
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.util.Timer;
@@ -9,6 +10,7 @@ import java.util.TimerTask;
 import pxprpc.backend.TCPBackend;
 import pxprpc.base.Serializer2;
 import pxprpc.base.ServerContext;
+import pxprpc.base.Utils;
 import pxprpc.extend.*;
 
 public class PxpRpc {
@@ -26,18 +28,19 @@ public class PxpRpc {
 			System.out.println(s);
 		}
 		@MethodTypeDecl("cilfdb->il")
-		public Object[] testPrintArg(boolean a,int b,long c,float d,double e,byte[] f){
-			System.out.println(""+a+","+b+","+c+","+d+","+e+","+new String(f, ServerContext.charset));
-			return new Object[]{100,1234567890l};
+		public Object[] testPrintArg(AsyncReturn<Object[]> r,boolean a,int b,long c,float d,double e,ByteBuffer f){
+			System.out.println(""+a+","+b+","+c+","+d+","+e+","+new String(Utils.toBytes(f), ServerContext.charset));
+			r.resolve(new Object[]{100,1234567890l});
+			return null;
 		}
 
-		public void testUnser(byte[] buf){
-			Serializer2 ser = new Serializer2().prepareUnserializing(ByteBuffer.wrap(buf));
+		public void testUnser(ByteBuffer buf){
+			Serializer2 ser = new Serializer2().prepareUnserializing(buf);
 			System.out.println(","+ser.getInt()+","+ser.getLong()+","+ser.getFloat()+","+ser.getDouble()+","+ser.getString()+","+ser.getString());
 		}
 
-		public void testTableUnser(byte[] buf){
-			TableSerializer ser = new TableSerializer().load(ByteBuffer.wrap(buf));
+		public void testTableUnser(ByteBuffer buf){
+			TableSerializer ser = new TableSerializer().load(buf);
 			for(String e:ser.headerName){
 				System.out.print(e+"\t");
 			}

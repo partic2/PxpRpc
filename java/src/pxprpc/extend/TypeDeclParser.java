@@ -4,6 +4,7 @@ import pxprpc.base.PxpRef;
 import pxprpc.base.Serializer2;
 import pxprpc.base.ServerContext;
 
+import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 
@@ -40,7 +41,7 @@ public class TypeDeclParser {
                 return 'f';
             } else if (jtype.equals(Double.class)) {
                 return 'd';
-            } else if (jtype.equals(byte[].class)) {
+            } else if (jtype.equals(ByteBuffer.class)) {
                 return 'b';
             } else if (jtype.equals(String.class)) {
                 return 's';
@@ -86,7 +87,7 @@ public class TypeDeclParser {
                 }
                 break;
             case 'b':
-                //byte[]
+                //ByteBuffer
                 obj = ser.getBytes();
                 break;
             case 's':
@@ -146,8 +147,8 @@ public class TypeDeclParser {
                 }
                 break;
             case 'b':
-                byte[] b2 = (byte[]) obj;
-                ser.putBytes(b2, 0, b2.length);
+                ByteBuffer b2 = (ByteBuffer) obj;
+                ser.putBytes(b2);
                 break;
             case 's':
                 ser.putString((String) obj);

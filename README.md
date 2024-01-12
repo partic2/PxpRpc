@@ -21,7 +21,9 @@ rpc server and client on Python(>=3.8)
 
 rpc server and client on Typescript(websocket)
 
-rpc server on C# (.net)
+==================================
+
+rpc server on C# (.net) now is still on 1.0 version. May we can upgrade it to 2.0 in future.
 
 
 ### Detail help
@@ -33,7 +35,7 @@ See test files for detail usage.
 
 [C(tbox) example](c/pxprpc_tbox/test.cpp)
 
-[Java example](java/src/pursuer/test/PxpRpc.java)
+[Java example](java/src/pxprpc/test/PxpRpc.java)
 
 [Python example](python/pxprpc/tests.py)
 

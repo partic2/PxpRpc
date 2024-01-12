@@ -14,7 +14,7 @@ public abstract class CommonCallable implements PxpCallable {
         ByteBuffer buf = req.parameter;
         Object[] args=new Object[tParam.length];
         if(tParam.length==1 && tParam[0]=='b'){
-            args[0]=buf.array();
+            args[0]=buf;
         }else{
             Serializer2 ser = new Serializer2().prepareUnserializing(buf);
             args=new TypeDeclParser(req.context).unserializeMultivalue(tParam,ser);
@@ -28,7 +28,7 @@ public abstract class CommonCallable implements PxpCallable {
         ByteBuffer buf;
 
         if(tResult.length==1 && tResult[0]=='b'){
-            buf=ByteBuffer.wrap((byte[])result);
+            buf=(ByteBuffer)result;
         }else{
             Serializer2 ser = new Serializer2().prepareSerializing(32);
             Object[] rs;
@@ -41,10 +41,6 @@ public abstract class CommonCallable implements PxpCallable {
             buf = ser.build();
         }
         req.result=new ByteBuffer[]{buf};
-
-    }
-
-    public static void writeNext(PxpRequest req, char switchId,Serializer2 ser,Object obj){
 
     }
 

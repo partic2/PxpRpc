@@ -47,15 +47,15 @@ public class Serializer2 {
         }
         return this;
     }
-    public Serializer2 putBytes(byte[] b, int offset, int len){
-        putVarint(len);
-        buf=Utils.ensureBuffer(buf,len);
-        buf.put(b,offset,len);
+    public Serializer2 putBytes(ByteBuffer b){
+        putVarint(b.remaining());
+        buf=Utils.ensureBuffer(buf,b.remaining());
+        buf.put(b);
         return this;
     }
     public Serializer2 putString(String val){
         byte[] b=val.getBytes(ServerContext.charset);
-        putBytes(b,0,b.length);
+        putBytes(ByteBuffer.wrap(b));
         return this;
     }
     public ByteBuffer build(){
@@ -82,14 +82,15 @@ public class Serializer2 {
         }
         return val;
     }
-    public byte[] getBytes(){
+    public ByteBuffer getBytes(){
         int len=getVarint();
-        byte[] b = new byte[len];
-        buf.get(b);
-        return b;
+        ByteBuffer r = buf.duplicate();
+        Utils.setLimit(r,r.position()+len);
+        Utils.setPos(buf,buf.position()+len);
+        return r;
     }
     public String getString(){
-        return new String(getBytes(),ServerContext.charset);
+        return new String(Utils.toBytes(getBytes()),ServerContext.charset);
     }
 
 }

@@ -153,8 +153,8 @@ public class TableSerializer {
                     break;
                 case 'b':
                     for(int i2=0;i2<rowCnt;i2++){
-                        byte[] b=(byte[])rows.get(i2)[i1];
-                        ser.putBytes(b,0,b.length);
+                        ByteBuffer b=(ByteBuffer)rows.get(i2)[i1];
+                        ser.putBytes(b);
                     }
                     break;
                 case 's':

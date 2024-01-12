@@ -1,6 +1,8 @@
 package pxprpc.extend;
 
 import pxprpc.base.PxpCallable;
+import pxprpc.base.PxpRequest;
+import pxprpc.base.Serializer2;
 import pxprpc.base.Utils;
 
 import java.io.ByteArrayOutputStream;
@@ -8,6 +10,7 @@ import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -60,7 +63,27 @@ public class BuiltInFuncList {
 			return e;
 		}
 	}
-	
+
+
+	public List<Object> listNew(AsyncReturn<List<Object>> ret,int type, int size, ByteBuffer init){
+		ArrayList<Object> r = new ArrayList<Object>();
+		TypeDeclParser p = new TypeDeclParser(ret.getRequest().context);
+		Serializer2 ser=new Serializer2().prepareUnserializing(init);
+		for(int i=0;i<size;i++){
+			r.add(p.unserializeValue((char)type,ser));
+		}
+		ret.resolve(r);
+		return null;
+	}
+	public ByteBuffer listSerialize(AsyncReturn<ByteBuffer> ret,List<Object> objs,int type){
+		TypeDeclParser p = new TypeDeclParser(ret.getRequest().context);
+		Serializer2 ser=new Serializer2().prepareSerializing(32);
+		for(Object e:objs){
+			p.serializeValue((char)type,ser,e);
+		}
+		ret.resolve(ser.build());
+		return null;
+	}
 	public int listLength(List<Object> array) {
 		return array.size();
 	}
@@ -74,7 +97,8 @@ public class BuiltInFuncList {
 		array.remove(index);
 	}
 
-	public byte[] listStaticConstField(Class<?> cls) throws IllegalAccessException {
+
+	public ByteBuffer listStaticConstField(Class<?> cls) throws IllegalAccessException {
 		ArrayList<String> hdrs = new ArrayList<String>();
 		ArrayList<Object> row = new ArrayList<Object>();
 		Field[] fields = cls.getFields();
@@ -86,7 +110,8 @@ public class BuiltInFuncList {
 				}
 			}
 		}
-		return Utils.toBytes(new TableSerializer().setHeader(null,hdrs.toArray(new String[0]))
-				.addRow(row.toArray(new Object[0])).build());
+		return new TableSerializer().setHeader(null,hdrs.toArray(new String[0]))
+				.addRow(row.toArray(new Object[0])).build();
 	}
+
 }
