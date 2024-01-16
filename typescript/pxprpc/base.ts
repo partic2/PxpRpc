@@ -168,9 +168,11 @@ export class Client{
         let result=await this.call(-1,[new TextEncoder().encode(funcName)],sid)
         return new DataView(result).getInt32(0,true);
     }
-    public async freeRef(index:number,sid:number=0x100){
-        let para=new DataView(new ArrayBuffer(4));
-        para.setInt32(0,index,true);
+    public async freeRef(index:number[],sid:number=0x100){
+        let para=new DataView(new ArrayBuffer(index.length<<2));
+        for(let i=0;i<index.length;i++){
+            para.setInt32(i<<2,index[i],true);
+        }
         await this.call(-2,[para.buffer],sid);
     }
     public async close(sid:number=0x100){
@@ -208,7 +210,8 @@ export class PxpRequest{
 }
 
 export class PxpRef{
-    public object:any;
+    public object:any=null;
+    public onFree:null|(()=>void)=null;
     public nextFree:PxpRef|null=null;
     public constructor(public index:number){}
 }
@@ -230,14 +233,14 @@ export class Server{
     
     pendingRequests:{[sid:number]:PxpRequest}={};
     public queueRequest(r:PxpRequest){
-        if(this.sequenceSession==0xffffffff || (r.session>>(32-this.sequenceMaskBitsCnt)!=this.sequenceSession)){
+        if(this.sequenceSession==0xffffffff || (r.session>>>(32-this.sequenceMaskBitsCnt)!=this.sequenceSession)){
             this.processRequest(r);
             return;
         }
         r.inSequence=true;
-        let r2=this.pendingRequests[r.session>>8];
+        let r2=this.pendingRequests[r.session];
         if(r2==undefined){
-            this.pendingRequests[r.session>>8]=r;
+            this.pendingRequests[r.session]=r;
             this.processRequest(r);
         }else{
             while(r2.nextPending!=null){
@@ -250,10 +253,10 @@ export class Server{
     public finishRequest(r:PxpRequest){
         if(r.inSequence){
             if(r.nextPending!=null){
-                this.pendingRequests[r.session>>8]=r.nextPending;
+                this.pendingRequests[r.session]=r.nextPending;
                 return r.nextPending;
             }else{
-                delete this.pendingRequests[r.session>>8];
+                delete this.pendingRequests[r.session];
                 return null;
             }
         }else{
@@ -281,8 +284,9 @@ export class Server{
         return ref2!;
     }
     public freeRef(ref2:PxpRef){
-        if(ref2.object!=null && 'close' in ref2.object){
-            ref2.object.close();
+        if(ref2.onFree!=null){
+            ref2.onFree();
+            ref2.onFree=null;
         }
         ref2.object=null;
         ref2.nextFree=this.freeRefEntry;
@@ -292,8 +296,10 @@ export class Server{
         return this.refPool[index];
     }
     public async freeRefHandler(r:PxpRequest){
-        let index=new DataView(r.parameter!).getInt32(0,true);
-        this.freeRef(this.getRef(index));
+        let dv=new DataView(r.parameter!);
+        for(let i=0;i<r.parameter!.byteLength;i+=4){
+            this.freeRef(this.getRef(dv.getInt32(i,true)))
+        }
     }
     public async closeHandler(r:PxpRequest){
         this.close();
@@ -358,14 +364,15 @@ export class Server{
             this.pendingRequests=this.pendingRequests;
         }else{
             this.sequenceMaskBitsCnt=this.sequenceSession&0xff;
-            this.sequenceSession=this.sequenceSession>>(32-this.sequenceMaskBitsCnt);
+            this.sequenceSession=this.sequenceSession>>>(32-this.sequenceMaskBitsCnt);
         }
     }
     public close(){
         this.running=false;
         for(let ref2 of this.refPool){
-            if(ref2.object!=null && 'close' in ref2.object){
-                ref2.object.close();
+            if(ref2.onFree!=null){
+                ref2.onFree();
+                ref2.onFree=null;
             }
             ref2.object=null;
         }

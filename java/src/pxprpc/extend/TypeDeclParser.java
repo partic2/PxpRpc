@@ -4,6 +4,7 @@ import pxprpc.base.PxpRef;
 import pxprpc.base.Serializer2;
 import pxprpc.base.ServerContext;
 
+import java.io.Closeable;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
@@ -15,6 +16,16 @@ public class TypeDeclParser {
     }
     public static char[] parseDeclText(String declText){
         return declText.toCharArray();
+    }
+
+    public PxpRef allocRefFor(Object obj){
+        PxpRef ref = boundContext.allocRef();
+        if(obj instanceof Closeable){
+            ref.set(obj,(Closeable) obj);
+        }else{
+            ref.set(obj,null);
+        }
+        return ref;
     }
     public static char jtypeToValueInfo(Class<?> jtype){
         if(jtype.isPrimitive()) {
@@ -139,9 +150,7 @@ public class TypeDeclParser {
             //reference type
             case 'o':
                 if(obj!=null){
-                    PxpRef ref2 = boundContext.allocRef();
-                    ref2.set(obj);
-                    ser.putInt(ref2.index);
+                    ser.putInt(allocRefFor(obj).index);
                 }else{
                     ser.putInt(-1);
                 }

@@ -69,5 +69,8 @@ export async function testAsServer(){
     server2.addFunc('test1.testNone',new RpcExtendServerCallable(
         async (nullValue)=>{console.log('expect null',nullValue);return null;}
         ).typedecl('o->o'));
+    server2.addFunc('test1.autoCloseable',new RpcExtendServerCallable(
+        async ()=>{return {close:()=>{console.log('auto closeable closed')}}}
+        ).typedecl('->o'));
     await server2.serve();
 }

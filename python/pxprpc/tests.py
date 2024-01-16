@@ -49,9 +49,11 @@ async def testClient(rpcconn:pxprpc.client.RpcConnection,name:str='default'):
     await asyncio.sleep(0.2)
     testNone=await client2.getFunc('test1.testNone')
     assert testNone!=None
+    print('testNone:',testNone.value)
     testNone.typedecl('o->o')
     print('expect None:',await testNone(None))
     testPrintArg=await client2.getFunc('test1.testPrintArg')
+    assert testPrintArg!=None
     print('testPrintArg:',testPrintArg.value)
     assert testPrintArg!=None
     testPrintArg.typedecl('cilfdb->il')
@@ -87,7 +89,15 @@ async def testClient(rpcconn:pxprpc.client.RpcConnection,name:str='default'):
         print('exception catched: '+str(ex1))
 
     t1=await client2.getFunc('test1.missingfunc')
+    assert t1==None
+
+    t1=await client2.getFunc('test1.autoCloseable')
+    assert t1!=None
+    t1.typedecl('->o')
+    await t1()
+    await client2.conn.close()
     print(name+' test done')
+    
 
 from pxprpc.server import decorator
 
@@ -122,6 +132,12 @@ async def amain():
         async def testNone(self,noneValue:typing.Any)->typing.Any:
             print('expect None:',noneValue)
             return None
+        
+        async def autoCloseable(self)->typing.Any:
+            class Cls(object):
+                def close(self):
+                    print('auto closable closed')
+            return Cls()
 
                 
     

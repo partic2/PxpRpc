@@ -30,6 +30,7 @@ class PxpCallable():
 class PxpRef():
     def __init__(self,index:int):
         self.object:Any=None
+        self.onFree:Optional[typing.Callable]=None
         self.nextFree:Optional[PxpRef]=None
         self.index=index
 
@@ -75,8 +76,9 @@ class ServerContext(object):
         return ref2
 
     def freeRef(self,ref2:PxpRef):
-        if hasattr(ref2.object,'close'):
-            ref2.object.close()
+        if ref2.onFree!=None:
+            ref2.onFree()
+            ref2.onFree=None
         ref2.object=None
         ref2.nextFree=self.freeRefEntry
         self.freeRefEntry=ref2
@@ -93,9 +95,9 @@ class ServerContext(object):
             return
         
         r.inSequence=True
-        r2=self.pendingRequests.get(r.session>>8,None)
+        r2=self.pendingRequests.get(r.session,None)
         if r2==None:
-            self.pendingRequests[r.session>>8]=r
+            self.pendingRequests[r.session]=r
             asyncio.create_task(self.processRequest(r))
         else:
             while r2.nextPending!=None:
@@ -105,10 +107,10 @@ class ServerContext(object):
     def finishRequest(self,r:PxpRequest):
         if r.inSequence:
             if r.nextPending!=None:
-                self.pendingRequests[r.session>>8]=r.nextPending
+                self.pendingRequests[r.session]=r.nextPending
                 return r.nextPending
             else:
-                del self.pendingRequests[r.session>>8]
+                del self.pendingRequests[r.session]
                 return None
         else:
             return None
@@ -135,10 +137,12 @@ class ServerContext(object):
             req.result=ref2.index.to_bytes(4,'little')
 
     def close(self):
+        self.running=False
         for t2 in self.refPool:
-            if hasattr(t2.object,'close'):
-                t2.object.close()
+            if t2.onFree!=None:
+                t2.onFree()
             t2.object=None
+            t2.onFree=None
         self.io1.close()
                 
 
@@ -161,7 +165,9 @@ class ServerContext(object):
         
 
     async def freeRefHandler(self,req:PxpRequest):
-        self.freeRef(self.refPool[int.from_bytes(req.parameter,'little')])
+        bytesCnt=len(req.parameter)>>2
+        for t1 in range(0,bytesCnt,4):
+            self.freeRef(self.getRef(int.from_bytes(req.parameter[t1:t1+4],'little',signed=True)))
 
     async def processRequest(self,req:PxpRequest):
         handler=[None,self.getFunc,self.freeRefHandler,self.closeHandler,self.getInfo,self.sequence]
@@ -194,6 +200,15 @@ class ServerContext(object):
         
         
 import inspect
+
+def allocRefFor(context:ServerContext,obj:Any)->PxpRef:
+    ref=context.allocRef()
+    ref.object=obj
+    if hasattr(obj,'close'):
+        def fn():
+            obj.close()
+        ref.onFree=fn
+    return ref
 
 class decorator:
     @staticmethod
@@ -294,8 +309,7 @@ class PyCallableWrap(PxpCallable):
                     if t2==None:
                         ser.putInt(-1)
                     else:
-                        ref2=req.context.allocRef()
-                        ref2.object=t2
+                        ref2=allocRefFor(req.context,t2)
                         ser.putInt(ref2.index)
                 else:
                     assert False,'Unreachable'

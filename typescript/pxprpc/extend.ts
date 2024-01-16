@@ -212,6 +212,14 @@ export class RpcExtendClient1 {
 
 }
 
+export function allocRefFor(serv:Server,obj:any){
+    let ref=serv.allocRef();
+    ref.object=obj;
+    if((typeof obj==='object') && ('close' in obj)){
+        ref.onFree=()=>obj.close()
+    }
+    return ref;
+}
 
 export class RpcExtendServerCallable implements PxpCallable{
     protected tParam:string = '';
@@ -302,9 +310,7 @@ export class RpcExtendServerCallable implements PxpCallable{
                         break;
                     case 'o':
                         if(results[i]!==null){
-                            let ref2=req.context.allocRef();
-                            ref2.object=results[i];
-                            ser.putInt(ref2.index);
+                            ser.putInt(allocRefFor(req.context,results[i]).index);
                         }else{
                             ser.putInt(-1);
                         }

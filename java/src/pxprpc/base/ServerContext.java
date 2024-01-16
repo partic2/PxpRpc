@@ -92,15 +92,15 @@ public class ServerContext implements Closeable {
 
     public HashMap<Integer,PxpRequest> pendingRequests=new HashMap<Integer, PxpRequest>();
     public void queueRequest(final PxpRequest r)throws IOException{
-        if(sequenceSession==0xffffffff || (r.session>>(32-sequenceMaskBitsCnt)!=sequenceSession)){
+        if(sequenceSession==0xffffffff || (r.session>>>(32-sequenceMaskBitsCnt)!=sequenceSession)){
             processRequest(r);
             return;
         }
         r.inSequence=true;
         synchronized (pendingRequests){
-            PxpRequest r2=pendingRequests.get(r.session>>8);
+            PxpRequest r2=pendingRequests.get(r.session);
             if(r2==null){
-                pendingRequests.put(r.session>>8,r);
+                pendingRequests.put(r.session,r);
                 processRequest(r);
             }else{
                 while(r2.nextPending!=null){
@@ -115,10 +115,10 @@ public class ServerContext implements Closeable {
         if(r.inSequence){
             synchronized (pendingRequests){
                 if(r.nextPending!=null && r.rejected!=null){
-                    pendingRequests.put(r.session>>8,r.nextPending);
+                    pendingRequests.put(r.session,r.nextPending);
                     return r.nextPending;
                 }else{
-                    pendingRequests.remove(r.session>>8);
+                    pendingRequests.remove(r.session);
                     return null;
                 }
             }
@@ -166,7 +166,7 @@ public class ServerContext implements Closeable {
         Serializer2 ser=new Serializer2().prepareSerializing(4);
         if(found!=null){
             PxpRef ref2=allocRef();
-            ref2.set(found);
+            ref2.set(found,null);
             ser.putInt(ref2.index);
         }else{
             ser.putInt(-1);
@@ -176,7 +176,11 @@ public class ServerContext implements Closeable {
     }
     public void freeRefHandler(final PxpRequest r){
         Serializer2 ser=new Serializer2().prepareUnserializing(r.parameter);
-        freeRef(getRef(ser.getInt()));
+        int count=r.parameter.remaining()>>>2;
+        r.parameter.order(ByteOrder.LITTLE_ENDIAN);
+        for(int i=0;i<count;i++) {
+            freeRef(getRef(r.parameter.getInt()));
+        }
         r.done();
     }
 
@@ -201,7 +205,7 @@ public class ServerContext implements Closeable {
             }
         }else{
             sequenceMaskBitsCnt=sequenceSession&0xff;
-            sequenceSession=sequenceSession>>(32-sequenceMaskBitsCnt);
+            sequenceSession=sequenceSession>>>(32-sequenceMaskBitsCnt);
         }
         r.done();
     }

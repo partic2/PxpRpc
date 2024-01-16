@@ -53,11 +53,11 @@ struct pxprpc_request_response{
     int32_t callable_index;
 }
 
-//freeRef:free the reference
+//freeRef:free the reference(s)
 struct pxprpc_requst_format{
     uint32_t session_id;
     int32_t callable_inde=-2;
-    uint32_t index;
+    uint32_t index[remain];
 }
 struct pxprpc_request_response{
     uint32_t session_id;
@@ -92,8 +92,8 @@ version:2.0
 */
 
 
-/* function:sequence. Requests with same sid(session&0xffffff00) ,
-which match the sessionMask, will be executed in sequence (executed after last queued request finished). , since version 2.0.
+/* function:sequence. Requests with same sid ,which match the sessionMask, 
+will be executed in sequence (executed after last queued request finished). , since version 2.0.
 */
 struct pxprpc_requst_format{
     uint32_t session_id;

@@ -7,7 +7,7 @@ import typing
 import traceback
 
 
-from typing import cast,Optional,Any,Tuple
+from typing import cast,Optional,Any,Tuple,List
 
 from pxprpc.common import NotNone
 
@@ -62,8 +62,8 @@ class RpcConnection(object):
         result=await self.call(-1,fnName.encode('utf-8'),sid)
         return int.from_bytes(result,'little',signed=True)
 
-    async def freeRef(self,index:int,sid:int=0x100):
-        await self.call(-2,bytes(index.to_bytes(4,'little',signed=True)),sid)
+    async def freeRef(self,index:List[int],sid:int=0x100):
+        await self.call(-2,b''.join(map(lambda t1:t1.to_bytes(4,'little',signed=True),index)),sid)
 
     async def close(self,sid:int=0x100):
         #no return
@@ -86,7 +86,7 @@ class RpcExtendClientObject():
         if self.value is not None:
             val=self.value
             self.value=None
-            await self.client.conn.freeRef(val)
+            await self.client.conn.freeRef([val])
             
 
     async def asCallable(self):
@@ -96,9 +96,8 @@ class RpcExtendClientObject():
         return c1
             
     def __del__(self):
-        log1.debug('running:',self.client.conn.running)
         if self.client.conn.running:
-            create_task(self.client.freeRef(self))
+            asyncio.create_task(self.free())
             
    
 class RpcExtendClientCallable(RpcExtendClientObject):
@@ -211,7 +210,7 @@ class RpcExtendClient1:
         self.conn=conn
         self.__usedSid:typing.Set[int]=set()
         self.__sidStart=1
-        self.__sidEnd=256
+        self.__sidEnd=0xffff
         self.__nextSid=self.__sidStart
         self.builtIn=None
 
@@ -235,12 +234,6 @@ class RpcExtendClient1:
 
     def freeSid(self,index:int):
         self.__usedSid.remove(index)
-
-    async def freeRef(self,ref:RpcExtendClientObject):
-        if(ref.value!=None):
-            val=ref.value
-            ref.value=None
-            await self.conn.freeRef(val)
 
     async def getFunc(self,name:str)->typing.Optional[RpcExtendClientCallable]:
         index=await self.conn.getFunc(name,self.__sidEnd+1)

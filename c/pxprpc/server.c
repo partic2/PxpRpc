@@ -54,9 +54,12 @@ static int pxprpc_close(pxprpc_server_context server_context){
     }
     struct _pxprpc__ServCo *self=server_context;
     for(int i=0;i<self->exp.ref_pool_size;i++){
-        if(self->exp.ref_pool[i].on_free!=NULL){
-            self->exp.ref_pool[i].on_free(&self->exp.ref_pool[i]);
+        pxprpc_ref *ref=&self->exp.ref_pool[i];
+        if(ref->on_free!=NULL){
+            ref->on_free(&self->exp.ref_pool[i]);
+            ref->on_free=NULL;
         }
+        ref->object=NULL;
     }
     self->status|=0x1;
     self->io1->close(self->io1);
@@ -102,7 +105,11 @@ static pxprpc_ref *pxprpc_alloc_ref(pxprpc_server_context server_context,uint32_
 
 static void pxprpc_free_ref(pxprpc_server_context server_context,pxprpc_ref *ref2){
     struct _pxprpc__ServCo *self=server_context;
-    if(ref2->on_free!=NULL)ref2->on_free(ref2);
+    if(ref2->on_free!=NULL){
+        ref2->on_free(ref2);
+        ref2->on_free=NULL;
+    }
+    ref2->object=NULL;
     ref2->nextFree=self->exp.free_ref_entry;
     self->exp.free_ref_entry=ref2;
 }
@@ -130,7 +137,7 @@ static void _pxprpc__queueRequest(pxprpc_request *r){
     }else{
         r->inSequence=0;
         for(pxprpc_request *r2=self->pendingReqTail;r2!=NULL;r2=r2->lastReq){
-            if((r2->session&0xffffff00) == (r->session&0xffffff00)){
+            if((r2->session) == (r->session)){
                 r->lastReq=r2;
                 r->nextReq=r2->nextReq;
                 if(r->nextReq!=NULL){
@@ -164,7 +171,7 @@ static void _pxprpc__finishRequest(pxprpc_request *r){
         }
         if(r->nextReq!=NULL){
             r->nextReq->lastReq=r->lastReq;
-            if((r->nextReq->session&0xffffff00)==(r->session&0xffffff00)){
+            if((r->nextReq->session)==(r->session)){
                 r->nextReq->next_step(r->nextReq);
             }
         }
@@ -206,7 +213,9 @@ static void _pxprpc__stepCall1(pxprpc_request *r){
 }
 
 static void _pxprpc__stepFreeRef1(pxprpc_request *r){
-    pxprpc_free_ref(r->server_context,pxprpc_get_ref(r->server_context,*(uint32_t *)r->parameter.base));
+    for(int i=0;i<r->parameter.length;i+=4){
+        pxprpc_free_ref(r->server_context,pxprpc_get_ref(r->server_context,*(uint32_t *)(r->parameter.base+i)));
+    }
     _pxprpc__stepCall2(r);
 }
 
@@ -286,7 +295,7 @@ static void _pxprpc__stepSequence1(pxprpc_request *r){
         for(req=self->pendingReqTail;req!=NULL;req=req2){
             req2=req->lastReq;
             /* discard all queued request */
-            if(req2!=NULL && (req2->session&0xffffff00)==(req->session&0xffffff00)){
+            if(req2!=NULL && (req2->session)==(req->session)){
                 pxprpc__free(req);
             }else{
                 req->nextReq=NULL;

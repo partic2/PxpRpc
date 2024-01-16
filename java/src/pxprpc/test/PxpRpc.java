@@ -1,5 +1,6 @@
 package pxprpc.test;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.InetSocketAddress;
@@ -78,6 +79,14 @@ public class PxpRpc {
 		}
 		public void raiseError1() throws IOException {
 			throw new IOException("dummy exception");
+		}
+		public Closeable autoCloseable(){
+			return new Closeable(){
+				@Override
+				public void close() throws IOException {
+					System.out.println("auto closeable closed");
+				}
+			};
 		}
 	}
 	public static class TickEvent extends EventDispatcher {
