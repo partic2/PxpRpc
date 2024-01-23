@@ -1,30 +1,11 @@
 from . import idldef
 import typing
 import sys
+from .idlcomm import IDLToBinding
 
 
-
-def convertIdlTypeToTsSig(t:idldef.Type2):
-    if t==idldef.Int32:
-        return 'i'
-    elif t==idldef.Int64:
-        return 'l'
-    elif t==idldef.Float32:
-        return 'f'
-    elif t==idldef.Float64:
-        return 'd'
-    elif t in [idldef.RemoteBytes,idldef.RemoteObject]:
-        return 'o'
-    elif t in [idldef.String]:
-        return 's'
-    elif t in [idldef.Bytes]:
-        return 'b'
-    elif t in [idldef.Bool]:
-        return 'z'
-    elif isinstance(t,(idldef.DataObjectType,idldef.DataObjectArrayType)):
-        return 'b'
-    else:
-        return 'o'
+def convertIdlTypeToTsTypedecl(t:idldef.Type2):
+    return idldef.convertIdlTypeToTypedeclChar(t)
 
 def convertIdlTypeToTsType(t:idldef.Type2):
     if t in [idldef.Int32,idldef.Float32,idldef.Float64]:
@@ -35,7 +16,9 @@ def convertIdlTypeToTsType(t:idldef.Type2):
         return 'boolean'
     elif t in [idldef.Bytes]:
         return 'ArrayBufferLike'
-    elif t in [idldef.RemoteObject,idldef.RemoteBytes]:
+    elif t in [idldef.String]:
+        return 'string'
+    elif isinstance(t,idldef.RemoteObjectType):
         return 'RpcExtendClientObject'
     else:
         return t.name
@@ -48,75 +31,62 @@ class TsNamespaceGenerator:
         self.fns:typing.List[idldef.Function]=[]
         
     def generateTypedefBlock(self):
-        code="var RemoteName='"+self.namespace.name+"';\n"
-        code+='var rpc__client:RpcExtendClient1;\n'
-        code+='var rpc__RemoteFuncs={} as {[k:string]:RpcExtendClientCallable|undefined|null};\n'
-        for type2 in self.types:
-            code+='type '+type2.name+'=RpcExtendClientObject;\n'
-            code+='var rpc__RemoteFuncs={} as {[k:string]:RpcExtendClientCallable};\n'
+        code=["var RemoteName='"+self.namespace.name+"';"]
+        code.append('var rpc__client:RpcExtendClient1;')
+        code.append('var rpc__RemoteFuncs={} as {[k:string]:RpcExtendClientCallable|undefined|null};')
         self.typedefBlock=code
 
     def generateInitBlock(self):
-        code='''export async function rpc__connect(){
-        rpc__client=await new RpcExtendClient1(new Client(await new WebSocketIo().connect(serverUrl))).init();\n'''
-        code+='}\n'
+        code=['export async function useClient(client:RpcExtendClient1){']
+        code.append(' rpc__client=client;')
+        code.append('}')
         self.initBlock=code
 
-    def validFunctionName(self,fnname:str):
-        if fnname in ['typeof','async','await','import','export','class']:
+    def validSymbolName(self,fnname:str):
+        if fnname in ['typeof','async','await','import','export','class','in']:
             return fnname+'2'
         else:
             return fnname
 
     def generateFunctionWrap(self,fn:idldef.Function):
-        code=f'''export async function {self.validFunctionName(fn.name)}('''
-        for p in fn.params:
-            code+=p.name+':'
-            code+=convertIdlTypeToTsType(p.type2)
-            code+=','
-        # remove ','
-        if code[-1]==',':
-            code=code[:-1]
-        code+='):Promise<'+('void' if fn.result==None else convertIdlTypeToTsType(fn.result.type2))+'>{\n'
-        sigstr=''
-        for p in fn.params:
-            sigstr+=convertIdlTypeToTsSig(p.type2)
-        sigstr+='->'
-        r=fn.result
-        if r!=None:
-            sigstr+=convertIdlTypeToTsSig(r.type2)
-        code+=f'''let remotefunc=rpc__RemoteFuncs.{fn.name};
-        if(remotefunc==undefined){{
-            remotefunc=await rpc__client.getFunc(RemoteName + '.{fn.name}');
-            rpc__RemoteFuncs.{fn.name}=remotefunc
-            remotefunc!.typedecl('{sigstr}');
-        }}
-        '''
-        code+=f"let result=await remotefunc!.call("
-        for p in fn.params:
-            code+=p.name
-            code+=','
-        if code[-1]==',':
-            code=code[:-1]
-        if fn.result==None:
-            code+=');\n'
-        elif isinstance(fn.result.type2,(idldef.DataObjectType,idldef.DataObjectArrayType)):
-            code+=') as '+convertIdlTypeToTsType(idldef.Bytes)+';\n'
+        code=[]
+        row=f'export async function {self.validSymbolName(fn.name)}('
+        row+=','.join(map(lambda p:self.validSymbolName(p.name)+':'+convertIdlTypeToTsType(p.type2),fn.params))
+        if len(fn.results)==0:
+            row+='):Promise<void>{'
+        elif len(fn.results)==1:
+            row+='):Promise<'+convertIdlTypeToTsType(fn.results[0].type2)+'>{'
         else:
-            code+=') as '+convertIdlTypeToTsType(fn.result.type2)+';\n'
-        
-        if fn.result==None:
-            pass
-        elif isinstance(fn.result.type2,(idldef.DataObjectType,idldef.DataObjectArrayType)):
-            code+='return msgpack.decode(result) as '+convertIdlTypeToTsType(fn.result.type2)+';\n'
+            row+='):Promise<['+(','.join([convertIdlTypeToTsType(t1.type2) for t1 in fn.results]))+']>{'
+        code.append(row)
+        typedecl=''
+        for p in fn.params:
+            typedecl+=convertIdlTypeToTsTypedecl(p.type2)
+        typedecl+='->'
+        for p in fn.results:
+            typedecl+=convertIdlTypeToTsTypedecl(p.type2)
+        code+=[f' let remotefunc=rpc__RemoteFuncs.{fn.name};',
+        ' if(remotefunc==undefined){',
+        f"  remotefunc=await rpc__client.getFunc(RemoteName + '.{fn.name}');",
+        f"  rpc__RemoteFuncs.{fn.name}=remotefunc",
+        f"  remotefunc!.typedecl('{typedecl}');",
+        " }"]
+        row=f" let result=await remotefunc!.call("
+        row+=','.join(map(lambda p:self.validSymbolName(p.name),fn.params))
+        if len(fn.results)==0:
+            row+=');'
         else:
-            code+='return result;\n'
- 
-        code+='}\n'
+            row+=') as any;'
+        code.append(row)
+
+        if len(fn.results)>0:
+            code.append(' return result;')
+            
+        code.append('}')
         return code
 
     def generateFunctionsBlock(self):
-        code=''
+        code=[]
         for fn in self.fns:
             try:
                 code+=self.generateFunctionWrap(fn)
@@ -125,13 +95,20 @@ class TsNamespaceGenerator:
                 raise e
         self.functionBlock=code
 
+    def indentCode(self,code:typing.List[str],spaceCnt:int):
+      return map(lambda t1:' '*spaceCnt+t1,code)
+
     def generate(self):
         self.preprocess()
         self.generateTypedefBlock()
         self.generateInitBlock()
         self.generateFunctionsBlock()
-        return 'export namespace '+self.namespace.name.replace('-','__')+\
-          '{\n'+self.typedefBlock+self.initBlock+self.functionBlock+'\n}'
+        nsname=self.namespace.name.replace('-','__').replace('.','__')
+        return '\n'.join(["import {RpcExtendClient1,RpcExtendClientCallable,RpcExtendClientObject} from 'pxprpc/extend'",
+        f"export namespace {nsname}{{"]+
+        list(self.indentCode(self.typedefBlock,1))+
+        list(self.indentCode(self.initBlock,1))+
+        list(self.indentCode(self.functionBlock,1))+['}'])
 
         
     def preprocess(self):
@@ -147,3 +124,10 @@ class TsNamespaceGenerator:
 def generateForNamespace(namespace:idldef.Namespace):
     nsg=TsNamespaceGenerator(namespace)
     return nsg.generate()
+
+
+class IDLToTsBinding(IDLToBinding):
+    def toBinding(self, ns: idldef.Namespace) -> str:
+        return generateForNamespace(ns)
+    def fileName(self, ns: idldef.Namespace) -> str:
+        return super().fileName(ns).replace('-', '__').replace('.', '__')+'.ts'
