@@ -38,8 +38,9 @@ class TsNamespaceGenerator:
 
     def generateInitBlock(self):
         code=['async useClient(client:RpcExtendClient1){']
-        code.append(' this.rpc__client=client;')
-        code.append('}')
+        code+=[' this.rpc__client=client;',
+        ' this.rpc__RemoteFuncs={}',
+        '}']
         self.initBlock=code
 
     def validSymbolName(self,fnname:str):

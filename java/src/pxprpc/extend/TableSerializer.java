@@ -17,7 +17,11 @@ public class TableSerializer {
     //names: header name, or null for FLAG_NO_HEADER_NAME packet.
     public TableSerializer setHeader(String types, String[] names){
         headerName=names;
-        headerType= TypeDeclParser.parseDeclText(types);
+        if(types!=null){
+            headerType= TypeDeclParser.parseDeclText(types);
+        }else{
+            headerType=null;
+        }
         return this;
     }
     public Object[] getRow(int index){

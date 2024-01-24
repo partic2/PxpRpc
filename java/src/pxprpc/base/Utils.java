@@ -87,6 +87,7 @@ public class Utils {
 		int size=remainSize+b.position();
 		if(b.capacity()<size){
 			ByteBuffer newbuf=ByteBuffer.allocate(size+(size>>1));
+			newbuf.order(bb.order());
 			newbuf.put(bb.array(),0,b.position());
 			return newbuf;
 		}
