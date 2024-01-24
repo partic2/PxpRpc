@@ -4,6 +4,9 @@ import pxprpc.base.Serializer2;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 public class TableSerializer {
     public static final int FLAG_NO_HEADER_NAME=1;
@@ -172,5 +175,34 @@ public class TableSerializer {
             }
         }
         return ser.build();
+    }
+    public List<Map<String,Object>> toMapArray(){
+        ArrayList<Map<String,Object>> r=new ArrayList<Map<String,Object>>();
+        int rowCount=this.getRowCount();
+        int colCount=this.headerName.length;
+        for(int t1=0;t1<rowCount;t1++){
+            Map<String,Object> r0=new HashMap<String,Object>();
+            Object[] row=this.getRow(t1);
+            for(int t2=0;t2<colCount;t2++){
+                r0.put(this.headerName[t2],row[t2]);
+            }
+            r.add(r0);
+        }
+        return r;
+    }
+    public TableSerializer fromMapArray(List<Map<String,Object>> val){
+        if(val.size()>0 && this.headerName==null){
+            this.headerName=val.get(0).keySet().toArray(new String[0]);
+        }
+        int rowCount=val.size();
+        int colCount=this.headerName.length;
+        for(int t1=0;t1<rowCount;t1++){
+            Object[] row=new Object[colCount];
+            for(int t2=0;t2<colCount;t2++){
+                row[t2]=val.get(t1).get(this.headerName[t2]);
+            }
+            this.addRow(row);
+        }
+        return this;
     }
 }

@@ -31,26 +31,26 @@ class TsNamespaceGenerator:
         self.fns:typing.List[idldef.Function]=[]
         
     def generateTypedefBlock(self):
-        code=["var RemoteName='"+self.namespace.name+"';"]
-        code.append('var rpc__client:RpcExtendClient1;')
-        code.append('var rpc__RemoteFuncs={} as {[k:string]:RpcExtendClientCallable|undefined|null};')
+        code=["RemoteName='"+self.namespace.name+"';"]
+        code.append('rpc__client?:RpcExtendClient1;')
+        code.append('rpc__RemoteFuncs={} as {[k:string]:RpcExtendClientCallable|undefined|null};')
         self.typedefBlock=code
 
     def generateInitBlock(self):
-        code=['export async function useClient(client:RpcExtendClient1){']
-        code.append(' rpc__client=client;')
+        code=['async useClient(client:RpcExtendClient1){']
+        code.append(' this.rpc__client=client;')
         code.append('}')
         self.initBlock=code
 
     def validSymbolName(self,fnname:str):
-        if fnname in ['typeof','async','await','import','export','class','in']:
+        if fnname in ['typeof','async','await','import','export','class','in','try']:
             return fnname+'2'
         else:
             return fnname
 
     def generateFunctionWrap(self,fn:idldef.Function):
         code=[]
-        row=f'export async function {self.validSymbolName(fn.name)}('
+        row=f'async {self.validSymbolName(fn.name)}('
         row+=','.join(map(lambda p:self.validSymbolName(p.name)+':'+convertIdlTypeToTsType(p.type2),fn.params))
         if len(fn.results)==0:
             row+='):Promise<void>{'
@@ -65,10 +65,10 @@ class TsNamespaceGenerator:
         typedecl+='->'
         for p in fn.results:
             typedecl+=convertIdlTypeToTsTypedecl(p.type2)
-        code+=[f' let remotefunc=rpc__RemoteFuncs.{fn.name};',
+        code+=[f' let remotefunc=this.rpc__RemoteFuncs.{fn.name};',
         ' if(remotefunc==undefined){',
-        f"  remotefunc=await rpc__client.getFunc(RemoteName + '.{fn.name}');",
-        f"  rpc__RemoteFuncs.{fn.name}=remotefunc",
+        f"  remotefunc=await this.rpc__client!.getFunc(this.RemoteName + '.{fn.name}');",
+        f"  this.rpc__RemoteFuncs.{fn.name}=remotefunc",
         f"  remotefunc!.typedecl('{typedecl}');",
         " }"]
         row=f" let result=await remotefunc!.call("
@@ -98,17 +98,22 @@ class TsNamespaceGenerator:
     def indentCode(self,code:typing.List[str],spaceCnt:int):
       return map(lambda t1:' '*spaceCnt+t1,code)
 
-    def generate(self):
+    def generate(self,withImport=True):
         self.preprocess()
         self.generateTypedefBlock()
         self.generateInitBlock()
         self.generateFunctionsBlock()
         nsname=self.namespace.name.replace('-','__').replace('.','__')
-        return '\n'.join(["import {RpcExtendClient1,RpcExtendClientCallable,RpcExtendClientObject} from 'pxprpc/extend'",
-        f"export namespace {nsname}{{"]+
+        header=[]
+        if withImport:
+            header.append("import {RpcExtendClient1,RpcExtendClientCallable,RpcExtendClientObject} from 'pxprpc/extend'")
+        return '\n'.join(header+[
+        f"export class Cls_{nsname}{{"]+
         list(self.indentCode(self.typedefBlock,1))+
         list(self.indentCode(self.initBlock,1))+
-        list(self.indentCode(self.functionBlock,1))+['}'])
+        list(self.indentCode(self.functionBlock,1))+
+        ['}',
+        f'export var {nsname}=new Cls_{nsname}();'])
 
         
     def preprocess(self):

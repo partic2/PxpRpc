@@ -17,22 +17,12 @@ class AbstractIo:
         raise NotImplemented()
     
 
-def encodeToBytes(obj,addr32:int):
-    t1=type(obj)
-    if t1==int:
-        return obj.to_bytes(8,'little')
-    elif t1==float:
-        return struct.pack('<d',obj)
-    elif t1==bool:
-        return bytes([0,0,0,1]) if obj else bytes([0,0,0,0])
-    else:
-        return addr32.to_bytes(4,'little')
     
 T=TypeVar('T')
 def NotNone(t:Optional[T])->T:
     return t; #type:ignore
 
-def pytypeToDeclChar(t:type):
+def pytypeToDeclChar(t):
     typemap={
                 int:'l',float:'d',bool:'c',bytes:'b',str:'s'
             }
@@ -188,6 +178,27 @@ class TableSerializer:
             else:
                 raise IOError('Unknown Type')
         
+        return self
+
+    def toMapArray(self)->List[Dict[str,Any]]:
+        r=[]
+        assert self.headerName!=None
+        for t1 in range(self.getRowCount()):
+            r0={}
+            row=self.getRow(t1)
+            for t2,t3 in enumerate(self.headerName):
+                r0[t3]=row[t2]
+            r.append(r0)
+        return r
+
+    def fromMapArray(self,val:List[Dict[str,Any]]):
+        if len(val)>=1 and self.headerName==None:
+            self.headerName=list(val[0].keys())
+        for t1 in val:
+            row=[]
+            for t2 in NotNone(self.headerName):
+                row.append(t1[t2])
+            self.addRow(row)
         return self
 
     def build(self):

@@ -74,8 +74,9 @@ async def testClient(rpcconn:pxprpc.client.RpcConnection,name:str='default'):
         print('testTableUnser:',testTableUnser.value)
         testTableUnser.typedecl('b->')
         print('expect a table')
-        await testTableUnser(TableSerializer().setHeader('iscl',['id','name','isdir','filesize'])\
-                            .addRow([1554,'1.txt',False,12345]).addRow([1555,'docs',True,0]).build())
+        await testTableUnser(TableSerializer().setHeader('iscl',None).fromMapArray(\
+            [dict(id=1554,name='1.txt',isdir=False,filesize=12345),dict(id=1555,name='docs',isdir=True,filesize=0)])\
+                .build())
 
     print('expect wait 1 second')
     print('expect tick:',await wait1Sec())
@@ -119,10 +120,7 @@ async def amain():
             
         async def testTableUnser(self,b:bytes):
             ser=TableSerializer().load(b)
-            print(*ser.headerName,sep='\t')
-            len=ser.getRowCount()
-            for t1 in range(len):
-                print(*ser.getRow(t1),sep='\t')
+            print(ser.toMapArray())
 
         @decorator.typedecl('cilfdb->il')
         async def testPrintArg(self,a:bool,b:int,c:int,d:float,e:float,f:bytes):

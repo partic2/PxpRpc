@@ -3,7 +3,7 @@ import asyncio
 import asyncio.locks
 import traceback
 import struct
-from .common import NotNone, encodeToBytes,zero32
+from .common import NotNone
 
 import typing 
 from typing import Optional,Any,Callable,List,cast

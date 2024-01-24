@@ -5,6 +5,8 @@ import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
+import java.util.List;
+import java.util.Map;
 import java.util.Timer;
 import java.util.TimerTask;
 
@@ -41,15 +43,12 @@ public class PxpRpc {
 		}
 
 		public void testTableUnser(ByteBuffer buf){
-			TableSerializer ser = new TableSerializer().load(buf);
-			for(String e:ser.headerName){
-				System.out.print(e+"\t");
-			}
-			System.out.println();
-			for(int i=0;i<ser.getRowCount();i++){
-				for(Object e:ser.getRow(i)){
-					System.out.print(e);
-					System.out.print("\t");
+			List<Map<String, Object>> maparr = new TableSerializer().load(buf).toMapArray();
+			for(Map<String, Object> e:maparr){
+				for(Map.Entry<String, Object> kv:e.entrySet()){
+					System.out.print(kv.getKey()+":");
+					System.out.print(kv.getValue());
+					System.out.print("     ");
 				}
 				System.out.println();
 			}

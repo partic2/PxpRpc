@@ -214,6 +214,10 @@ class RpcExtendClient1:
         self.__nextSid=self.__sidStart
         self.builtIn=None
 
+    async def init(self):
+        if not self.conn.running:
+            asyncio.create_task(self.conn.run())
+
     def allocSid(self)->int:
         reachEnd=False
         while self.__nextSid in self.__usedSid:

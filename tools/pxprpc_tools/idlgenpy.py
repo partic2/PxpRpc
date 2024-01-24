@@ -43,7 +43,7 @@ class PyNamespaceGenerator:
         self.initBlock = code
 
     def validSymbolName(self, fnname: str):
-        if fnname in ['typeof', 'async', 'await', 'import', 'export', 'class', 'def','in']:
+        if fnname in ['typeof', 'async', 'await', 'import', 'export', 'class', 'def','in','self','from','try','with']:
             return fnname+'2'
         else:
             return fnname
@@ -94,20 +94,23 @@ class PyNamespaceGenerator:
                 raise e
         self.functionBlock = code
 
-    def generate(self):
+    def generate(self,withImport=True):
         self.preprocess()
         self.generateTypedefBlock()
         self.generateInitBlock()
         self.generateFunctionsBlock()
         nsname = self.namespace.name.replace('-', '__').replace('.', '__')
-        return '\n'.join(['from pxprpc.client import RpcExtendClientObject,RpcExtendClient1',
-                          'import typing',
-                          f"class _Cls__{nsname}(object):",
+        header=[]
+        if withImport:
+            header+=['from pxprpc.client import RpcExtendClientObject,RpcExtendClient1',
+                          'import typing']
+        return '\n'.join(header+[
+                          f"class Cls_{nsname}(object):",
                           ' def __init__(self):'] +
                          list(self.indentCode(self.typedefBlock, 2)) +
                          list(self.indentCode(self.initBlock, 1)) +
                          list(self.indentCode(self.functionBlock, 1))+[
-            f"{nsname}=_Cls__{nsname}()"
+            f"{nsname}=Cls_{nsname}()"
         ])
 
     def preprocess(self):

@@ -157,7 +157,7 @@ export class RpcExtendClient1 {
     private __nextSid: number;
 
     private __sidStart: number = 1;
-    private __sidEnd: number = 256;
+    private __sidEnd: number = 0xffff;
     
     public constructor(public conn: Client) {
         this.__nextSid = this.__sidStart;
@@ -434,8 +434,6 @@ export class TableSerializer {
         }
         return this;
     }
-
-
     public build():ArrayBuffer{
         let ser=new Serializer().prepareSerializing(64);
         let i1=0;
@@ -524,5 +522,37 @@ export class TableSerializer {
             }
         }
         return ser.build();
+    }
+    public toMapArray():any[]{
+        let r:any[]=[]
+        let rowCount=this.getRowCount()
+        let colCount=this.headerName!.length;
+        for(let t1=0;t1<rowCount;t1++){
+            let r0={} as any;
+            let row=this.getRow(t1);
+            for(let t2=0;t2<colCount;t2++){
+                r0[this.headerName![t2]]=row[t2];
+            }
+            r.push(r0);
+        }
+        return r
+    }
+    public fromMapArray(val:any[]):this{
+        if(val.length>0 && this.headerName===null){
+            this.headerName=[];
+            for(let k in val[0]){
+                this.headerName.push(k);
+            }
+        }
+        let rowCount=val.length;
+        let colCount=this.headerName!.length;
+        for(let t1=0;t1<rowCount;t1++){
+            let row=[];
+            for(let t2=0;t2<colCount;t2++){
+                row.push(val[t1][this.headerName![t2]]);
+            }
+            this.addRow(row);
+        }
+        return this
     }
 }

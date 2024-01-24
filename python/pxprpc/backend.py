@@ -74,12 +74,13 @@ try:
             self.host=host
             self.port=port
             
-        async def start(self):
+        async def start(self)->client.RpcConnection:
             r,w=await asyncio.open_connection(self.host,self.port)
             self.rpcconn=client.RpcConnection()
             self.rpcconn.backend1(StreamIo(r,w))
             self.runtask=asyncio.create_task(self.rpcconn.run())
             self.__running=True
+            return self.rpcconn
 
         async def stop(self):
             if self.__running:

@@ -30,7 +30,7 @@ export async function testAsClient(){
     await testUnser.call(serdata);
     let testTableUnser=(await client2.getFunc('test1.testTableUnser'))!;
     testTableUnser.typedecl('b->')
-    serdata=new TableSerializer().setHeader('iscl',['id','name','isdir','filesize']).addRow([1554,'1.txt',false,BigInt('12345')]).addRow([1555,'docs',true,BigInt('0')]).build();
+    serdata=new TableSerializer().setHeader('iscl',null).fromMapArray([{id:1554,name:'1.txt',isdir:false,filesize:BigInt('12345')},{id:1555,name:'docs',isdir:true,filesize:BigInt('0')}]).build();
     await testTableUnser.call(serdata);
     let raiseError1=(await client2.getFunc('test1.raiseError1'))!
     try{
@@ -51,11 +51,7 @@ export async function testAsServer(){
         console.log(ser.getInt(),ser.getLong(),ser.getFloat(),ser.getDouble(),ser.getString(),new TextDecoder().decode(ser.getBytes()))
     }).typedecl('b->'))
     server2.addFunc('test1.testTableUnser',new RpcExtendServerCallable(async(b:ArrayBuffer)=>{
-        let ser=new TableSerializer().load(b);
-        console.log(ser.headerName!.join('\t'))
-        for(let i1=0;i1<ser.getRowCount();i1++){
-            console.log(ser.getRow(i1).join('\t'));
-        }
+        console.log(new TableSerializer().load(b).toMapArray())
     }).typedecl('b->'))
     server2.addFunc('test1.wait1Sec',new RpcExtendServerCallable(
         ()=>new Promise((resolve)=>setTimeout(()=>{resolve('tick')},1000))
