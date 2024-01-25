@@ -33,7 +33,7 @@ public class TCPBackend implements Closeable{
 		@Override
 		public void run() {
 			try {
-				sc.init(new ChannelIo(s), attached.funcMap);
+				sc.init(new ChannelIo2(s,s), attached.funcMap);
 				s.configureBlocking(true);
 				sc.serve();
 			} catch (Exception e) {
