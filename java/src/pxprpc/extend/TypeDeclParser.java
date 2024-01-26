@@ -10,7 +10,7 @@ import java.nio.charset.Charset;
 import java.util.ArrayList;
 
 public class TypeDeclParser {
-    ServerContext boundContext;
+
     public TypeDeclParser(ServerContext boundContext){
         this.boundContext=boundContext;
     }
