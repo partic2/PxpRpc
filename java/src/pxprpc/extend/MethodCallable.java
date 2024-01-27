@@ -25,8 +25,8 @@ public class MethodCallable extends CommonCallable {
 		if(typeDecl!=null){
 			String decl=typeDecl.value()[0];
 			int delim=decl.indexOf("->");
-			tParam=new TypeDeclParser(null).parseDeclText(decl.substring(0,delim));
-			tResult=new TypeDeclParser(null).parseDeclText(decl.substring(delim+2));
+			tParam=TypeDeclParser.parseDeclText(decl.substring(0,delim));
+			tResult=TypeDeclParser.parseDeclText(decl.substring(delim+2));
 			return true;
 		}else{
 			return false;

@@ -75,4 +75,7 @@ export class WebSocketIo implements Io{
         }
         this.ws!.send(buf.buffer);
     }
+    public close(): void {
+        this.ws?.close()
+    }
 }

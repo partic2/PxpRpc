@@ -39,6 +39,9 @@ export async function testAsClient(){
     }catch(e){
         console.log(e)
     }
+    let autoCloseable=(await client2.getFunc('test1.autoCloseable'))!.typedecl('->o');
+    await autoCloseable.call();
+    await client2.close()
 }
 
 export async function testAsServer(){

@@ -3,6 +3,7 @@
 export interface Io{
     receive():Promise<ArrayBuffer>;
     send(data:ArrayBufferLike[]):Promise<void>;
+    close():void;
 }
 
 export class Serializer{
@@ -187,6 +188,7 @@ export class Client{
         });
         await this.io1.send([hdr])
         this.running=false;
+        this.io1.close();
     }
     public async getInfo(sid:number=0x100){
         let result=await this.call(-4,[],sid);
@@ -325,14 +327,18 @@ export class Server{
     }
     public async serve(){
         this.running=true;
-		while(this.running) {
-            let packet=new DataView(await this.io1.receive());
-            let r=new PxpRequest(this,packet.getUint32(0,true));
-            r.callableIndex=packet.getInt32(4,true);
-            r.parameter=packet.buffer.slice(8);
-			this.queueRequest(r);
-		}
-		this.running=false;
+        try{
+            while(this.running) {
+                let packet=new DataView(await this.io1.receive());
+                let r=new PxpRequest(this,packet.getUint32(0,true));
+                r.callableIndex=packet.getInt32(4,true);
+                r.parameter=packet.buffer.slice(8);
+                this.queueRequest(r);
+            }
+        }finally{
+            this.close()
+        }
+		
 	}
     public funcMap:((name:string)=>PxpCallable|null)|null=null;
 	public async getFunc(r:PxpRequest){
@@ -351,7 +357,7 @@ export class Server{
 	public async getInfo(r:PxpRequest){
         r.result=[new TextEncoder().encode(
             "server name:pxprpc for typescript\n"+
-        "version:1.1\n")]
+        "version:2.0\n")]
 	}
     public async sequence(r:PxpRequest){
         this.sequenceSession=new DataView(r.parameter!).getUint32(0,true);
@@ -368,7 +374,9 @@ export class Server{
         }
     }
     public close(){
+        if(!this.running)return;
         this.running=false;
+        this.io1.close();
         for(let ref2 of this.refPool){
             if(ref2.onFree!=null){
                 ref2.onFree();

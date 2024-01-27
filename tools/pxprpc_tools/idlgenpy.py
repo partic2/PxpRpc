@@ -39,12 +39,11 @@ class PyNamespaceGenerator:
 
     def generateInitBlock(self):
         code = ['async def useClient(self,client:RpcExtendClient1):',
-                ' self.rpc__client=client',
-                ' self.rpc__RemoteFuncs.clear()']
+                ' self.rpc__client=client;']
         self.initBlock = code
 
     def validSymbolName(self, fnname: str):
-        if fnname in ['typeof', 'async', 'await', 'import', 'export', 'class', 'def','in','self','from','try','with']:
+        if fnname in ['typeof', 'async', 'await', 'import', 'export', 'class', 'def','in']:
             return fnname+'2'
         else:
             return fnname
@@ -70,7 +69,7 @@ class PyNamespaceGenerator:
             typedecl += convertIdlTypeToPyTypedecl(p.type2)
 
         code += [f" remotefunc=self.rpc__RemoteFuncs.get('{fn.name}',None)",
-                 " if remotefunc==None:",
+                 " if(remotefunc==None):",
                  f"  remotefunc=await self.rpc__client.getFunc(self.RemoteName + '.{fn.name}')",
                  f"  self.rpc__RemoteFuncs['{fn.name}']=remotefunc",
                  f"  remotefunc.typedecl('{typedecl}')"]
@@ -95,23 +94,20 @@ class PyNamespaceGenerator:
                 raise e
         self.functionBlock = code
 
-    def generate(self,withImport=True):
+    def generate(self):
         self.preprocess()
         self.generateTypedefBlock()
         self.generateInitBlock()
         self.generateFunctionsBlock()
         nsname = self.namespace.name.replace('-', '__').replace('.', '__')
-        header=[]
-        if withImport:
-            header+=['from pxprpc.client import RpcExtendClientObject,RpcExtendClient1',
-                          'import typing']
-        return '\n'.join(header+[
-                          f"class Cls_{nsname}(object):",
+        return '\n'.join(['from pxprpc.extend import RpcExtendClientObject,RpcExtendClient1',
+                          'import typing',
+                          f"class _Cls__{nsname}(object):",
                           ' def __init__(self):'] +
                          list(self.indentCode(self.typedefBlock, 2)) +
                          list(self.indentCode(self.initBlock, 1)) +
                          list(self.indentCode(self.functionBlock, 1))+[
-            f"{nsname}=Cls_{nsname}()"
+            f"{nsname}=_Cls__{nsname}()"
         ])
 
     def preprocess(self):

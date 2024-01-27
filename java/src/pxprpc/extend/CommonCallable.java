@@ -5,6 +5,7 @@ import pxprpc.base.PxpRequest;
 import pxprpc.base.Serializer2;
 
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 
 public abstract class CommonCallable implements PxpCallable {
     public char[] tParam=new char[0];
@@ -17,7 +18,9 @@ public abstract class CommonCallable implements PxpCallable {
             args[0]=buf;
         }else{
             Serializer2 ser = new Serializer2().prepareUnserializing(buf);
-            args=new TypeDeclParser(req.context).unserializeMultivalue(tParam,ser);
+            args=new TableSerializer().bindSerializer(ser)
+                    .bindContext(req.context,null).setHeader2(tParam,null)
+                    .getRowsData(1).get(0);
         }
         return args;
     }
@@ -37,7 +40,9 @@ public abstract class CommonCallable implements PxpCallable {
             }else{
                 rs=(Object[]) result;
             }
-            new TypeDeclParser(req.context).serializeMultivalue(tResult,ser,rs);
+            new TableSerializer().bindSerializer(ser)
+                    .bindContext(req.context,null).setHeader2(tResult,null)
+                    .putRowsData(Arrays.asList(new Object[][]{rs}));
             buf = ser.build();
         }
         req.result=new ByteBuffer[]{buf};

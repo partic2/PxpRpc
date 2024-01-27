@@ -59,40 +59,9 @@ s  string(bytes will be decode to string)
             buf=[abuf];
         }else{
             let ser=new Serializer().prepareSerializing(32);
-            for (let i1 = 0; i1 < this.tParam.length; i1++) {
-                switch (this.tParam.charAt(i1)) {
-                    case 'i':
-                        ser.putInt(args[i1]);
-                        break;
-                    case 'l':
-                        ser.putLong(args[i1]);
-                        break;
-                    case 'f':
-                        ser.putFloat(args[i1]);
-                        break;
-                    case 'd':
-                        ser.putDouble(args[i1]);
-                        break;
-                    case 'o':
-                        if(args[i1]!==null){
-                            ser.putInt(args[i1].value);
-                        }else{
-                            ser.putInt(-1);
-                        }
-                        break;
-                    case 'b':
-                        ser.putBytes(args[i1]);
-                        break
-                    case 's':
-                        ser.putString(args[i1]);
-                        break;
-                    case 'c':
-                        ser.putVarint(args[i1]?1:0);
-                        break;
-                    default:
-                        throw new Error('Unknown type')
-                }
-            }
+            new TableSerializer().
+                bindContext(null,this.client).bindSerializer(ser).setHeader(this.tParam,null).
+                putRowsData([args])
             let serbuf=ser.build()
             buf=[serbuf];
         }
@@ -103,45 +72,12 @@ s  string(bytes will be decode to string)
             return resp;
         }else{
             let ser=new Serializer().prepareUnserializing(resp);
-            let rets=[]
-            for (let i1 = 0; i1 < this.tResult.length; i1++) {
-                switch (this.tResult.charAt(i1)) {
-                    case 'i':
-                        rets.push(ser.getInt())
-                        break;
-                    case 'l':
-                        rets.push(ser.getLong())
-                        break;
-                    case 'f':
-                        rets.push(ser.getFloat())
-                        break;
-                    case 'd':
-                        rets.push(ser.getDouble())
-                        break;
-                    case 'o':
-                        let val=ser.getInt();
-                        if(val!==-1){
-                            rets.push(new RpcExtendClientObject(this.client,val))
-                        }else{
-                            rets.push(null)
-                        }
-                        break;
-                    case 'b':
-                        rets.push(ser.getBytes())
-                        break
-                    case 's':
-                        rets.push(ser.getString())
-                        break;
-                    case 'c':
-                        rets.push(ser.getVarint()!==0)
-                        break;
-                    default:
-                        throw new Error('Unknown type');
-                }
-            }
-            if(rets.length===1){
+            let rets=new TableSerializer().
+                bindContext(null,this.client).bindSerializer(ser).setHeader(this.tResult,null).
+                getRowsData(1)[0]
+            if(this.tResult.length===1){
                 return rets[0];
-            }else if(rets.length===0){
+            }else if(this.tResult.length===0){
                 return null;
             }else{
                 return rets;
@@ -149,7 +85,6 @@ s  string(bytes will be decode to string)
         }
     }
 }
-
 
 
 export class RpcExtendClient1 {
@@ -241,42 +176,9 @@ export class RpcExtendServerCallable implements PxpCallable{
             param=[buf];
         }else{
             let ser=new Serializer().prepareUnserializing(buf);
-            for(let i1=0;i1<this.tParam.length;i1++){
-                switch(this.tParam.charAt(i1)){
-                    case 'i':
-                        param.push(ser.getInt());
-                        break;
-                    case 'l':
-                        param.push(ser.getLong());
-                        break;
-                    case 'f':
-                        param.push(ser.getFloat());
-                        break;
-                    case 'd':
-                        param.push(ser.getDouble());
-                        break;
-                    case 'o':
-                        let val=ser.getInt();
-                        if(val!==-1){
-                            obj=req.context.getRef(val).object;
-                            param.push(obj);
-                        }else{
-                            param.push(null)
-                        }
-                        break;
-                    case 'b':
-                        param.push(ser.getBytes());
-                        break;
-                    case 's':
-                        param.push(ser.getString());
-                        break;
-                    case 'c':
-                        param.push(ser.getVarint()!==0);
-                        break;
-                    default:
-                        throw new Error('Unsupported value type.');
-                }
-            }
+            param=new TableSerializer().
+                bindContext(req.context,null).bindSerializer(ser).setHeader(this.tParam,null).
+                getRowsData(1)[0]
         }
         return param;
     }
@@ -289,47 +191,14 @@ export class RpcExtendServerCallable implements PxpCallable{
         }
     }
     public writeResult(req: PxpRequest,r:any):ArrayBuffer[]{
-        let ser=new Serializer().prepareSerializing(8);
         if(this.tResult==='b'){
             return [r]
         }else{
+            let ser=new Serializer().prepareSerializing(8);
             let results=this.tResult.length>1?r:[r]
-            for(let i=0;i<this.tResult.length;i++){
-                switch(this.tResult.charAt(i)){
-                    case 'i':
-                        ser.putInt(results[i]);
-                        break;
-                    case 'l':
-                        ser.putLong(results[i]);
-                        break;
-                    case 'f':
-                        ser.putFloat(results[i]);
-                        break;
-                    case 'd':
-                        ser.putDouble(results[i]);
-                        break;
-                    case 'o':
-                        if(results[i]!==null){
-                            ser.putInt(allocRefFor(req.context,results[i]).index);
-                        }else{
-                            ser.putInt(-1);
-                        }
-                        break;
-                    case 'b':
-                        ser.putBytes(results[i]);
-                        break;
-                    case 's':
-                        ser.putString(results[i]);
-                        break;
-                    case 'c':
-                        ser.putVarint(results[i]?1:0);
-                        break;
-                    case '':
-                        break;
-                    default:
-                        throw new Error('Unsupported value type.');
-                }
-            }
+            new TableSerializer().
+                bindContext(req.context,null).bindSerializer(ser).setHeader(this.tResult,null).
+                putRowsData([results]);
             let buf=ser.build();
             if(buf.byteLength==0)return [];
             return [buf];
@@ -360,10 +229,22 @@ export class TableSerializer {
     FLAG_NO_HEADER_NAME=1;
     headerName:string[]|null=null;
     headerType:string|null=null;
-    rows:any[]=[];
+    rows:any[][]=[];
+    boundServContext:Server|null=null;
+    boundClieContext:RpcExtendClient1|null=null;
+    ser:Serializer|null=null;
     public setHeader(types:string|null,names:string[]|null){
         this.headerName=names;
         this.headerType=types;
+        return this;
+    }
+    public bindContext(serv:Server|null,clie:RpcExtendClient1|null){
+        this.boundServContext=serv;
+        this.boundClieContext=clie;
+        return this;
+    }
+    public bindSerializer(ser:Serializer){
+        this.ser=ser;
         return this;
     }
     public getRow(index:number){
@@ -375,9 +256,77 @@ export class TableSerializer {
     public addRow(row:any[]){
         this.rows.push(row);return this;
     }
+    public getRowsData(rowCnt:number):any[][]{
+        let rows:any[][]=[];
+        let colCnt=this.headerType!.length;
+        let ser=this.ser!;
+        for(let i1=0;i1<rowCnt;i1++){
+            rows.push(new Array(colCnt));
+        }
+        for(let i1=0;i1<colCnt;i1++){
+            let type=this.headerType!.charAt(i1);
+            switch(type){
+                case 'i':
+                    for(let i2=0;i2<rowCnt;i2++){
+                        rows[i2][i1]=ser.getInt();
+                    }
+                    break;
+                case 'l':
+                    for(let i2=0;i2<rowCnt;i2++){
+                        rows[i2][i1]=ser.getLong();
+                    }
+                    break;
+                case 'f':
+                    for(let i2=0;i2<rowCnt;i2++){
+                        rows[i2][i1]=ser.getFloat();
+                    }
+                    break;
+                case 'd':
+                    for(let i2=0;i2<rowCnt;i2++){
+                        rows[i2][i1]=ser.getDouble();
+                    }
+                    break;
+                case 'b':
+                    for(let i2=0;i2<rowCnt;i2++){
+                        rows[i2][i1]=ser.getBytes();
+                    }
+                    break;
+                case 's':
+                    for(let i2=0;i2<rowCnt;i2++){
+                        rows[i2][i1]=ser.getString();
+                    }
+                    break;
+                case 'c':
+                    for(let i2=0;i2<rowCnt;i2++){
+                        rows[i2][i1]=ser.getVarint()!==0;
+                    }
+                    break;
+                case 'o':
+                    for(let i2=0;i2<rowCnt;i2++){
+                        let val=ser.getInt();
+                        if(val===-1){
+                            rows[i2][i1]=null;
+                        }else{
+                            if(this.boundServContext!=null){
+                                rows[i2][i1]=this.boundServContext.getRef(val).object;
+                            }else{
+                                rows[i2][i1]=new RpcExtendClientObject(this.boundClieContext!,val);
+                            }
+                        }
+                    }
+                    break;
+                default:
+                    throw new Error("Unknown Type");
+            }
+        }
+        return rows;
+    }
     public load(buf:ArrayBuffer){
-        let ser=new Serializer().prepareUnserializing(buf);
-        let flag=ser.getInt();
+        if(buf!=null){
+            this.bindSerializer(new Serializer().prepareUnserializing(buf))
+        }
+        let ser=this.ser!;
+        let flag=ser.getVarint();
         let rowCnt=ser.getVarint();
         this.headerType=ser.getString();
         let colCnt=this.headerType.length;
@@ -387,56 +336,75 @@ export class TableSerializer {
                 this.headerName.push(ser.getString());
             }
         }
-        for(let i1=0;i1<rowCnt;i1++){
-            this.rows.push(new Array(colCnt));
-        }
+        this.rows=this.getRowsData(rowCnt);
+        return this;
+    }
+    public putRowsData(rows:any[][]){
+        let colCnt=this.headerType!.length;
+        let rowCnt=rows.length;
+        let ser=this.ser!;
         for(let i1=0;i1<colCnt;i1++){
-            let type=this.headerType.charAt(i1);
+            let type=this.headerType!.charAt(i1);
             switch(type){
                 case 'i':
                     for(let i2=0;i2<rowCnt;i2++){
-                        this.rows[i2][i1]=ser.getInt();
+                        ser.putInt(rows[i2][i1]);
                     }
                     break;
                 case 'l':
                     for(let i2=0;i2<rowCnt;i2++){
-                        this.rows[i2][i1]=ser.getLong();
+                        ser.putLong(rows[i2][i1]);
                     }
                     break;
                 case 'f':
                     for(let i2=0;i2<rowCnt;i2++){
-                        this.rows[i2][i1]=ser.getFloat();
+                        ser.putFloat(rows[i2][i1]);
                     }
                     break;
                 case 'd':
                     for(let i2=0;i2<rowCnt;i2++){
-                        this.rows[i2][i1]=ser.getDouble();
+                        ser.putDouble(rows[i2][i1]);
                     }
                     break;
                 case 'b':
                     for(let i2=0;i2<rowCnt;i2++){
-                        this.rows[i2][i1]=ser.getBytes();
+                        ser.putBytes(rows[i2][i1]);
                     }
                     break;
                 case 's':
                     for(let i2=0;i2<rowCnt;i2++){
-                        this.rows[i2][i1]=ser.getString();
+                        ser.putString(rows[i2][i1]);
                     }
                     break;
                 case 'c':
                     for(let i2=0;i2<rowCnt;i2++){
-                        this.rows[i2][i1]=ser.getVarint()!==0;
+                        ser.putVarint(rows[i2][i1]?1:0);
+                    }
+                    break;
+                case 'o':
+                    for(let i2=0;i2<rowCnt;i2++){
+                        let val=rows[i2][i1];
+                        if(val!==null){
+                            if(this.boundServContext!=null){
+                                ser.putInt(allocRefFor(this.boundServContext,val).index);
+                            }else{
+                                ser.putInt(val.value);
+                            }
+                        }else{
+                            ser.putInt(-1);
+                        }
                     }
                     break;
                 default:
                     throw new Error("Unknown Type");
             }
         }
-        return this;
     }
     public build():ArrayBuffer{
-        let ser=new Serializer().prepareSerializing(64);
-        let i1=0;
+        if(this.ser==null){
+            this.bindSerializer(new Serializer().prepareSerializing(64));
+        }
+        let ser=this.ser!;
         if(this.headerType==null){
             this.headerType=''
             if(this.rows.length>=1){
@@ -465,12 +433,11 @@ export class TableSerializer {
                 }
             }
         }
-        let colsCnt=this.headerType!.length;
         let flag=0;
         if(this.headerName==null){
             flag|=this.FLAG_NO_HEADER_NAME;
         }
-        ser.putInt(flag);
+        ser.putVarint(flag);
         let rowCnt=this.rows.length;
         ser.putVarint(rowCnt);
         ser.putString(this.headerType!);
@@ -479,48 +446,7 @@ export class TableSerializer {
                 ser.putString(e);
             }
         }
-        for(i1=0;i1<colsCnt;i1++){
-            let type=this.headerType!.charAt(i1);
-            switch(type){
-                case 'i':
-                    for(let i2=0;i2<rowCnt;i2++){
-                        ser.putInt(this.rows[i2][i1]);
-                    }
-                    break;
-                case 'l':
-                    for(let i2=0;i2<rowCnt;i2++){
-                        ser.putLong(this.rows[i2][i1]);
-                    }
-                    break;
-                case 'f':
-                    for(let i2=0;i2<rowCnt;i2++){
-                        ser.putFloat(this.rows[i2][i1]);
-                    }
-                    break;
-                case 'd':
-                    for(let i2=0;i2<rowCnt;i2++){
-                        ser.putDouble(this.rows[i2][i1]);
-                    }
-                    break;
-                case 'b':
-                    for(let i2=0;i2<rowCnt;i2++){
-                        ser.putBytes(this.rows[i2][i1]);
-                    }
-                    break;
-                case 's':
-                    for(let i2=0;i2<rowCnt;i2++){
-                        ser.putString(this.rows[i2][i1]);
-                    }
-                    break;
-                case 'c':
-                    for(let i2=0;i2<rowCnt;i2++){
-                        ser.putVarint(this.rows[i2][i1]?1:0);
-                    }
-                    break;
-                default:
-                    throw new Error("Unknown Type");
-            }
-        }
+        this.putRowsData(this.rows);
         return ser.build();
     }
     public toMapArray():any[]{
@@ -552,6 +478,21 @@ export class TableSerializer {
                 row.push(val[t1][this.headerName![t2]]);
             }
             this.addRow(row);
+        }
+        return this
+    }
+    public toArray():any[]{
+        let r:any[]=[]
+        let rowCount=this.getRowCount()
+        for(let t1=0;t1<rowCount;t1++){
+            r.push(this.getRow(t1)[0]);
+        }
+        return r 
+    }
+    public fromArray(val:any[]){
+        let rowCount=val.length;
+        for(let t1=0;t1<rowCount;t1++){
+            this.addRow([val[t1]]);
         }
         return this
     }

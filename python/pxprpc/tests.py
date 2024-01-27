@@ -3,9 +3,10 @@
 
 import traceback
 import pxprpc.backend
-import pxprpc.client
-import pxprpc.server
-from pxprpc.common import Serializer,TableSerializer
+import pxprpc.extend
+import pxprpc.base
+from pxprpc.base import Serializer
+from pxprpc.extend import TableSerializer
 
 import asyncio
 
@@ -22,12 +23,10 @@ EnableCSharpClient=False
 EnableCClient=False
 EnableJavaClient=False
 
-funcMap=dict()
-
-async def testClient(rpcconn:pxprpc.client.RpcConnection,name:str='default'):
+async def testClient(rpcconn:pxprpc.extend.ClientContext,name:str='default'):
     print('================'+name+'====================')
     
-    client2=pxprpc.client.RpcExtendClient1(rpcconn)
+    client2=pxprpc.extend.RpcExtendClient1(rpcconn)
     print(await rpcconn.getInfo())
     get1234=await client2.getFunc('test1.get1234')
     assert get1234!=None
@@ -100,7 +99,7 @@ async def testClient(rpcconn:pxprpc.client.RpcConnection,name:str='default'):
     print(name+' test done')
     
 
-from pxprpc.server import decorator
+from pxprpc.extend import decorator
 
 async def amain():
     class test1:
@@ -139,18 +138,17 @@ async def amain():
 
                 
     
-    funcMap['test1']=test1()
+    pxprpc.extend.RegisteredFuncMap['test1']=test1()
     
     async def fn()->str:
         await asyncio.sleep(1)
         return 'tick'
-    funcMap['test1.wait1Sec']=fn
+    pxprpc.extend.RegisteredFuncMap['test1.wait1Sec']=fn
     async def fn():
         raise IOError('dummy io error')
-    funcMap['test1.raiseError1']=fn
+    pxprpc.extend.RegisteredFuncMap['test1.raiseError1']=fn
     
     server1=pxprpc.backend.TcpServer('127.0.0.1',1344)
-    server1.funcMap=funcMap
     await server1.start()
 
     client1=pxprpc.backend.TcpClient('127.0.0.1',1344)
@@ -190,14 +188,13 @@ async def test4wstunnel():
     from pxprpc.backend import WebSocketClientIo,WebSocketServerIo
 
     async def wshandler(req:web_request.Request):
-        srv=pxprpc.server.ServerContext()
-        srv.funcMap.update(funcMap)
+        srv=pxprpc.extend.ServerContext()
         srv.backend1(WebSocketServerIo(req))
         await srv.serve()
         return web.Response()
 
     async def wshandlerClient(req:web_request.Request):
-        client1=pxprpc.client.RpcConnection()
+        client1=pxprpc.extend.ClientContext()
         client1.backend1(WebSocketServerIo(req))
         asyncio.create_task(client1.run())
         await testClient(client1,'websocketClient')
@@ -213,7 +210,7 @@ async def ctestmain():
     client1=pxprpc.backend.TcpClient('127.0.0.1',1089)
     await client1.start()
     print('start client')
-    client2=pxprpc.client.RpcExtendClient1(client1.rpcconn)
+    client2=pxprpc.extend.RpcExtendClient1(client1.rpcconn)
     print(await client1.rpcconn.getInfo())
     t1=await client2.getFunc('printString')
     assert t1!=None

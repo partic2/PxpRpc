@@ -65,23 +65,12 @@ public class BuiltInFuncList {
 	}
 
 
-	public List<Object> listNew(AsyncReturn<List<Object>> ret,int type, int size, ByteBuffer init){
-		ArrayList<Object> r = new ArrayList<Object>();
-		TypeDeclParser p = new TypeDeclParser(ret.getRequest().context);
-		Serializer2 ser=new Serializer2().prepareUnserializing(init);
-		for(int i=0;i<size;i++){
-			r.add(p.unserializeValue((char)type,ser));
-		}
-		ret.resolve(r);
+	public List<Object> listNew(AsyncReturn<List<Object>> ret, ByteBuffer init){
+		ret.resolve(new TableSerializer().load(init).toArray());
 		return null;
 	}
-	public ByteBuffer listSerialize(AsyncReturn<ByteBuffer> ret,List<Object> objs,int type){
-		TypeDeclParser p = new TypeDeclParser(ret.getRequest().context);
-		Serializer2 ser=new Serializer2().prepareSerializing(32);
-		for(Object e:objs){
-			p.serializeValue((char)type,ser,e);
-		}
-		ret.resolve(ser.build());
+	public ByteBuffer listSerialize(AsyncReturn<ByteBuffer> ret,List<Object> objs){
+		ret.resolve(new TableSerializer().fromArray(objs).build());
 		return null;
 	}
 	public int listLength(List<Object> array) {

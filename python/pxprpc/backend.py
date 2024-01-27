@@ -9,7 +9,7 @@ import traceback
 import logging
 log1=logging.getLogger(__name__)
 
-from .common import AbstractIo
+from .base import AbstractIo
 
 class StreamIo(AbstractIo):
     def __init__(self,r:asyncio.StreamReader,w:asyncio.StreamWriter):
@@ -28,21 +28,19 @@ class StreamIo(AbstractIo):
         self.w.close()
 
 try:
-    from . import server
+    from . import base
     class TcpServer:
         def __init__(self,host:str,port:int):
             self.host=host
             self.port=port
-            self.ctxs:typing.List[server.ServerContext]=[]
-            self.funcMap=dict()
+            self.ctxs:typing.List[base.ServerContext]=[]
         
         async def __newConnectionHandler(self,r:asyncio.StreamReader,w:asyncio.StreamWriter):
             try:
-                ctx=server.ServerContext()
+                ctx=base.ServerContext()
                 self.ctxs.append(ctx)
                 try:
                     ctx.backend1(StreamIo(r,w))
-                    ctx.funcMap.update(self.funcMap)
                     await ctx.serve()
                 except asyncio.exceptions.IncompleteReadError:
                     log1.debug('connection closed')
@@ -63,20 +61,21 @@ try:
             self.srv1.close()
 
 except ImportError:
-    traceback.print_exc()
+    import sys
+    traceback.print_exc(10,sys.stderr)
     pass
 
 try:
-    from . import client
+    from . import base
     
     class TcpClient:
         def __init__(self,host:str,port:int):
             self.host=host
             self.port=port
             
-        async def start(self)->client.RpcConnection:
+        async def start(self)->base.ClientContext:
             r,w=await asyncio.open_connection(self.host,self.port)
-            self.rpcconn=client.RpcConnection()
+            self.rpcconn=base.ClientContext()
             self.rpcconn.backend1(StreamIo(r,w))
             self.runtask=asyncio.create_task(self.rpcconn.run())
             self.__running=True
@@ -90,7 +89,8 @@ try:
                 await self.rpcconn.close()
 
 except ImportError:
-    traceback.print_exc()
+    import sys
+    traceback.print_exc(10,sys.stderr)
     pass
 
 
@@ -187,7 +187,8 @@ try:
                     t1.cancel()
             except Exception as ex:
                 import traceback
-                traceback.print_exc()
+                import sys
+                traceback.print_exc(10,sys.stderr)
 
         def is_reading(self):
             return True
@@ -218,7 +219,6 @@ try:
             self.url=url
             self.writequeue=asyncio.Queue(0)
             asyncio.create_task(self._serve())
-            self.funcMap=dict()
 
         async def _serve(self):
             self.conn=await self.client.ws_connect(self.url)
