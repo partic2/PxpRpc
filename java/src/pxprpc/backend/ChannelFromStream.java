@@ -17,18 +17,34 @@ public class ChannelFromStream implements ByteChannel {
     }
     @Override
     public int read(ByteBuffer dst) throws IOException {
-        //we expect no native buffer in parameter
-        int read=in.read(dst.array(), dst.position(), dst.remaining());
-        Utils.setPos(dst,dst.position()+read);
-        return read;
+        if(dst.hasArray()){
+            int read=in.read(dst.array(), dst.position(), dst.remaining());
+            Utils.setPos(dst,dst.position()+read);
+            return read;
+        }else{
+            ByteBuffer rbuf = ByteBuffer.allocate(dst.remaining());
+            int read=in.read(rbuf.array(), dst.position(), dst.remaining());
+            Utils.setLimit(rbuf,read);
+            dst.put(rbuf);
+            return read;
+        }
     }
 
     @Override
     public int write(ByteBuffer src) throws IOException {
-        int remain=src.remaining();
-        out.write(src.array(),src.position(),src.remaining());
-        out.flush();
-        return remain;
+        if(src.hasArray()){
+            int remain=src.remaining();
+            out.write(src.array(),src.position(),src.remaining());
+            out.flush();
+            return remain;
+        }else{
+            int remain=src.remaining();
+            ByteBuffer wbuf=ByteBuffer.allocate(src.remaining());
+            wbuf.put(src);
+            out.write(wbuf.array());
+            out.flush();
+            return remain;
+        }
     }
     protected boolean open=true;
     @Override
