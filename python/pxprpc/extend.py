@@ -224,7 +224,11 @@ class RpcExtendClientObject():
         if self.value is not None:
             val=self.value
             self.value=None
-            await self.client.conn.freeRef([val])
+            sid=self.client.allocSid()
+            try:
+                await self.client.conn.freeRef([val],sid)
+            finally:
+                self.client.freeSid(sid)
             
 
     async def asCallable(self):
@@ -281,22 +285,24 @@ available type typedecl characters:
 
             packed=ser.build()
         sid=self.client.allocSid()
-        result=await self.client.conn.call(self.value,packed,sid)
-        self.client.freeSid(sid)
-        if self.tResult=='b':
-            return result
-        else:
-            ser=Serializer().prepareUnserializing(result)
-            results=TableSerializer()\
-                .bindContext(None,self.client).bindSerializer(ser).setHeader(self.tResult,None)\
-                .getRowsData(1)[0]
-
-            if len(self.tResult)==0:
-                return None
-            elif len(self.tResult)==1:
-                return results[0]
+        try:
+            result=await self.client.conn.call(self.value,packed,sid)
+            if self.tResult=='b':
+                return result
             else:
-                return results
+                ser=Serializer().prepareUnserializing(result)
+                results=TableSerializer()\
+                    .bindContext(None,self.client).bindSerializer(ser).setHeader(self.tResult,None)\
+                    .getRowsData(1)[0]
+
+                if len(self.tResult)==0:
+                    return None
+                elif len(self.tResult)==1:
+                    return results[0]
+                else:
+                    return results
+        finally:
+            self.client.freeSid(sid)
 
 
 
@@ -339,10 +345,14 @@ class RpcExtendClient1:
         self.__usedSid.remove(index)
 
     async def getFunc(self,name:str)->Optional[RpcExtendClientCallable]:
-        index=await self.conn.getFunc(name,self.__sidEnd+1)
-        if index==-1:
-            return None
-        return RpcExtendClientCallable(self,value=index)
+        sid=self.allocSid()
+        try:
+            index=await self.conn.getFunc(name,sid)
+            if index==-1:
+                return None
+            return RpcExtendClientCallable(self,value=index)
+        finally:
+            self.freeSid(sid)
 
 
 def allocRefFor(context:ServerContext,obj:Any)->PxpRef:

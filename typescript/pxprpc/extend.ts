@@ -9,7 +9,12 @@ export class RpcExtendClientObject {
     }
     public async free() {
         if (this.value != undefined) {
-            await this.client.freeSid(this.value);
+            let sid=this.client.allocSid();
+            try{
+                await this.client.conn.freeRef([this.value],sid)
+            }finally{
+                await this.client.freeSid(this.value);
+            }
         }
     }
     public async asCallable():Promise<RpcExtendClientCallable>{
@@ -66,22 +71,25 @@ s  string(bytes will be decode to string)
             buf=[serbuf];
         }
         let sid=this.client.allocSid();
-        let resp=await this.client.conn.call(this.value!,buf,sid);
-        this.client.freeSid(sid);
-        if(this.tResult==='b'){
-            return resp;
-        }else{
-            let ser=new Serializer().prepareUnserializing(resp);
-            let rets=new TableSerializer().
-                bindContext(null,this.client).bindSerializer(ser).setHeader(this.tResult,null).
-                getRowsData(1)[0]
-            if(this.tResult.length===1){
-                return rets[0];
-            }else if(this.tResult.length===0){
-                return null;
+        try{
+            let resp=await this.client.conn.call(this.value!,buf,sid);
+            if(this.tResult==='b'){
+                return resp;
             }else{
-                return rets;
+                let ser=new Serializer().prepareUnserializing(resp);
+                let rets=new TableSerializer().
+                    bindContext(null,this.client).bindSerializer(ser).setHeader(this.tResult,null).
+                    getRowsData(1)[0]
+                if(this.tResult.length===1){
+                    return rets[0];
+                }else if(this.tResult.length===0){
+                    return null;
+                }else{
+                    return rets;
+                }
             }
+        }finally{
+            this.client.freeSid(sid);
         }
     }
 }
@@ -138,8 +146,13 @@ export class RpcExtendClient1 {
         delete this.__usedSid[index]
     }
     public async getFunc(name: string) {
-        let index=await this.conn.getFunc(name,this.__sidEnd+1);
-        return new RpcExtendClientCallable(this, index)
+        let sid=this.allocSid();
+        try{
+            let index=await this.conn.getFunc(name,sid);
+            return new RpcExtendClientCallable(this, index)
+        }finally{
+            this.freeSid(sid);
+        }
     }
     public async close(){
         await this.conn.close()
