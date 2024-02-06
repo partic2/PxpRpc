@@ -39,7 +39,8 @@ class PyNamespaceGenerator:
 
     def generateInitBlock(self):
         code = ['async def useClient(self,client:RpcExtendClient1):',
-                ' self.rpc__client=client;']
+                ' self.rpc__client=client',
+				' self.rpc__RemoteFuncs.clear()']
         self.initBlock = code
 
     def validSymbolName(self, fnname: str):

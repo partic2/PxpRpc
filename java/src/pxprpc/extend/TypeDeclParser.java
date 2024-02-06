@@ -40,7 +40,7 @@ public class TypeDeclParser {
                 return 'f';
             } else if (jtype.equals(Double.class)) {
                 return 'd';
-            } else if (jtype.equals(ByteBuffer.class)) {
+            } else if (ByteBuffer.class.isAssignableFrom(jtype)) {
                 return 'b';
             } else if (jtype.equals(String.class)) {
                 return 's';

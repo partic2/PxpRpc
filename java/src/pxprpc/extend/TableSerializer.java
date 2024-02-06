@@ -26,7 +26,11 @@ public class TableSerializer {
     //types: type string, or null to guess
     //names: header name, or null for FLAG_NO_HEADER_NAME packet.
     public TableSerializer setHeader(String types, String[] names){
-        return setHeader2(TypeDeclParser.parseDeclText(types),names);
+        if(types!=null){
+            return setHeader2(TypeDeclParser.parseDeclText(types),names);
+        }else{
+            return setHeader2(null,names);
+        }
     }
     public TableSerializer setHeader2(char[] types, String[] names){
         this.headerType=types;
