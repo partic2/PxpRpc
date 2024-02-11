@@ -7,15 +7,18 @@ import java.nio.channels.AsynchronousCloseException;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Map;
 import java.util.Set;
 
 import pxprpc.base.FuncMap;
 import pxprpc.base.ServerContext;
 
 public class TCPBackend implements Closeable{
+	/* Known issue. When use ChannelIo2, 'write' may blocked until 'read' return on android lower than 7.0.
+	May also occur on java version lower than 1.8.
+	So we use ChannelIo(1) until ChannelIo2 is stable enough with significant performance advantage. */
+	public static int channelIoVersion=1;
+
 	public TCPBackend() {
 	}
 	public InetSocketAddress bindAddr;
@@ -30,10 +33,15 @@ public class TCPBackend implements Closeable{
 			this.s=s;
 			this.sc=sc;
 		}
+
 		@Override
 		public void run() {
 			try {
-				sc.init(new ChannelIo2(s,s), attached.funcMap);
+				if(TCPBackend.channelIoVersion==1){
+					sc.init(new ChannelIo(s), attached.funcMap);
+				}else{
+					sc.init(new ChannelIo2(s,s), attached.funcMap);
+				}
 				s.configureBlocking(true);
 				sc.serve();
 			} catch (Exception e) {

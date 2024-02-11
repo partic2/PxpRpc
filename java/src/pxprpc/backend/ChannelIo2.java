@@ -10,8 +10,9 @@ import java.nio.ByteOrder;
 import java.nio.channels.ByteChannel;
 import java.nio.channels.GatheringByteChannel;
 import java.nio.channels.ScatteringByteChannel;
+import java.util.ArrayList;
 
-// For better performance than ChannelIo
+
 public class ChannelIo2 implements AbstractIo {
     public GatheringByteChannel w;
     public ScatteringByteChannel r;
@@ -31,12 +32,18 @@ public class ChannelIo2 implements AbstractIo {
             cntBuf.order(ByteOrder.LITTLE_ENDIAN);
             cntBuf.putInt(cnt);
             Utils.setPos(cntBuf,0);
-            ByteBuffer[] writeBuff = new ByteBuffer[buffs.length + 1];
-            writeBuff[0]=cntBuf;
-            for(int i=1;i<writeBuff.length;i++){
-                writeBuff[i]=buffs[i-1].duplicate();
+            ArrayList<ByteBuffer> writeBuff = new ArrayList<ByteBuffer>(buffs.length+1);
+            writeBuff.add(cntBuf);
+            for(int i=0;i<buffs.length;i++){
+                /* write will block when get empty bytebuffer on android, so remove it */
+                if(buffs[i].remaining()>0){
+                    writeBuff.add(buffs[i]);
+                }
             }
-            w.write(writeBuff);
+            ByteBuffer[] bbarr=writeBuff.toArray(new ByteBuffer[0]);
+            while(bbarr[bbarr.length-1].remaining()>0){
+                w.write(bbarr);
+            }
         }
     }
 
