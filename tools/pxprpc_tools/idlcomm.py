@@ -18,6 +18,8 @@ class IDLToBinding(object):
         raise NotImplemented()
     def fileName(self,ns:idldef.Namespace)->str:
         return ns.name
+    def writeConfigFile(self,dir:str):
+        raise NotImplemented
 
 class GeneratorWorkspace(object):
     def __init__(self):
@@ -53,6 +55,6 @@ class GeneratorWorkspace(object):
                     if ns!=None:
                         with io.open(os.path.sep.join([self.destination,self.i2b.fileName(ns)]),'w',encoding='utf-8') as fio:
                             fio.write(self.i2b.toBinding(ns))
-                    
+        self.i2b.writeConfigFile(self.destination)
                 
                         
