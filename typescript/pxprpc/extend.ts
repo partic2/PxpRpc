@@ -94,32 +94,50 @@ s  string(bytes will be decode to string)
     }
 }
 
-
+let UidGenerator={
+    idnum:[0],
+    generate:function(){
+        let i=0;
+        for(i=0;i<this.idnum.length;i++){
+            if(this.idnum[i]<0x7fffffff){
+                this.idnum[i]++;
+                break;
+            }else{
+                this.idnum[i]=0;
+            }
+        }
+        if(i==this.idnum.length){
+            this.idnum.push(1);
+        }
+        return this.idnum.map(v=>v.toString(16)).join('-')
+    }
+}
 export class RpcExtendClient1 {
     private __usedSid: { [index: number]: boolean | undefined } = {};
     private __nextSid: number;
 
     private __sidStart: number = 1;
     private __sidEnd: number = 0xffff;
-    
+
+    //To identify different instance, and make it hashable.
+    public id:string=UidGenerator.generate();
     public constructor(public conn: Client) {
         this.__nextSid = this.__sidStart;
     }
-
-
+    public serverName?:string
     public async init():Promise<this>{
-        if(!this.conn.isRunning()){
-            this.conn.run();
+        this.conn.run();
+        for(let item of (await this.conn.getInfo()).split('\n')){
+            if(item.indexOf(':')>=0){
+                let [key,val]=item.split(':')
+                if(key==='server name'){
+                    this.serverName=val;
+                }
+            }
         }
         return this;
     }
-
-    protected builtIn?:{}
-    public async ensureBuiltIn(){
-        if(this.builtIn==undefined){
-            this.builtIn={}
-        }
-    }
+    
     public allocSid() {
         let reachEnd = false;
         while (this.__usedSid[this.__nextSid]) {
@@ -149,6 +167,7 @@ export class RpcExtendClient1 {
         let sid=this.allocSid();
         try{
             let index=await this.conn.getFunc(name,sid);
+            if(index===-1)return null;
             return new RpcExtendClientCallable(this, index)
         }finally{
             this.freeSid(sid);
@@ -218,24 +237,33 @@ export class RpcExtendServerCallable implements PxpCallable{
         }
     }
 }
-var builtinServerFuncMap:{[k:string]:RpcExtendServerCallable}={
-}
+
+export var defaultFuncMap={} as {[k:string]:RpcExtendServerCallable};
+
+defaultFuncMap['builtin.anyToString']=new RpcExtendServerCallable(async (obj:any)=>String(obj)).typedecl('o->s');
+defaultFuncMap['builtin.jsExec']=new RpcExtendServerCallable(async (code:string,arg:any)=>{
+    let r=(new Function('arg',code))(arg) as any;
+    if(r instanceof Promise){
+        r=await r;
+    }
+    return r;
+}).typedecl('so->o'); 
+defaultFuncMap['builtin.typeof']=new RpcExtendServerCallable(async (arg:any)=>typeof arg).typedecl('o->s');
+defaultFuncMap['builtin.toJSON']=new RpcExtendServerCallable(async (arg:any)=>JSON.stringify(arg)).typedecl('o->s');
+defaultFuncMap['builtin.fromJSON']=new RpcExtendServerCallable(async (arg:string)=>JSON.parse(arg)).typedecl('s->o');
+defaultFuncMap['builtin.bufferData']=new RpcExtendServerCallable(async (arg:ArrayBuffer)=>arg).typedecl('o->b');
+
 export class RpcExtendServer1{
     public constructor(public serv:Server){
-        serv.funcMap=(name)=>this.findFunc(name)
+        serv.funcMap=(name)=>this.findFunc(name);
     }
     public async serve(){
         await this.serv.serve()
     }
-    public extFuncMap={} as {[k:string]:RpcExtendServerCallable};
+    public funcMap=defaultFuncMap;
     public findFunc(name:string){
-        return this.extFuncMap[name]??(builtinServerFuncMap[name]);
+        return this.funcMap[name]
     }
-    public addFunc(name:string,fn:RpcExtendServerCallable){
-        this.extFuncMap[name]=fn;
-        return this;
-    }
-
 }
 
 export class TableSerializer {
@@ -285,7 +313,7 @@ export class TableSerializer {
                     }
                     break;
                 case 'l':
-                    for(let i2=0;i2<rowCnt;i2++){
+                    for(let i2=0;i2<rowCnt;i2++){ 
                         rows[i2][i1]=ser.getLong();
                     }
                     break;

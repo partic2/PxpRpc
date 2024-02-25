@@ -40,7 +40,7 @@ export class Serializer{
     public getVarint(){
         let val=this.dv!.getUint8(this.pos);
         this.pos++;
-        if(val==0xff){
+        if(val===0xff){
             val=this.dv!.getUint32(this.pos,true);
             this.pos+=4;
         }
@@ -127,6 +127,7 @@ export class Client{
     protected waitingSessionCb={} as {[key:number]:(err:Error|null,result?:[number,ArrayBuffer])=>void}
     protected respReadingCb:(e:Error|null)=>void=()=>{};
     public async run(){
+        if(this.running)return;
         this.running=true;
         try{
             while(this.running){
@@ -181,11 +182,6 @@ export class Client{
         let hdr2=new DataView(hdr);
         hdr2.setUint32(0,sid,true);
         hdr2.setInt32(4,-3,true)
-        let respFut=new Promise<[number,ArrayBuffer]>((resolve,reject)=>{
-            this.waitingSessionCb[sid]=(err,resp)=>{
-                if(err==null){resolve(resp!);}else{reject(err)};
-            }
-        });
         await this.io1.send([hdr])
         this.running=false;
         this.io1.close();
@@ -235,7 +231,7 @@ export class Server{
     
     pendingRequests:{[sid:number]:PxpRequest}={};
     public queueRequest(r:PxpRequest){
-        if(this.sequenceSession==0xffffffff || (r.session>>>(32-this.sequenceMaskBitsCnt)!=this.sequenceSession)){
+        if(this.sequenceSession===0xffffffff || (r.session>>>(32-this.sequenceMaskBitsCnt)!=this.sequenceSession)){
             this.processRequest(r);
             return;
         }
@@ -314,8 +310,10 @@ export class Server{
             }else{
                 await this.builtInCallable[-r.callableIndex]!.call(this,r);
             }
+            //abort if closed
+            if(r.callableIndex===-3)return;
             let sid=new DataView(new ArrayBuffer(4));
-            if(r.rejected==null){
+            if(r.rejected===null){
                 sid.setUint32(0,r.session,true);
                 await this.io1.send([sid.buffer,...r.result])
             }else{
@@ -326,6 +324,7 @@ export class Server{
         }
     }
     public async serve(){
+        if(this.running)return;
         this.running=true;
         try{
             while(this.running) {
@@ -361,7 +360,7 @@ export class Server{
 	}
     public async sequence(r:PxpRequest){
         this.sequenceSession=new DataView(r.parameter!).getUint32(0,true);
-        if(this.sequenceSession==0xffffffff){
+        if(this.sequenceSession===0xffffffff){
             //discard pending request. execute immdiately mode, default value
             for(let i2 in this.pendingRequests){
                 let r2=this.pendingRequests[i2];

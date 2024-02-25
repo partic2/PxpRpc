@@ -116,14 +116,14 @@ class ClientContext(object):
     
     def __init__(self):
         self.__waitingSession:Dict[int,asyncio.Future[Tuple[int,bytes]]]=dict()
-        self.__readingResp=None
-        self.__writeLock=asyncio.Lock()
         self.running=False
     
     def backend1(self,io1:AbstractIo):
         self.io1=io1
         
     async def run(self):
+        if self.running:
+            return
         self.running=True
         try:
             while self.running:
@@ -331,6 +331,9 @@ class ServerContext(object):
                 await cast(PxpCallable,self.getRef(req.callableIndex).object).call(req)
             else:
                 await handler[-r2.callableIndex](r2)
+            #abort on close
+            if r2.callableIndex==-3:
+                return
             if req.rejected!=None:
                 await self.io1.send((req.session^0x80000000).to_bytes(4,'little')+str(req.rejected).encode('utf-8'))
             else:
@@ -339,8 +342,8 @@ class ServerContext(object):
         
 
     async def serve(self):
-        t1:Any
-        t2:Any
+        if self.running:
+            return
         self.running=True
         try:
             while(self.running):

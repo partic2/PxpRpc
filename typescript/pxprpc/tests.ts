@@ -1,14 +1,16 @@
 
 import { WebSocketIo } from "./backend";
 import { Client, Serializer, Server } from "./base";
-import { RpcExtendClient1, RpcExtendClientObject, RpcExtendError, RpcExtendServer1, RpcExtendServerCallable, TableSerializer } from "./extend";
+import { RpcExtendClient1, RpcExtendClientObject, RpcExtendError, RpcExtendServer1, RpcExtendServerCallable, TableSerializer, defaultFuncMap } from "./extend";
 
 
 
 export async function testAsClient(){
+    try{
     let client2=await new RpcExtendClient1(new Client(
         await new WebSocketIo().connect('ws://127.0.0.1:1345/pxprpc'))).init();
     console.log(await client2.conn.getInfo());
+    console.log('server name:'+client2.serverName)
     let get1234=(await client2.getFunc('test1.get1234'))!
     get1234.typedecl('->o');
     let str1=await get1234.call() as RpcExtendClientObject;
@@ -42,34 +44,41 @@ export async function testAsClient(){
     let autoCloseable=(await client2.getFunc('test1.autoCloseable'))!.typedecl('->o');
     await autoCloseable.call();
     await client2.close()
+    }catch(e){
+        console.error(e)
+    }
 }
 
 export async function testAsServer(){
+    try{
     let server2=await new RpcExtendServer1(new Server(
         await new WebSocketIo().connect('ws://127.0.0.1:1345/pxprpcClient')));
-    server2.addFunc('test1.get1234',new RpcExtendServerCallable(async()=>'1234').typedecl('->o'))
-    server2.addFunc('test1.printString',new RpcExtendServerCallable(async(s:string)=>console.log(s)).typedecl('o->'))
-    server2.addFunc('test1.testUnser',new RpcExtendServerCallable(async(b:ArrayBuffer)=>{
+    defaultFuncMap['test1.get1234']=new RpcExtendServerCallable(async()=>'1234').typedecl('->o')
+    defaultFuncMap['test1.printString']=new RpcExtendServerCallable(async(s:string)=>console.log(s)).typedecl('o->')
+    defaultFuncMap['test1.testUnser']=new RpcExtendServerCallable(async(b:ArrayBuffer)=>{
         let ser=new Serializer().prepareUnserializing(b);
         console.log(ser.getInt(),ser.getLong(),ser.getFloat(),ser.getDouble(),ser.getString(),new TextDecoder().decode(ser.getBytes()))
-    }).typedecl('b->'))
-    server2.addFunc('test1.testTableUnser',new RpcExtendServerCallable(async(b:ArrayBuffer)=>{
+    }).typedecl('b->')
+    defaultFuncMap['test1.testTableUnser']=new RpcExtendServerCallable(async(b:ArrayBuffer)=>{
         console.log(new TableSerializer().load(b).toMapArray())
-    }).typedecl('b->'))
-    server2.addFunc('test1.wait1Sec',new RpcExtendServerCallable(
+    }).typedecl('b->')
+    defaultFuncMap['test1.wait1Sec']=new RpcExtendServerCallable(
         ()=>new Promise((resolve)=>setTimeout(()=>{resolve('tick')},1000))
-        ).typedecl('->s'));
-    server2.addFunc('test1.raiseError1',new RpcExtendServerCallable(
+        ).typedecl('->s');
+    defaultFuncMap['test1.raiseError1']=new RpcExtendServerCallable(
         async ()=>{throw new Error('dummy io error')}
-        ).typedecl('->'));
-    server2.addFunc('test1.testPrintArg',new RpcExtendServerCallable(
+        ).typedecl('->');
+    defaultFuncMap['test1.testPrintArg']=new RpcExtendServerCallable(
         async (a,b,c,d,e,f)=>{console.log(a,b,c,d,e,new TextDecoder().decode(f));return [100,BigInt('1234567890')]}
-        ).typedecl('cilfdb->il'));
-    server2.addFunc('test1.testNone',new RpcExtendServerCallable(
+        ).typedecl('cilfdb->il');
+    defaultFuncMap['test1.testNone']=new RpcExtendServerCallable(
         async (nullValue)=>{console.log('expect null',nullValue);return null;}
-        ).typedecl('o->o'));
-    server2.addFunc('test1.autoCloseable',new RpcExtendServerCallable(
+        ).typedecl('o->o');
+    defaultFuncMap['test1.autoCloseable']=new RpcExtendServerCallable(
         async ()=>{return {close:()=>{console.log('auto closeable closed')}}}
-        ).typedecl('->o'));
+        ).typedecl('->o');
     await server2.serve();
+    }catch(e){
+        console.error(e)
+    }
 }

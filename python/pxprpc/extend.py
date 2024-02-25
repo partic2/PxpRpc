@@ -1,6 +1,6 @@
 
 
-from typing import Optional,Any,Callable,List,cast,TypeVar,Dict,Tuple,Set,Union
+from typing import Optional,Any,Callable,List,cast,TypeVar,Dict,Tuple,Set,Union,Awaitable
 import logging
 log1=logging.getLogger(__name__)
 import asyncio
@@ -318,10 +318,16 @@ class RpcExtendClient1:
         self.__sidEnd=0xffff
         self.__nextSid=self.__sidStart
         self.builtIn=None
+        self.serverName=None
 
     async def init(self):
-        if not self.conn.running:
-            asyncio.create_task(self.conn.run())
+        asyncio.create_task(self.conn.run())
+        info=await self.conn.getInfo()
+        for t1 in info.split('\n'):
+            if ':' in t1:
+                key,value=t1.split(':')
+                if key=='server name':
+                    self.serverName=value
 
     def allocSid(self)->int:
         reachEnd=False
@@ -449,26 +455,22 @@ def CDefaultExtendFuncMap(name:str)->Optional[PxpCallable]:
 
 
 class builtinFuncs:
+    def __init__(self):
+        self.pxprpcGlobals={}
     async def anyToString(self,obj:object):
         return str(obj)
 
-    async def listLength(self,obj:List):
-        return len(obj)
+    async def pyExec(self,code:str):
+        exec(code,self.pxprpcGlobals,locals())
+
+    async def pyGlobalGet(self,name:str)->Any:
+        return self.pxprpcGlobals[name]
     
-    async def listElemAt(self,obj:List,index:int):
-        return obj[index]
-    
-    async def listAdd(self,obj:List,elem:object):
-        return obj.append(elem)
+    async def pyAwait(self,awaitable:Awaitable):
+        await awaitable
 
-    async def listRemove(self,obj:List,index:int)->object:
-        return obj.pop(index)
-
-    async def listStringJoin(self,obj:List,sep:str):
-        return sep.join(obj)
-
-    async def listBytesJoin(self,obj:List,sep:bytes):
-        return sep.join(obj)
+    async def bufferData(self,buf:Any)->bytes:
+        return buf
 
 RegisteredFuncMap['builtin']=builtinFuncs()
 

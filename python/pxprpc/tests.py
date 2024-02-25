@@ -27,7 +27,10 @@ async def testClient(rpcconn:pxprpc.extend.ClientContext,name:str='default'):
     print('================'+name+'====================')
     
     client2=pxprpc.extend.RpcExtendClient1(rpcconn)
-    print(await rpcconn.getInfo())
+    await client2.init()
+    info=await rpcconn.getInfo()
+    print(info)
+    print('server name:'+str(client2.serverName))
     get1234=await client2.getFunc('test1.get1234')
     assert get1234!=None
     print('get1234:',get1234.value)
@@ -91,11 +94,25 @@ async def testClient(rpcconn:pxprpc.extend.ClientContext,name:str='default'):
     t1=await client2.getFunc('test1.missingfunc')
     assert t1==None
 
+    #builtin func test
+    if 'typescript' in str(client2.serverName):
+        jsExec=await client2.getFunc('builtin.jsExec')
+        assert jsExec!=None
+        jsExec.typedecl('so->o')
+        print('print a json object after 1 second')
+        r=await jsExec("console.log('jsExec test');return new Promise((resolve,reject)=>setTimeout(()=>resolve({a:1,b:'23'}),1000));",None)
+        toJson=await client2.getFunc('builtin.toJSON')
+        assert toJson!=None
+        toJson.typedecl('o->s')
+        print(await toJson(r))
+
+
     t1=await client2.getFunc('test1.autoCloseable')
     assert t1!=None
     t1.typedecl('->o')
     await t1()
     await client2.conn.close()
+
     print(name+' test done')
     
 
