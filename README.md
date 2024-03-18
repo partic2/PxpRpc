@@ -13,13 +13,13 @@ rpc server on Java (>=1.6)
 
 asynchronous rpc server on C
 
-rpc server over tcp on C with libuv
+rpc server over tcp on C with libuv backend
 
-rpc server over tcp on C with tbox
+rpc server over tcp on C with tbox backend
 
 rpc server and client on Python(>=3.8)
 
-rpc server and client on Typescript(websocket)
+rpc server and client on Typescript with WebSocket and postMessage backend
 
 ==================================
 
@@ -39,7 +39,7 @@ See test files for detail usage.
 
 [Python example](python/pxprpc/tests.py)
 
-[Typescript(websocket) example](typescript/pxprpc/tests.ts)
+[Typescript example](typescript/pxprpc/tests.ts)
 
 [C#(.net) example](csharp/dotnet/pxprpc/tests/TestMain.cs)
 

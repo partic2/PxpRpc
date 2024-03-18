@@ -1,14 +1,37 @@
 
 import { WebSocketIo } from "./backend";
 import { Client, Serializer, Server } from "./base";
-import { RpcExtendClient1, RpcExtendClientObject, RpcExtendError, RpcExtendServer1, RpcExtendServerCallable, TableSerializer, defaultFuncMap } from "./extend";
+import { RpcExtendClient1, RpcExtendClientObject, RpcExtendServer1, RpcExtendServerCallable, TableSerializer, defaultFuncMap } from "./extend";
 
+/*
+Test code for WebMessage(Worker) backend, require test environent.
+;(async ()=>{
+    if(globalThis.window!=undefined){
+        let workerThread=new WorkerThread();
+        await workerThread.start();
+        WebMessage.bind(workerThread.worker!);
+        let serv=new WebMessage.Server(async (conn)=>{
+            let server2=await new RpcExtendServer1(new Server(conn));
+            await testAsServer(server2);
+        });
+        serv.listen('pxprpc test 1');
+        await workerThread.runScript(`require(['${__name__}'])`)
+    }else{
+        console.log('worker')
+        WebMessage.bind(globalThis);
+        let client2=await new RpcExtendClient1(new Client(
+            await new WebMessage.Connection().connect('pxprpc test 1'))).init();
+        await testAsClient(client2);
+    }
+})();
+*/
 
-
-export async function testAsClient(){
+export async function testAsClient(client2?:RpcExtendClient1){
     try{
-    let client2=await new RpcExtendClient1(new Client(
-        await new WebSocketIo().connect('ws://127.0.0.1:1345/pxprpc'))).init();
+    if(client2==undefined){
+        client2=await new RpcExtendClient1(new Client(
+            await new WebSocketIo().connect('ws://127.0.0.1:1345/pxprpc'))).init();
+    }
     console.log(await client2.conn.getInfo());
     console.log('server name:'+client2.serverName)
     let get1234=(await client2.getFunc('test1.get1234'))!
@@ -49,10 +72,12 @@ export async function testAsClient(){
     }
 }
 
-export async function testAsServer(){
+export async function testAsServer(server2?:RpcExtendServer1){
     try{
-    let server2=await new RpcExtendServer1(new Server(
-        await new WebSocketIo().connect('ws://127.0.0.1:1345/pxprpcClient')));
+    if(server2==undefined){
+        server2=await new RpcExtendServer1(new Server(
+            await new WebSocketIo().connect('ws://127.0.0.1:1345/pxprpcClient')));
+    }
     defaultFuncMap['test1.get1234']=new RpcExtendServerCallable(async()=>'1234').typedecl('->o')
     defaultFuncMap['test1.printString']=new RpcExtendServerCallable(async(s:string)=>console.log(s)).typedecl('o->')
     defaultFuncMap['test1.testUnser']=new RpcExtendServerCallable(async(b:ArrayBuffer)=>{
