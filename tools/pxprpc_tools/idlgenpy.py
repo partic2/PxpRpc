@@ -157,7 +157,7 @@ async def getDefaultClient():
     global defaultClient
     if defaultClient==None:
         sep=defaultServiceUrl.rindex(':')
-        tcpc=TcpClient(defaultServiceUrl[:sep],int(defaultServiceUrl[sep:]))
+        tcpc=TcpClient(defaultServiceUrl[:sep],int(defaultServiceUrl[sep+1:]))
         rpcconn=await tcpc.start()
         defaultClient=RpcExtendClient1(rpcconn)
     return defaultClient''')

@@ -440,7 +440,10 @@ RegisteredFuncMap:Dict[str,Any]=dict()
 def CDefaultExtendFuncMap(name:str)->Optional[PxpCallable]:
     t2=RegisteredFuncMap.get(name,None)
     if t2!=None:
-        return PyCallableWrap(t2,False)
+        if isinstance(t2,PxpCallable):
+            return t2
+        else:
+            return PyCallableWrap(t2,False)
     
     delimIndex=name.rfind('.')
     if delimIndex>=0:
