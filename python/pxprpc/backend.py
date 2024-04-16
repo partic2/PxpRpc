@@ -21,8 +21,7 @@ class StreamIo(AbstractIo):
         return await self.r.readexactly(len)
     
     async def send(self,buf:bytes):
-        self.w.write(len(buf).to_bytes(4,'little'))
-        self.w.write(buf)
+        self.w.write(len(buf).to_bytes(4,'little')+buf)
 
     def close(self):
         self.w.close()
@@ -211,6 +210,9 @@ try:
         def close(self) -> None:
             asyncio.create_task(self.ws1.close())
 
+        def is_closing(self) -> bool:
+            return self.ws1.closed
+
     class ClientWebsocketTransport(asyncio.Transport):
                 
         def __init__(self,url:str,client:aiohttp.ClientSession):
@@ -268,6 +270,9 @@ try:
 
         def close(self) -> None:
             asyncio.create_task(self.conn.close())
+
+        def is_closing(self) -> bool:
+            return self.conn.closed
 
 
 except ImportError:
