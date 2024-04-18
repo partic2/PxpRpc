@@ -70,7 +70,7 @@ public class BoundMethodCallable extends MethodCallable{
 		} catch (InvocationTargetException e) {
 			req.rejected=e.getCause();
 			req.done();
-		} catch (IllegalAccessException e) {
+		} catch (Exception e) {
 			req.rejected=e;
 			req.done();
 		}
