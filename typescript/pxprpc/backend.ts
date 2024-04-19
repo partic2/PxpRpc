@@ -3,7 +3,7 @@ import { Io } from "./base";
 
 
 export class WebSocketIo implements Io{
-    queuedData:Array<ArrayBufferLike>=new Array();
+    queuedData:Array<Uint8Array>=new Array();
     protected onmsg:null|((err:Error|null)=>void)=null;
     ws:WebSocket|null=null;
     constructor(){
@@ -13,7 +13,7 @@ export class WebSocketIo implements Io{
         var that=this;
         this.ws.binaryType='arraybuffer'
         ws.addEventListener('message',function(ev){
-            that.queuedData.push(ev.data as ArrayBuffer)
+            that.queuedData.push(new Uint8Array(ev.data as ArrayBuffer))
             if(that.onmsg!=null)that.onmsg(null);
         });
         ws.addEventListener('close',function(ev){
@@ -48,7 +48,7 @@ export class WebSocketIo implements Io{
         await (await this.wrap(new WebSocket(url))).ensureConnected();
         return this;
     }
-    async receive(): Promise<ArrayBuffer> {
+    async receive(): Promise<Uint8Array> {
         if(this.queuedData.length>0){
             return this.queuedData.shift()!;
         }else{
@@ -65,12 +65,12 @@ export class WebSocketIo implements Io{
             return this.queuedData.shift()!;
         }
     }
-    async send(data: ArrayBufferLike[]): Promise<void> {
+    async send(data: Uint8Array[]): Promise<void> {
         let len=data.reduce((prev,curr)=>prev+curr.byteLength,0);
-        let buf=new Uint8Array(new ArrayBuffer(len));
+        let buf=new Uint8Array(len);
         let pos=0;
         for(let b of data){
-            buf.set(new Uint8Array(b),pos);
+            buf.set(new Uint8Array(b.buffer,b.byteOffset,b.byteLength),pos);
             pos+=b.byteLength;
         }
         this.ws!.send(buf.buffer);
@@ -130,7 +130,7 @@ export let WebMessage=(function(){
                 if(conn===undefined){
                     source.postMessage({[pxprpcMessageMark]:true,type:'closed',id:id});
                 }else{
-                    conn.queuedData.push(msg.data.data);
+                    conn.queuedData.push(new Uint8Array(msg.data.data as ArrayBuffer));
                     conn.onmsg?.(null);
                 }
             }else if(type==='closed'){
@@ -169,7 +169,7 @@ export let WebMessage=(function(){
     }
 
     class Connection implements Io{
-        queuedData:Array<ArrayBufferLike>=new Array();
+        queuedData:Array<Uint8Array>=new Array();
         onmsg:null|((err:Error|null)=>void)=null;
         port?:BasicMessagePort;
         id:string='';
@@ -204,7 +204,7 @@ export let WebMessage=(function(){
                 }
             });
         }
-        async receive(): Promise<ArrayBuffer> {
+        async receive(): Promise<Uint8Array> {
             if(!this.connected){
                 throw new Error('WebMessageConnection send failed, Not connected.');
             }
@@ -215,15 +215,15 @@ export let WebMessage=(function(){
                 return this.queuedData.shift()!;
             }
         }
-        async send(data: ArrayBufferLike[]): Promise<void> {
+        async send(data: Uint8Array[]): Promise<void> {
             if(!this.connected){
                 throw new Error('WebMessageConnection send failed, Not connected.');
             }
             let len=data.reduce((prev,curr)=>prev+curr.byteLength,0);
-            let buf=new Uint8Array(new ArrayBuffer(len));
+            let buf=new Uint8Array(len);
             let pos=0;
             for(let b of data){
-                buf.set(new Uint8Array(b),pos);
+                buf.set(new Uint8Array(b.buffer,b.byteOffset,b.byteLength),pos);
                 pos+=b.byteLength;
             }
             this.port!.postMessage({[pxprpcMessageMark]:true,id:this.id,type:'data',data:buf.buffer},{transfer:[buf.buffer]});

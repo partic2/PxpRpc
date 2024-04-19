@@ -15,7 +15,7 @@ def convertIdlTypeToTsType(t:idldef.Type2):
     elif t==idldef.Bool:
         return 'boolean'
     elif t in [idldef.Bytes]:
-        return 'ArrayBufferLike'
+        return 'Uint8Array'
     elif t in [idldef.String]:
         return 'string'
     elif isinstance(t,idldef.RemoteObjectType):

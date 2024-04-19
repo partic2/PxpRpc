@@ -4,7 +4,32 @@ import { Client, Serializer, Server } from "./base";
 import { RpcExtendClient1, RpcExtendClientObject, RpcExtendServer1, RpcExtendServerCallable, TableSerializer, defaultFuncMap } from "./extend";
 
 /*
-Test code for WebMessage(Worker) backend, require test environent.
+//Test code for WebMessage(Worker) backend, require test environent.
+import { CreateWorkerThread } from 'partic2/jsutils1/webutils';
+import {WebMessage} from 'pxprpc/backend'
+import { RpcExtendServer1,RpcExtendClient1 } from 'pxprpc/extend';
+import { Server,Client } from 'pxprpc/base';
+var __name__='testxxx/index'
+
+;(async ()=>{
+    if(globalThis.window!=undefined){
+        let workerThread=CreateWorkerThread();
+        await workerThread.start();
+        WebMessage.bind(workerThread.port!);
+        let serv=new WebMessage.Server(async (conn)=>{
+            let server2=await new RpcExtendServer1(new Server(conn));
+            await testAsServer(server2);
+        });
+        serv.listen('pxprpc test 1');
+        await workerThread.runScript(`require(['${__name__}'])`)
+    }else{
+        console.log('worker')
+        WebMessage.bind(globalThis);
+        let client2=await new RpcExtendClient1(new Client(
+            await new WebMessage.Connection().connect('pxprpc test 1'))).init();
+        await testAsClient(client2);
+    }
+})();
 ;(async ()=>{
     if(globalThis.window!=undefined){
         let workerThread=new WorkerThread();
@@ -80,11 +105,11 @@ export async function testAsServer(server2?:RpcExtendServer1){
     }
     defaultFuncMap['test1.get1234']=new RpcExtendServerCallable(async()=>'1234').typedecl('->o')
     defaultFuncMap['test1.printString']=new RpcExtendServerCallable(async(s:string)=>console.log(s)).typedecl('o->')
-    defaultFuncMap['test1.testUnser']=new RpcExtendServerCallable(async(b:ArrayBuffer)=>{
+    defaultFuncMap['test1.testUnser']=new RpcExtendServerCallable(async(b:Uint8Array)=>{
         let ser=new Serializer().prepareUnserializing(b);
         console.log(ser.getInt(),ser.getLong(),ser.getFloat(),ser.getDouble(),ser.getString(),new TextDecoder().decode(ser.getBytes()))
     }).typedecl('b->')
-    defaultFuncMap['test1.testTableUnser']=new RpcExtendServerCallable(async(b:ArrayBuffer)=>{
+    defaultFuncMap['test1.testTableUnser']=new RpcExtendServerCallable(async(b:Uint8Array)=>{
         console.log(new TableSerializer().load(b).toMapArray())
     }).typedecl('b->')
     defaultFuncMap['test1.wait1Sec']=new RpcExtendServerCallable(

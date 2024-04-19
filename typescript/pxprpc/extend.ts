@@ -58,9 +58,9 @@ s  string(bytes will be decode to string)
     }
 
     public async call(...args:any[]) {
-        let buf:ArrayBuffer[]=[]
+        let buf:Uint8Array[]=[]
         if(this.tParam==='b'){
-            let abuf=args[0] as ArrayBuffer
+            let abuf=args[0] as Uint8Array
             buf=[abuf];
         }else{
             let ser=new Serializer().prepareSerializing(32);
@@ -203,9 +203,8 @@ export class RpcExtendServerCallable implements PxpCallable{
     public readParameter (req: PxpRequest){
         let buf=req.parameter!
         let param=[];
-        let obj:any=null;
         if(this.tParam==='b'){
-            param=[buf];
+            param=[new Uint8Array(buf.buffer,buf.byteOffset,buf.byteLength)];
         }else{
             let ser=new Serializer().prepareUnserializing(buf);
             param=new TableSerializer().
@@ -222,7 +221,7 @@ export class RpcExtendServerCallable implements PxpCallable{
             return req.rejected=e as Error;
         }
     }
-    public writeResult(req: PxpRequest,r:any):ArrayBuffer[]{
+    public writeResult(req: PxpRequest,r:any):Uint8Array[]{
         if(this.tResult==='b'){
             return [r]
         }else{
@@ -251,7 +250,7 @@ defaultFuncMap['builtin.jsExec']=new RpcExtendServerCallable(async (code:string,
 defaultFuncMap['builtin.typeof']=new RpcExtendServerCallable(async (arg:any)=>typeof arg).typedecl('o->s');
 defaultFuncMap['builtin.toJSON']=new RpcExtendServerCallable(async (arg:any)=>JSON.stringify(arg)).typedecl('o->s');
 defaultFuncMap['builtin.fromJSON']=new RpcExtendServerCallable(async (arg:string)=>JSON.parse(arg)).typedecl('s->o');
-defaultFuncMap['builtin.bufferData']=new RpcExtendServerCallable(async (arg:ArrayBuffer)=>arg).typedecl('o->b');
+defaultFuncMap['builtin.bufferData']=new RpcExtendServerCallable(async (arg:Uint8Array)=>arg).typedecl('o->b');
 
 export class RpcExtendServer1{
     public constructor(public serv:Server){
@@ -362,7 +361,7 @@ export class TableSerializer {
         }
         return rows;
     }
-    public load(buf:ArrayBuffer){
+    public load(buf:Uint8Array){
         if(buf!=null){
             this.bindSerializer(new Serializer().prepareUnserializing(buf))
         }
@@ -441,7 +440,7 @@ export class TableSerializer {
             }
         }
     }
-    public build():ArrayBuffer{
+    public build():Uint8Array{
         if(this.ser==null){
             this.bindSerializer(new Serializer().prepareSerializing(64));
         }
@@ -464,7 +463,7 @@ export class TableSerializer {
                             this.headerType+='l';
                             break;
                         default:
-                            if(t1 instanceof ArrayBuffer){
+                            if(t1 instanceof Uint8Array){
                                 this.headerType+='b'
                             }else{
                                 this.headerType+='o'

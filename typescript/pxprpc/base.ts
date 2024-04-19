@@ -1,16 +1,16 @@
 
 
 export interface Io{
-    receive():Promise<ArrayBuffer>;
-    send(data:ArrayBufferLike[]):Promise<void>;
+    receive():Promise<Uint8Array>;
+    send(data:Uint8Array[]):Promise<void>;
     close():void;
 }
 
 export class Serializer{
     public dv?:DataView;
     public pos:number=0;
-    public prepareUnserializing(buf:ArrayBuffer){
-        this.dv=new DataView(buf);
+    public prepareUnserializing(buf:Uint8Array){
+        this.dv=new DataView(buf.buffer,buf.byteOffset,buf.byteLength);
         return this;
     }
     public prepareSerializing(initBufSize:number){
@@ -87,16 +87,16 @@ export class Serializer{
         if(this.pos+remainSize>this.dv!.buffer.byteLength){
             let newSize=this.pos+remainSize;
             newSize+=newSize>>1;
-            let buf=new ArrayBuffer(newSize);
-            new Uint8Array(buf).set(new Uint8Array(this.dv!.buffer),0);
-            this.dv=new DataView(buf);
+            let buf=new Uint8Array(newSize);
+            buf.set(new Uint8Array(this.dv!.buffer,this.dv!.byteOffset,this.pos),0);
+            this.dv=new DataView(buf.buffer,buf.byteOffset,buf.byteLength);
         }
     }
-    public putBytes(b:ArrayBuffer){
+    public putBytes(b:Uint8Array){
         let len=b.byteLength;
         this.putVarint(len);
         this.ensureBuffer(len);
-        new Uint8Array(this.dv!.buffer).set(new Uint8Array(b),this.pos);
+        new Uint8Array(this.dv!.buffer).set(b,this.dv!.byteOffset+this.pos);
         this.pos+=len;
         return this;
     }
@@ -104,12 +104,12 @@ export class Serializer{
         this.putBytes(new TextEncoder().encode(val));
         return this;
     }
-    public build(){
-        return this.dv!.buffer.slice(0,this.pos);
+    public build():Uint8Array{
+        return new Uint8Array(this.dv!.buffer,this.dv!.byteOffset,this.pos)
     }
-    public getBytes(){
+    public getBytes():Uint8Array{
         let len=this.getVarint();
-        let val=this.dv!.buffer.slice(this.pos,this.pos+len);
+        let val:Uint8Array=new Uint8Array(this.dv!.buffer,this.dv!.byteOffset+this.pos,len);
         this.pos+=len;
         return val;
     }
@@ -124,18 +124,19 @@ export class Client{
     public constructor(public io1:Io){
     }
     protected running=false;
-    protected waitingSessionCb={} as {[key:number]:(err:Error|null,result?:[number,ArrayBuffer])=>void}
+    protected waitingSessionCb={} as {[key:number]:(err:Error|null,result?:[number,Uint8Array])=>void}
     protected respReadingCb:(e:Error|null)=>void=()=>{};
     public async run(){
         if(this.running)return;
         this.running=true;
         try{
             while(this.running){
-                let packet=new DataView(await this.io1.receive());
+                let buf=await this.io1.receive();
+                let packet=new DataView(buf.buffer,buf.byteOffset,buf.byteLength);
                 let sid=packet.getUint32(0,true);
                 let cb=this.waitingSessionCb[sid&0x7fffffff];
                 delete this.waitingSessionCb[sid&0x7fffffff];
-                cb(null,[sid,packet.buffer.slice(4)]);
+                cb(null,[sid,new Uint8Array(buf.buffer,buf.byteOffset+4,buf.byteLength-4)]);
             }
         }catch(e){
             for(let k in this.waitingSessionCb){
@@ -149,12 +150,12 @@ export class Client{
     public isRunning():boolean{
         return this.running;
     }
-    public async call(callableIndex:number,parameter:ArrayBuffer[],sid:number=0x100):Promise<ArrayBuffer>{
-        let hdr=new ArrayBuffer(8);
-        let hdr2=new DataView(hdr);
+    public async call(callableIndex:number,parameter:Uint8Array[],sid:number=0x100):Promise<Uint8Array>{
+        let hdr=new Uint8Array(8);
+        let hdr2=new DataView(hdr.buffer);
         hdr2.setUint32(0,sid,true);
         hdr2.setInt32(4,callableIndex,true)
-        let respFut=new Promise<[number,ArrayBuffer]>((resolve,reject)=>{
+        let respFut=new Promise<[number,Uint8Array]>((resolve,reject)=>{
             this.waitingSessionCb[sid]=(err,resp)=>{
                 if(err==null){resolve(resp!);}else{reject(err)};
             }
@@ -168,18 +169,18 @@ export class Client{
     }
     public async getFunc(funcName:string,sid:number=0x100){
         let result=await this.call(-1,[new TextEncoder().encode(funcName)],sid)
-        return new DataView(result).getInt32(0,true);
+        return new DataView(result.buffer,result.byteOffset,result.byteLength).getInt32(0,true);
     }
     public async freeRef(index:number[],sid:number=0x100){
         let para=new DataView(new ArrayBuffer(index.length<<2));
         for(let i=0;i<index.length;i++){
             para.setInt32(i<<2,index[i],true);
         }
-        await this.call(-2,[para.buffer],sid);
+        await this.call(-2,[new Uint8Array(para.buffer,para.byteOffset,para.byteLength)],sid);
     }
     public async close(sid:number=0x100){
-        let hdr=new ArrayBuffer(8);
-        let hdr2=new DataView(hdr);
+        let hdr=new Uint8Array(8);
+        let hdr2=new DataView(hdr.buffer);
         hdr2.setUint32(0,sid,true);
         hdr2.setInt32(4,-3,true)
         await this.io1.send([hdr])
@@ -191,16 +192,16 @@ export class Client{
         return new TextDecoder().decode(result);
     }
     public async sequence(mask:number,maskCnt:number=24,sid:number=0x100){
-        let hdr=new ArrayBuffer(4);
-        new DataView(hdr).setUint32(0,mask|maskCnt,true);
+        let hdr=new Uint8Array(4);
+        new DataView(hdr.buffer).setUint32(0,mask|maskCnt,true);
         return await this.call(-5,[hdr],sid);
     }
 }
 
 export class PxpRequest{
     public callableIndex=-1;
-    public parameter?:ArrayBuffer;
-    public result:ArrayBuffer[]=[];
+    public parameter?:Uint8Array;
+    public result:Uint8Array[]=[];
     public rejected:Error|null=null;
     public nextPending:PxpRequest|null=null;
     public inSequence=false;
@@ -294,7 +295,7 @@ export class Server{
         return this.refPool[index];
     }
     public async freeRefHandler(r:PxpRequest){
-        let dv=new DataView(r.parameter!);
+        let dv=new DataView(r.parameter!.buffer,r.parameter!.byteOffset,r.parameter!.byteLength);
         for(let i=0;i<r.parameter!.byteLength;i+=4){
             this.freeRef(this.getRef(dv.getInt32(i,true)))
         }
@@ -315,10 +316,10 @@ export class Server{
             let sid=new DataView(new ArrayBuffer(4));
             if(r.rejected===null){
                 sid.setUint32(0,r.session,true);
-                await this.io1.send([sid.buffer,...r.result])
+                await this.io1.send([new Uint8Array(sid.buffer),...r.result])
             }else{
                 sid.setUint32(0,r.session^0x80000000,true);
-                await this.io1.send([sid.buffer,new TextEncoder().encode(String(r.rejected))])
+                await this.io1.send([new Uint8Array(sid.buffer),new TextEncoder().encode(String(r.rejected))])
             }
             r=this.finishRequest(r);
         }
@@ -328,10 +329,11 @@ export class Server{
         this.running=true;
         try{
             while(this.running) {
-                let packet=new DataView(await this.io1.receive());
+                let buf=await this.io1.receive();
+                let packet=new DataView(buf.buffer,buf.byteOffset,buf.byteLength);
                 let r=new PxpRequest(this,packet.getUint32(0,true));
                 r.callableIndex=packet.getInt32(4,true);
-                r.parameter=packet.buffer.slice(8);
+                r.parameter=new Uint8Array(buf.buffer,buf.byteOffset+8,buf.byteLength-8);
                 this.queueRequest(r);
             }
         }finally{
@@ -351,7 +353,7 @@ export class Server{
             ref2.object=found;
             res.setInt32(0,ref2.index,true);
         }
-        r.result=[res.buffer];
+        r.result=[new Uint8Array(res.buffer)];
 	}
 	public async getInfo(r:PxpRequest){
         r.result=[new TextEncoder().encode(
@@ -359,7 +361,7 @@ export class Server{
         "version:2.0\n")]
 	}
     public async sequence(r:PxpRequest){
-        this.sequenceSession=new DataView(r.parameter!).getUint32(0,true);
+        this.sequenceSession=new DataView(r.parameter!.buffer,r.parameter!.byteOffset,r.parameter!.byteLength).getUint32(0,true);
         if(this.sequenceSession===0xffffffff){
             //discard pending request. execute immdiately mode, default value
             for(let i2 in this.pendingRequests){
