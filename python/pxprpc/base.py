@@ -132,7 +132,8 @@ class ClientContext(object):
                 log1.debug('client get sid:%s',hex(sid))
                 fut=self.__waitingSession[sid&0x7fffffff]
                 del self.__waitingSession[sid&0x7fffffff]
-                fut.set_result((sid,pack[4:]))
+                if not fut.done():
+                    fut.set_result((sid,pack[4:]))
         except Exception as exc:
             for waiting in self.__waitingSession.values():
                 waiting.set_exception(exc)

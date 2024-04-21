@@ -348,7 +348,10 @@ class RpcExtendClient1:
         return t1
 
     def freeSid(self,index:int):
-        self.__usedSid.remove(index)
+        try:
+            self.__usedSid.remove(index)
+        except KeyError:
+            pass
 
     async def getFunc(self,name:str)->Optional[RpcExtendClientCallable]:
         sid=self.allocSid()
