@@ -24,19 +24,19 @@ struct pxprpc_buffer_part{
 
 
 struct pxprpc_abstract_io{
-    /* Receive a packet. onCompleted is called when expected all buffer parts are fulfilled or error occured. 
-    the last buffer part must have 0 length, and will be filled with remain data by read call, 
-    the caller should free the remain data buffer with (*io->buf->free)(buf->base) since buffer is discarded. */
+    /* Receive a packet. onCompleted is called when all buffer parts are fulfilled or error occured. 
+    the last buffer part should have 0 length, and will be filled with remain data by implemention , 
+    the caller(pxprpc) will free the remain data buffer by (*io->buf_free)(buf->base) since buffer is discarded. */
     void (*receive)(struct pxprpc_abstract_io *self,struct pxprpc_buffer_part *buf,void (*onCompleted)(void *args),void *p);
 
     /* Send a packet ,onCompleted is called when buffer is processed and can be free or error occured. 
     Write request should be processed in order. */
     void (*send)(struct pxprpc_abstract_io *self,struct pxprpc_buffer_part *buf,void (*onCompleted)(void *args),void *p);
 
-    /* SA:(*read) */
+    /* Depending on how implemention allocate buffer on memory. should be "free", if implemention use "malloc". SA:(*receive) */
     void (*buf_free)(void *buf_base);
     
-    /* get last error. For example, to get error caused by read, call "io->get_error(io,io->receive)". return NULL if no error */
+    /* get the last error. For example, to get the error caused by "receive", call "io->get_error(io,io->receive)". return NULL if no error */
     const char *(*get_error)(struct pxprpc_abstract_io *self,void *fn);
 
     void (*close)(struct pxprpc_abstract_io *self);

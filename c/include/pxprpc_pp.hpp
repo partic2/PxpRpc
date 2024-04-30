@@ -11,6 +11,7 @@ extern "C"{
 #include <functional>
 #include <tuple>
 #include <vector>
+#include <memory>
 
 namespace pxprpc{
     
@@ -47,6 +48,11 @@ class Serializer{
     double getDouble(){
         double val;
         pxprpc_ser_get_double(&this->wrapped,&val,1);
+        return val;
+    }
+    uint32_t getVarint(){
+        uint32_t val;
+        pxprpc_ser_get_varint(&this->wrapped,&val);
         return val;
     }
     std::vector<int32_t> getIntVec(int size){
@@ -97,6 +103,10 @@ class Serializer{
     }
     Serializer *putBytes(uint8_t *buf,uint32_t length){
         pxprpc_ser_put_bytes(&this->wrapped,buf,length);
+        return this;
+    }
+    Serializer *putVarint(uint32_t val){
+        pxprpc_ser_put_varint(&this->wrapped,val);
         return this;
     }
     Serializer *putString(std::string val){
@@ -166,13 +176,13 @@ class PxpServContextWrap{
 
 class PxpRequestWrap;
 
-void __wrap_requestOnFree(pxprpc_request *r);
+void __wrap_requestOnFinish(pxprpc_request *r);
 
 class PxpRequestWrap{
     public:
     pxprpc_request *req=NULL;
     void *callableDataPP=NULL;
-    std::function<void(PxpRequestWrap *)> onFreePP=[](PxpRequestWrap *)->void{};
+    std::function<void(PxpRequestWrap *)> onFinishPP=[](PxpRequestWrap *)->void{};
     static PxpRequestWrap *wrap(pxprpc_request *req){
         if(req->callable_data!=NULL){
             return static_cast<PxpRequestWrap *>(req->callable_data);
@@ -180,6 +190,7 @@ class PxpRequestWrap{
             auto r=new PxpRequestWrap();
             r->req=req;
             req->callable_data=r;
+            req->on_finish=__wrap_requestOnFinish;
             return r;
         }
     }
@@ -193,12 +204,12 @@ class PxpRequestWrap{
         return &req->parameter;
     }
     void onWrapFree(){
-        this->onFreePP(this);
+        this->onFinishPP(this);
         delete this;
     }
 };
 
-void __wrap_requestOnFree(pxprpc_request *r){
+void __wrap_requestOnFinish(pxprpc_request *r){
     auto wrap=static_cast<PxpRequestWrap *>(r->callable_data);
     wrap->onWrapFree();
 }
@@ -234,18 +245,17 @@ class FunctionPPWithSerializer:public NamedFunctionPP{
     virtual void callWithSer(PxpRequestWrap *r,Serializer *parameter,std::function<void(Serializer *result)> done)=0;
     virtual void call(PxpRequestWrap *r){
         auto ser=Serializer::fromPxpBytes(r->parameter());
-        r->onFreePP=[](PxpRequestWrap *r)->void{
-            /* use callableDataPP? */
-            pxprpc_ser_free_buf(r->req->result.bytes.base);
-        };
         this->callWithSer(r,ser,[ser,r](Serializer *result)->void{
             delete ser;
             if(result!=nullptr){
+                r->onFinishPP=[](PxpRequestWrap *r)->void{    
+                    if(r->req->result.bytes.base!=nullptr){
+                        pxprpc_ser_free_buf(r->req->result.bytes.base);
+                    }
+                };
                 result->buildPxpBytes(&r->req->result.bytes);
                 delete result;
                 r->req->result.next_part=NULL;
-            }else{
-                r->req->result.bytes.length=0;
             }
             r->nextStep();
         });
