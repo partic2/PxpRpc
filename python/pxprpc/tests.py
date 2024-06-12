@@ -243,6 +243,18 @@ async def ctestmain():
     await t1(Serializer().prepareSerializing()\
         .putInt(123).putLong(1122334455667788).putFloat(123.5).putDouble(123.123).putString('abcdef').putBytes('bytes'.encode('utf-8'))\
             .build())
+    await t1.free()
+    await asyncio.sleep(1)
+    
+    t1=await client2.getFunc('printSerilizedTable')
+    assert t1!=None
+    print('printSerilizedTable:',t1.value)
+    t1.typedecl('b->b')
+    t2=await t1(TableSerializer().setHeader('iscl',None).fromMapArray(\
+            [dict(id=1554,name='1.txt',isdir=False,filesize=12345),dict(id=1555,name='docs',isdir=True,filesize=0)])\
+                .build())
+    print(TableSerializer().load(t2).toMapArray())
+    
     
 async def cstestmain():
     print('cs test main start')

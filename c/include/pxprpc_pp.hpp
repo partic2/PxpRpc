@@ -128,6 +128,9 @@ class Serializer{
         bytes->base=std::get<1>(bb);
         bytes->length=std::get<0>(bb);
     }
+    static void freeBuiltBuffer(void *bufferBase){
+        pxprpc_ser_free_buf(bufferBase);
+    }
 };
 
 static void __wrap_call(pxprpc_callable *self,pxprpc_request *r);
@@ -195,7 +198,7 @@ class PxpRequestWrap{
         }
     }
     PxpServContextWrap context(){
-        PxpServContextWrap::wrap(req->server_context);
+        return PxpServContextWrap::wrap(req->server_context);
     }
     void nextStep(){
         req->next_step(req);
@@ -250,7 +253,7 @@ class FunctionPPWithSerializer:public NamedFunctionPP{
             if(result!=nullptr){
                 r->onFinishPP=[](PxpRequestWrap *r)->void{    
                     if(r->req->result.bytes.base!=nullptr){
-                        pxprpc_ser_free_buf(r->req->result.bytes.base);
+                        Serializer::freeBuiltBuffer(r->req->result.bytes.base);
                     }
                 };
                 result->buildPxpBytes(&r->req->result.bytes);

@@ -10,6 +10,7 @@ static void _pxprpc_ensure_buf(struct pxprpc_serializer *ser,uint32_t remain){
         int newsize=ser->pos+remain;
         newsize+=newsize>>1;
         ser->buf=pxprpc__realloc(ser->buf,newsize);
+        ser->cap=newsize;
     }
 }
 
