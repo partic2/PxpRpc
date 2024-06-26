@@ -99,26 +99,60 @@ public class PxpRpc {
 		}
 	}
 
+
+	public static class Cfg{
+		public int id;
+		public long size;
+		public String name;
+		public boolean isdir;
+
+		@Override
+		public String toString() {
+			StringBuilder sb = new StringBuilder();
+			sb.append("id:");
+			sb.append(id);
+			sb.append(",size:");
+			sb.append(size);
+			sb.append(",name:");
+			sb.append(name);
+			sb.append(",isdir:");
+			sb.append(isdir);
+			return sb.toString();
+		}
+	}
+	public static void tabserTest() {
+		Cfg t1 = new Cfg();
+		t1.id=12;
+		t1.isdir=false;
+		t1.name="myfile.txt";
+		t1.size=1231l;
+		ArrayList<Cfg> t2 = new ArrayList<Cfg>();
+		t2.add(t1);
+		ByteBuffer sered = new TableSerializer().fromTypedObjectArray(t2).build();
+		System.out.println(new TableSerializer().load(sered).toTypedObjectArray(Cfg.class));
+	}
+
 	public static void main(String[] args) {
-			final TCPBackend pxptcp = new TCPBackend();
-			int listenPort=1064;
-			DefaultFuncMap.registered.put("test1", new Handler1());
-			pxptcp.bindAddr=new InetSocketAddress(listenPort);
-			Thread th=new Thread(new Runnable() {
-				@Override
-				public void run() {
-					try {
-						System.out.println("ready...");
-						pxptcp.listenAndServe();
-					} catch (IOException e) {
+		tabserTest();
+		final TCPBackend pxptcp = new TCPBackend();
+		int listenPort=1064;
+		DefaultFuncMap.registered.put("test1", new Handler1());
+		pxptcp.bindAddr=new InetSocketAddress(listenPort);
+		Thread th=new Thread(new Runnable() {
+			@Override
+			public void run() {
+				try {
+					System.out.println("ready...");
+					pxptcp.listenAndServe();
+				} catch (IOException e) {
+					e.printStackTrace();
+					if(!e.getMessage().contains("Interrupted function call")) {
 						e.printStackTrace();
-						if(!e.getMessage().contains("Interrupted function call")) {
-							e.printStackTrace();
-						}
 					}
-					System.out.println("server stoped");
 				}
-			});
-			th.start();
+				System.out.println("server stoped");
+			}
+		});
+		th.start();
 	}
 }

@@ -5,6 +5,7 @@ import pxprpc.base.Serializer2;
 import pxprpc.base.ServerContext;
 
 import java.io.Closeable;
+import java.lang.reflect.Field;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -267,6 +268,67 @@ public class TableSerializer {
                 row[t2]=val.get(t1).get(this.headerName[t2]);
             }
             this.addRow(row);
+        }
+        return this;
+    }
+    public <T> List<T> toTypedObjectArray(Class<T> cls){
+        try {
+            //nested object is not support yet.
+            Field[] fields=cls.getFields();
+            int[] colsIndex=new int[fields.length];
+            for(int i=0;i<fields.length;i++){
+                colsIndex[i]=this.getColIndex(fields[i].getName());
+            }
+            ArrayList<T> ret=new ArrayList<T>();
+            int rowCount=this.getRowCount();
+            for(int i=0;i<rowCount;i++){
+                    T t1=cls.newInstance();
+                    Object[] row=this.getRow(i);
+                    ret.add(t1);
+                    for(int i2=0;i2<fields.length;i2++){
+                        if(colsIndex[i2]>=0) {
+                            fields[i2].set(t1,row[i2]);
+                        }
+                    }
+            }
+            return ret;
+        } catch (InstantiationException e) {
+            throw new RuntimeException(e);
+        } catch (IllegalAccessException e) {
+            throw new RuntimeException(e);
+        }
+    }
+    public TableSerializer fromTypedObjectArray(List<?> objs){
+        try {
+            Class<?> cls=Object.class;
+            if(objs.size()>0){
+                cls=objs.get(0).getClass();
+            }
+            Field[] fields=cls.getFields();
+            StringBuilder colTypes=new StringBuilder();
+            ArrayList<String> colNames=new ArrayList<String>();
+            ArrayList<Field> validField=new ArrayList<Field>();
+            for(int i=0;i<fields.length;i++){
+                Class<?> typ = fields[i].getType();
+                char typCh=TypeDeclParser.jtypeToValueInfo(typ);
+                if(typCh=='o'){
+                    //nested object is not support yet.
+                    continue;
+                }
+                colTypes.append(typCh);
+                colNames.add(fields[i].getName());
+                validField.add(fields[i]);
+            }
+            this.setHeader(colTypes.toString(),colNames.toArray(new String[0]));
+            for(Object e:objs){
+                Object[] row = new Object[validField.size()];
+                for(int i=0;i<row.length;i++){
+                        row[i]=validField.get(i).get(e);
+                }
+                this.addRow(row);
+            }
+        } catch (IllegalAccessException ex) {
+            throw new RuntimeException(ex);
         }
         return this;
     }
