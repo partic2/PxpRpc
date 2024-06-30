@@ -7,7 +7,5 @@ void pxprpc_pipe_serve(const char *name,void (*on_connect)(struct pxprpc_abstrac
 
 struct pxprpc_abstract_io *pxprpc_pipe_connect(const char *name);
 
-void pxprpc_pipe_close(struct pxprpc_abstract_io *io);
-
 
 #endif

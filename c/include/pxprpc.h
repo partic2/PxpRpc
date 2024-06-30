@@ -26,7 +26,7 @@ struct pxprpc_buffer_part{
 struct pxprpc_abstract_io{
     /* Receive a packet. onCompleted is called when all buffer parts are fulfilled or error occured. 
     the last buffer part should have 0 length, and will be filled with remain data by implemention , 
-    the caller(pxprpc) will free the remain data buffer by (*io->buf_free)(buf->base) since buffer is discarded. */
+    the caller(pxprpc) will free the remain data buffer by (*io->buf_free)(buf->bytes.base) since buffer is discarded. */
     void (*receive)(struct pxprpc_abstract_io *self,struct pxprpc_buffer_part *buf,void (*onCompleted)(void *args),void *p);
 
     /* Send a packet ,onCompleted is called when buffer is processed and can be free or error occured. 
