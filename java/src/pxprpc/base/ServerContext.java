@@ -1,7 +1,5 @@
 package pxprpc.base;
 
-//TODO: avoid directly use extend package in base package.
-import pxprpc.extend.BuiltInFuncList;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -21,7 +19,6 @@ public class ServerContext implements Closeable {
     public PxpRef freeRefEntry =null;
     public Object refPoolLock=new Object();
     public FuncMap funcMap;
-    protected BuiltInFuncList builtIn;
     public static final Charset charset=Charset.forName("utf-8");
     public ConcurrentLinkedQueue eventQueue=new ConcurrentLinkedQueue();
     public void expandRefPools(){
@@ -62,7 +59,6 @@ public class ServerContext implements Closeable {
     public void init(AbstractIo chan,FuncMap fnmap) {
         this.io2 = chan;
         this.expandRefPools();
-        builtIn = new BuiltInFuncList();
         if(fnmap==null){
             try {
                 Class<?> cls = Class.forName("pxprpc.extend.DefaultFuncMap");
