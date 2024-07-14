@@ -15,14 +15,13 @@ it's pxprpc typedecl:
 iido->ci
 
 available type typedecl characters:
+```
 i  int(32bit integer)
 l  long(64bit integer) 
 f  float(32bit float)
 d  double(64bit float)
 o  object(32bit reference address)
 b  bytes(bytes buffer)
-'' return void(32bit 0)
-
 c  boolean(pxprpc use 1byte(1/0) to store a boolean value)
 s  string(bytes will be decode to string)
-
+```

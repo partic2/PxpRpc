@@ -44,8 +44,8 @@ struct pxprpc_request_response{
 //getFunc:get the function named 'function_name'
 struct pxprpc_requst_format{
     uint32_t session_id;
-    int32_t callable_inde=-1;
-    char function_name[remain];
+    int32_t callable_index=-1;
+    char function_name[remain];x
 }
 struct pxprpc_request_response{
     uint32_t session_id;
@@ -56,7 +56,7 @@ struct pxprpc_request_response{
 //freeRef:free the reference(s)
 struct pxprpc_requst_format{
     uint32_t session_id;
-    int32_t callable_inde=-2;
+    int32_t callable_index=-2;
     uint32_t index[remain];
 }
 struct pxprpc_request_response{
@@ -67,7 +67,7 @@ struct pxprpc_request_response{
 //close:free the resource and disconnect
 struct pxprpc_requst_format{
     uint32_t session_id;
-    int32_t callable_inde=-3;
+    int32_t callable_index=-3;
     uint32_t index;
 }
 //closed, No response.
@@ -75,7 +75,7 @@ struct pxprpc_requst_format{
 //function:getInfo (get string encoded in utf8 indicate the information about the server.)
 struct pxprpc_requst_format{
     uint32_t session_id;
-    int32_t callable_inde=-4;
+    int32_t callable_index=-4;
 }
 struct pxprpc_request_response{
     uint32_t session_id;
@@ -97,7 +97,7 @@ will be executed in sequence (executed after last queued request finished). , si
 */
 struct pxprpc_requst_format{
     uint32_t session_id;
-    int32_t callable_inde=-5;
+    int32_t callable_index=-5;
     uint32_t sessionMask;
 }
 struct pxprpc_request_response{
