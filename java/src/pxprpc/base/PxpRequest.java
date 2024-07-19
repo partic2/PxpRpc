@@ -37,7 +37,7 @@ public class PxpRequest {
                 context.processRequest(context.finishRequest(this));
             }
         } catch (Exception ex) {
-            throw new RuntimeException(ex);
+            /* mute all exception here. */
         }
     }
 }

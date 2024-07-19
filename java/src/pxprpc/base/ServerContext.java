@@ -209,6 +209,8 @@ public class ServerContext implements Closeable {
 
     @Override
     public void close() throws IOException {
+        //Thread safe?
+        if(!running)return;
         running = false;
         io2.close();
         for (int i1 = 0; i1 < refPool.length; i1++) {
@@ -218,5 +220,6 @@ public class ServerContext implements Closeable {
             }
         }
         System.gc();
+
     }
 }

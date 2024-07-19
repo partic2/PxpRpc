@@ -305,23 +305,27 @@ export class Server{
     }
     protected builtInCallable=[null,this.getFunc,this.freeRefHandler,this.closeHandler,this.getInfo,this.sequence]
     public async processRequest(r:PxpRequest|null) {
-        while(r!=null){
-            if(r.callableIndex>=0){
-                await (this.getRef(r.callableIndex).object as PxpCallable).call(r);
-            }else{
-                await this.builtInCallable[-r.callableIndex]!.call(this,r);
+        try{
+            while(r!=null){
+                if(r.callableIndex>=0){
+                    await (this.getRef(r.callableIndex).object as PxpCallable).call(r);
+                }else{
+                    await this.builtInCallable[-r.callableIndex]!.call(this,r);
+                }
+                //abort if closed
+                if(r.callableIndex===-3)return;
+                let sid=new DataView(new ArrayBuffer(4));
+                if(r.rejected===null){
+                    sid.setUint32(0,r.session,true);
+                    await this.io1.send([new Uint8Array(sid.buffer),...r.result])
+                }else{
+                    sid.setUint32(0,r.session^0x80000000,true);
+                    await this.io1.send([new Uint8Array(sid.buffer),new TextEncoder().encode(String(r.rejected))])
+                }
+                r=this.finishRequest(r);
             }
-            //abort if closed
-            if(r.callableIndex===-3)return;
-            let sid=new DataView(new ArrayBuffer(4));
-            if(r.rejected===null){
-                sid.setUint32(0,r.session,true);
-                await this.io1.send([new Uint8Array(sid.buffer),...r.result])
-            }else{
-                sid.setUint32(0,r.session^0x80000000,true);
-                await this.io1.send([new Uint8Array(sid.buffer),new TextEncoder().encode(String(r.rejected))])
-            }
-            r=this.finishRequest(r);
+        }catch(e){
+            // mute all error here.
         }
     }
     public async serve(){

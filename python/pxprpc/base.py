@@ -324,22 +324,25 @@ class ServerContext(object):
             self.freeRef(self.getRef(int.from_bytes(req.parameter[t1:t1+4],'little',signed=True)))
 
     async def processRequest(self,req:PxpRequest):
-        handler=[None,self.getFunc,self.freeRefHandler,self.closeHandler,self.getInfo,self.sequence]
-        r2:Optional[PxpRequest]=req
-        while r2!=None:
-            log1.debug('processing:%s,%s',req.session,req.callableIndex)
-            if r2.callableIndex>=0:
-                await cast(PxpCallable,self.getRef(req.callableIndex).object).call(req)
-            else:
-                await handler[-r2.callableIndex](r2)
-            #abort on close
-            if r2.callableIndex==-3:
-                return
-            if req.rejected!=None:
-                await self.io1.send((req.session^0x80000000).to_bytes(4,'little')+str(req.rejected).encode('utf-8'))
-            else:
-                await self.io1.send(req.session.to_bytes(4,'little')+req.result)
-            r2=self.finishRequest(r2)
+        try:
+            handler=[None,self.getFunc,self.freeRefHandler,self.closeHandler,self.getInfo,self.sequence]
+            r2:Optional[PxpRequest]=req
+            while r2!=None:
+                log1.debug('processing:%s,%s',req.session,req.callableIndex)
+                if r2.callableIndex>=0:
+                    await cast(PxpCallable,self.getRef(req.callableIndex).object).call(req)
+                else:
+                    await handler[-r2.callableIndex](r2)
+                #abort on close
+                if r2.callableIndex==-3:
+                    return
+                if req.rejected!=None:
+                    await self.io1.send((req.session^0x80000000).to_bytes(4,'little')+str(req.rejected).encode('utf-8'))
+                else:
+                    await self.io1.send(req.session.to_bytes(4,'little')+req.result)
+                r2=self.finishRequest(r2)
+        except Exception:
+            pass
         
 
     async def serve(self):
