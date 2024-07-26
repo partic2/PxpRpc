@@ -9,7 +9,7 @@ PxpRpc(PARTIC cross platform remote procedure call) is a very tiny rpc library a
 
 Currently, pxprpc has been implemented on below platform
 
-rpc server on Java (>=1.6)
+rpc server and client on Java (>=1.6)
 
 asynchronous rpc server on C
 

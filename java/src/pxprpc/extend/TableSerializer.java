@@ -1,5 +1,6 @@
 package pxprpc.extend;
 
+import pxprpc.base.ClientContext;
 import pxprpc.base.PxpRef;
 import pxprpc.base.Serializer2;
 import pxprpc.base.ServerContext;
@@ -17,6 +18,7 @@ public class TableSerializer {
     public String[] headerName=null;
     public char[] headerType=null;
     public ServerContext boundServContext;
+    public RpcExtendClient1 boundClieContext;
     protected List<Object[]> cols=new ArrayList<Object[]>();
     protected List<Object[]> rows=new ArrayList<Object[]>();
     protected Serializer2 ser;
@@ -38,9 +40,10 @@ public class TableSerializer {
         this.headerName=names;
         return this;
     }
-    //Optional, for reference (un)serialize only, client are reserved parameter, should be null now.
-    public TableSerializer bindContext(ServerContext serv,Object client){
-        this.boundServContext =serv;
+    //Optional, for reference (un)serialize only.
+    public TableSerializer bindContext(ServerContext serv,RpcExtendClient1 client){
+        this.boundServContext=serv;
+        this.boundClieContext=client;
         return this;
     }
     public Object[] getRow(int index){
@@ -113,14 +116,26 @@ public class TableSerializer {
                     }
                     break;
                 case 'o':
-                    for(int i2=0;i2<rowCnt;i2++){
-                        Object obj=rows.get(i2)[i1];
-                        if(obj!=null){
-                            ser.putInt(allocRefFor(obj).index);
-                        }else{
-                            ser.putInt(-1);
+                    if(this.boundServContext!=null){
+                        for(int i2=0;i2<rowCnt;i2++){
+                            Object obj=rows.get(i2)[i1];
+                            if(obj!=null){
+                                ser.putInt(allocRefFor(obj).index);
+                            }else{
+                                ser.putInt(-1);
+                            }
+                            break;
                         }
-                        break;
+                    }else{
+                        for(int i2=0;i2<rowCnt;i2++){
+                            Object obj=rows.get(i2)[i1];
+                            if(obj!=null && obj instanceof RpcExtendClientObject){
+                                ser.putInt(((RpcExtendClientObject) obj).value);
+                            }else{
+                                ser.putInt(-1);
+                            }
+                            break;
+                        }
                     }
                     break;
                 default:
@@ -178,7 +193,11 @@ public class TableSerializer {
                         int addr=ser.getInt();
                         Object obj=null;
                         if(addr!=-1){
-                            obj = boundServContext.getRef(addr).get();
+                            if(this.boundServContext!=null) {
+                                obj = boundServContext.getRef(addr).get();
+                            }else{
+                                obj=new RpcExtendClientObject(this.boundClieContext,addr);
+                            }
                         }
                         rows.get(i1)[i1]=obj;
                     }

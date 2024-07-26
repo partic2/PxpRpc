@@ -3,6 +3,7 @@ package pxprpc.backend;
 import java.io.Closeable;
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.net.SocketAddress;
 import java.nio.channels.AsynchronousCloseException;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
@@ -10,9 +11,11 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Set;
 
+import pxprpc.base.AbstractIo;
 import pxprpc.base.FuncMap;
 import pxprpc.base.ServerContext;
 
+/* Tcp Server */
 public class TCPBackend implements Closeable{
 	/* Known issue. When use ChannelIo2, 'write' may blocked until 'read' return on android lower than 7.0.
 	May also occur on java version lower than 1.8.
@@ -91,4 +94,13 @@ public class TCPBackend implements Closeable{
 		}
 		ss.close();
 	}
+	public AbstractIo clientConnect(InetSocketAddress addr) throws IOException {
+		SocketChannel s = SocketChannel.open(addr);
+		if(channelIoVersion==1){
+			return new ChannelIo(s);
+		}else{
+			return new ChannelIo2(s,s);
+		}
+	}
+
 }

@@ -3,6 +3,7 @@ package pxprpc.base;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
+/* Servcer side request */
 public class PxpRequest {
     public ServerContext context;
     public int session;

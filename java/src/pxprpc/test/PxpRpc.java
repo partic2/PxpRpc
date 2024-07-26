@@ -3,14 +3,13 @@ package pxprpc.test;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.util.*;
 
 import pxprpc.backend.TCPBackend;
-import pxprpc.base.Serializer2;
-import pxprpc.base.ServerContext;
-import pxprpc.base.Utils;
+import pxprpc.base.*;
 import pxprpc.extend.*;
 
 public class PxpRpc {
@@ -154,5 +153,37 @@ public class PxpRpc {
 			}
 		});
 		th.start();
-	}
+		try {
+			/* client simple test */
+			Thread.sleep(500);
+			AbstractIo clientIo = pxptcp.clientConnect(new InetSocketAddress(InetAddress.getByAddress(new byte[]{127, 0, 0, 1}), listenPort));
+			RpcExtendClient1 client1 = new RpcExtendClient1(new ClientContext().backend1(clientIo)).init();
+			RpcExtendClientCallable get1234 = client1.getFunc("test1.get1234").typedecl("->o");
+			RpcExtendClientCallable printString = client1.getFunc("test1.printString").typedecl("o->");;
+			Object[] s1234 = get1234.callBlock();
+			printString.callBlock(s1234);
+
+			RpcExtendClientCallable testTableUnser=client1.getFunc("test1.testTableUnser").typedecl("b->");
+			Cfg t1 = new Cfg();
+			t1.id=12;
+			t1.isdir=false;
+			t1.name="myfile.txt";
+			t1.size=1231l;
+			ArrayList<Cfg> t2 = new ArrayList<Cfg>();
+			t2.add(t1);
+			ByteBuffer sered = new TableSerializer().fromTypedObjectArray(t2).build();
+			testTableUnser.callBlock(sered);
+
+			try{
+				RpcExtendClientCallable raiseError1 = client1.getFunc("test1.raiseError1").typedecl("->");
+				raiseError1.callBlock(new Object[]{});
+			}catch(RemoteError e){
+				e.printStackTrace();
+			}
+		} catch (IOException e) {
+			e.printStackTrace();
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+        }
+    }
 }
