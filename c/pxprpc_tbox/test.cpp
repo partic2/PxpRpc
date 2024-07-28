@@ -18,27 +18,25 @@ using namespace pxprpc;
 
 pxprpc_tbox_api *srvtbox;
 
-class fnPrintString:public FunctionPPWithSerializer{
-    public:
-    virtual void callWithSer(PxpRequestWrap *r,Serializer *parameter,std::function<void(Serializer *result)> done){
-        std::cout<<parameter->getString()<<std::endl;
-        done((new Serializer())->prepareSerializing(8)->putString("server:hello client"));
-    }
-};
 
-class fnPrintSerilizedArgs:public FunctionPPWithSerializer{
-    public:
-    virtual void callWithSer(PxpRequestWrap *r,Serializer *parameter,std::function<void(Serializer *result)> done){
-        auto i=parameter->getInt();
-        auto l=parameter->getLong();
-        auto f=parameter->getFloat();
-        auto d=parameter->getDouble();
-        auto s=parameter->getString();
-        auto b=parameter->getString();
-        std::cout<<i<<","<<l<<","<<f<<","<<d<<","<<s<<","<<b<<std::endl;
-        done(nullptr);
-    }
-};
+
+FunctionPPWithSerializer fnPrintString("printString",[](auto r,auto parameter,auto done)->void{
+    std::cout<<parameter->getString()<<std::endl;
+    done((new Serializer())->prepareSerializing(8)->putString("server:hello client"));
+});
+
+FunctionPPWithSerializer fnPrintSerilizedArgs("printSerilizedArgs",[](auto r,auto parameter,auto done)->void{
+    auto i=parameter->getInt();
+    auto l=parameter->getLong();
+    auto f=parameter->getFloat();
+    auto d=parameter->getDouble();
+    auto s=parameter->getString();
+    auto b=parameter->getString();
+    std::cout<<i<<","<<l<<","<<f<<","<<d<<","<<s<<","<<b<<std::endl;
+    done(nullptr);
+});
+
+
 
 template<typename E>
 int vectorIndexOf(std::vector<E> vec,E elem){
@@ -48,10 +46,8 @@ int vectorIndexOf(std::vector<E> vec,E elem){
 }
 
 #include <pxprpc_ext.hpp>
-class fnPrintSerilizedTable:public FunctionPPWithSerializer{
-    public:
-    virtual void callWithSer(PxpRequestWrap *r,Serializer *parameter,std::function<void(Serializer *result)> done){
-        TableSerializer *tabser=new TableSerializer();
+FunctionPPWithSerializer fnPrintSerilizedTable("printSerilizedTable",[](auto r,auto parameter,auto done)->void{
+    TableSerializer *tabser=new TableSerializer();
         tabser->bindSerializer(parameter)->load();
         auto colName=tabser->getColumnsName();
         auto nameCol=tabser->getStringColumn(vectorIndexOf(colName,std::string("name")));
@@ -78,9 +74,7 @@ class fnPrintSerilizedTable:public FunctionPPWithSerializer{
         }
         done(tabser->buildSer());
         delete tabser;
-        
-    }
-};
+});
 
 
 
@@ -99,16 +93,8 @@ int main(int argc,char *argv[]){
     if(tb_socket_bind(sock,&ipaddr)==tb_false){
         std::cerr<<"tb_socket_bind failed"<<std::endl;
     }
-    fnPrintString fn1;
-    fn1.setName("printString");
-    fnPrintSerilizedArgs fn3;
-    fn3.setName("printSerilizedArgs");
-    fnPrintSerilizedTable fn4;
-    fn4.setName("printSerilizedTable");
-    pxprpc_namedfunc namedfns[3]={
-        *fn1.cNamedFunc(),*fn3.cNamedFunc(),*fn4.cNamedFunc()
-    };
-    auto tbrpc=srvtbox->new_server(sock,namedfns,2);
+    defaultFuncMap.add(&fnPrintString)->add(&fnPrintSerilizedArgs)->add(&fnPrintSerilizedTable);
+    auto tbrpc=srvtbox->new_server(sock,defaultFuncMap.cFuncmap());
     srvtbox->serve_block(tbrpc);
     std::cerr<<"serve_block failed"<<srvtbox->get_error()<<std::endl;
     return 0;

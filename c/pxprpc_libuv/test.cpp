@@ -16,7 +16,7 @@ extern "C"{
 
 
 
-pxprpc_libuv_api *srvtbox;
+pxprpc_libuv_api *pxpuv;
 uv_tcp_t servTcp;
 uv_loop_t *loop;
 
@@ -26,27 +26,24 @@ static void testNopCallback(void *p){};
 
 using namespace pxprpc;
 
-class fnPrintString:public FunctionPPWithSerializer{
-    public:
-    virtual void callWithSer(PxpRequestWrap *r,Serializer *parameter,std::function<void(Serializer *result)> done){
-        std::cout<<parameter->getString()<<std::endl;
-        done((new Serializer())->prepareSerializing(8)->putString("server:hello client"));
-    }
-};
 
-class fnPrintSerilizedArgs:public FunctionPPWithSerializer{
-    public:
-    virtual void callWithSer(PxpRequestWrap *r,Serializer *parameter,std::function<void(Serializer *result)> done){
-        auto i=parameter->getInt();
-        auto l=parameter->getLong();
-        auto f=parameter->getFloat();
-        auto d=parameter->getDouble();
-        auto s=parameter->getString();
-        auto b=parameter->getString();
-        std::cout<<i<<","<<l<<","<<f<<","<<d<<","<<s<<","<<b<<std::endl;
-        done(nullptr);
-    }
-};
+FunctionPPWithSerializer fnPrintString("printString",[](auto r,auto parameter,auto done)->void{
+    std::cout<<parameter->getString()<<std::endl;
+    done((new Serializer())->prepareSerializing(8)->putString("server:hello client"));
+});
+
+FunctionPPWithSerializer fnPrintSerilizedArgs("printSerilizedArgs",[](auto r,auto parameter,auto done)->void{
+    auto i=parameter->getInt();
+    auto l=parameter->getLong();
+    auto f=parameter->getFloat();
+    auto d=parameter->getDouble();
+    auto s=parameter->getString();
+    auto b=parameter->getString();
+    std::cout<<i<<","<<l<<","<<f<<","<<d<<","<<s<<","<<b<<std::endl;
+    done(nullptr);
+});
+
+
 
 template<typename E>
 int vectorIndexOf(std::vector<E> vec,E elem){
@@ -56,10 +53,8 @@ int vectorIndexOf(std::vector<E> vec,E elem){
 }
 
 #include <pxprpc_ext.hpp>
-class fnPrintSerilizedTable:public FunctionPPWithSerializer{
-    public:
-    virtual void callWithSer(PxpRequestWrap *r,Serializer *parameter,std::function<void(Serializer *result)> done){
-        TableSerializer *tabser=new TableSerializer();
+FunctionPPWithSerializer fnPrintSerilizedTable("printSerilizedTable",[](auto r,auto parameter,auto done)->void{
+    TableSerializer *tabser=new TableSerializer();
         tabser->bindSerializer(parameter)->load();
         auto colName=tabser->getColumnsName();
         auto nameCol=tabser->getStringColumn(vectorIndexOf(colName,std::string("name")));
@@ -86,15 +81,12 @@ class fnPrintSerilizedTable:public FunctionPPWithSerializer{
         }
         done(tabser->buildSer());
         delete tabser;
-        
-    }
-};
-
+});
 
 
 int main(int argc,char *argv[]){
     pxprpc::init();
-    pxprpc_libuv_query_interface(&srvtbox);
+    pxprpc_libuv_query_interface(&pxpuv);
     loop=uv_default_loop();
     
     memset(&servTcp,0,sizeof(uv_tcp_t));
@@ -108,17 +100,9 @@ int main(int argc,char *argv[]){
     if(r){
         printf("uv_tcp_bind failed.");
     }
-    fnPrintString fn1;
-    fn1.setName("printString");
-    fnPrintSerilizedArgs fn3;
-    fn3.setName("printSerilizedArgs");
-    fnPrintSerilizedTable fn4;
-    fn4.setName("printSerilizedTable");
-    pxprpc_namedfunc namedfns[3]={
-        *fn1.cNamedFunc(),*fn3.cNamedFunc(),*fn4.cNamedFunc()
-    };
-    auto tbrpc=srvtbox->new_server(loop,(uv_stream_t *)&servTcp,namedfns,3);
-    srvtbox->serve_start(tbrpc);
+    defaultFuncMap.add(&fnPrintString)->add(&fnPrintSerilizedArgs)->add(&fnPrintSerilizedTable);
+    auto rpc=pxpuv->new_server(loop,(uv_stream_t *)&servTcp,defaultFuncMap.cFuncmap());
+    pxpuv->serve_start(rpc);
     uv_run(loop,UV_RUN_DEFAULT);
     printf("libuv finish.");
     return 0;

@@ -13,6 +13,10 @@ add_library(pxprpc STATIC pxprpc/pxprpc.c)
 
 target_include_directories(pxprpc PUBLIC include)
 
+add_library(pxprpc_pipe STATIC pxprpc_pipe/pxprpc_pipe.c)
+
+target_include_directories(pxprpc_pipe PUBLIC include)
+
 if (DEPS_SOURCE_DIRS)
 
 if(NOT TARGET uv_a)

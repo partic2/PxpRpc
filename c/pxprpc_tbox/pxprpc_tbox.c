@@ -7,8 +7,7 @@
 
 struct _pxprpc_tbox{
     tb_socket_ref_t sock;
-    struct pxprpc_namedfunc *namedFunc;
-    int lenOfNamedFunc;
+    pxprpc_funcmap *funcmap;
     int status;
     struct _pxprpc_tbox_sockconn *acceptedConn;
 };
@@ -22,15 +21,14 @@ int inited=0;
 
 static const char *errormsg=NULL;
 
-static pxprpc_server_tbox pxprpc_new_tboxsocket(tb_socket_ref_t sock,struct pxprpc_namedfunc *namedFunc,int lenOfNamedFunc){
+static pxprpc_server_tbox pxprpc_new_tboxsocket(tb_socket_ref_t sock,pxprpc_funcmap *funcmap){
     if(inited==0){
         inited=1;
         pxprpc_server_query_interface(&servapi);
     }
     struct _pxprpc_tbox *self=(struct _pxprpc_tbox *)pxprpc__malloc(sizeof(struct _pxprpc_tbox));
     self->sock=sock;
-    self->lenOfNamedFunc=lenOfNamedFunc;
-    self->namedFunc=namedFunc;
+    self->funcmap=funcmap;
     self->acceptedConn=NULL;
     return self;
 }
@@ -129,7 +127,9 @@ static struct _pxprpc_tbox_sockconn * __buildTboxSockconn(tb_socket_ref_t sock,s
     sockconn->sock=sock;
     sockconn->readError=NULL;
     sockconn->writeError=NULL;
-    servapi->context_new(&sockconn->rpcCtx,&sockconn->io1,sCtx->namedFunc,sCtx->lenOfNamedFunc);
+    servapi->context_new(&sockconn->rpcCtx,&sockconn->io1);
+    servapi->context_exports(sockconn->rpcCtx)->funcmap=sCtx->funcmap;
+    servapi->context_exports_apply(sockconn->rpcCtx);
     if(sCtx->acceptedConn==NULL){
         sCtx->acceptedConn=sockconn;
         sockconn->prev=NULL;

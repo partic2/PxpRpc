@@ -290,6 +290,8 @@ void pxprpc_pipe_serve(const char *name,void (*on_connect)(struct pxprpc_abstrac
     }
 }
 
+void (*pxprpc_pipe_executor)(void (*fn)(void *p),void *p)=NULL;
+
 struct pxprpc_abstract_io *pxprpc_pipe_connect(const char *name){
     _pxprpcPipeServer *serv=_pxprpcServerList;
     while(serv!=NULL){

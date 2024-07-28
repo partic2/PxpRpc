@@ -12,6 +12,7 @@ extern "C"{
 #include <tuple>
 #include <vector>
 #include <memory>
+#include <unordered_map>
 
 namespace pxprpc{
     
@@ -218,7 +219,6 @@ void __wrap_requestOnFinish(pxprpc_request *r){
 }
 
 class NamedFunctionPP{
-    struct pxprpc_namedfunc mCNamedFunc;
     public:
     pxprpc_callable callable;
     std::string name;
@@ -226,29 +226,34 @@ class NamedFunctionPP{
     NamedFunctionPP(){
         this->callable.user_data=this;
         this->callable.call=__wrap_call;
-        this->mCNamedFunc.callable=&this->callable;
     }
 
     NamedFunctionPP *setName(std::string funcName){
         this->name=funcName;
-        this->mCNamedFunc.name=this->name.c_str();
         return this;
     }
     
     virtual void call(PxpRequestWrap *r)=0;
-    virtual struct pxprpc_namedfunc *cNamedFunc(){
-        return &mCNamedFunc;
-    }
     virtual ~NamedFunctionPP(){}
 };
 
 
 class FunctionPPWithSerializer:public NamedFunctionPP{
     public:
-    virtual void callWithSer(PxpRequestWrap *r,Serializer *parameter,std::function<void(Serializer *result)> done)=0;
+    std::function<void(
+        PxpRequestWrap *r,Serializer *parameter,
+        std::function<void(Serializer *result)> done)>
+        callSer;
+
+    FunctionPPWithSerializer(std::string name,std::function<void(
+        PxpRequestWrap *r,Serializer *parameter,
+        std::function<void(Serializer *result)> done)> callSer){
+        this->setName(name);
+        this->callSer=callSer;
+    }
     virtual void call(PxpRequestWrap *r){
         auto ser=Serializer::fromPxpBytes(r->parameter());
-        this->callWithSer(r,ser,[ser,r](Serializer *result)->void{
+        this->callSer(r,ser,[ser,r](Serializer *result)->void{
             delete ser;
             if(result!=nullptr){
                 r->onFinishPP=[](PxpRequestWrap *r)->void{    
@@ -264,6 +269,43 @@ class FunctionPPWithSerializer:public NamedFunctionPP{
         });
     }
 };
+
+
+static pxprpc_callable *__wrap_funcmap_get(pxprpc_funcmap *self,char *funcname,int namelen);
+
+class FunctionMap{
+    public:
+    std::unordered_map<std::string,pxprpc_callable *> map;
+    pxprpc_funcmap cfm;
+    FunctionMap *add(std::string name,pxprpc_callable *fn){
+        this->map[name]=fn;
+        return this;
+    }
+    FunctionMap *add(NamedFunctionPP *func){
+        this->map[func->name]=&func->callable;
+        return this;
+    }
+    pxprpc_funcmap *cFuncmap(){
+        this->cfm.get=__wrap_funcmap_get;
+        this->cfm.p=this;
+        return &this->cfm;
+    }
+    pxprpc_callable *get(std::string name){
+        if(this->map.count(name)>0){
+            return this->map[name];
+        }else{
+            return NULL;
+        }
+    }
+};
+
+FunctionMap defaultFuncMap;
+
+static pxprpc_callable *__wrap_funcmap_get(pxprpc_funcmap *self,char *funcname,int namelen){
+    FunctionMap *map=static_cast<FunctionMap *>(self->p);
+    return map->get(std::string(funcname,funcname+namelen));
+}
+
 
 static void __wrap_call(pxprpc_callable *self,pxprpc_request *r){
     NamedFunctionPP *selfpp=static_cast<NamedFunctionPP *>(self->user_data);

@@ -6,8 +6,7 @@
 struct _pxprpc_libuv{
     uv_loop_t *loop;
     uv_stream_t *listener;
-    struct pxprpc_namedfunc *namedFunc;
-    int lenOfNamedFunc;
+    pxprpc_funcmap *funcmap;
     int status;
     struct _pxprpc_libuv_sockconn *acceptedConn;
 };
@@ -20,7 +19,7 @@ int inited=0;
 
 static const char *errormsg=NULL;
 
-static pxprpc_server_libuv pxprpc_new_libuvserver(uv_loop_t *loop,uv_stream_t *listener,struct pxprpc_namedfunc *namedFunc,int lenOfNamedFunc){
+static pxprpc_server_libuv pxprpc_new_libuvserver(uv_loop_t *loop,uv_stream_t *listener,pxprpc_funcmap *funcmap){
     if(inited==0){
         inited=1;
         pxprpc_server_query_interface(&servapi);
@@ -28,8 +27,7 @@ static pxprpc_server_libuv pxprpc_new_libuvserver(uv_loop_t *loop,uv_stream_t *l
     struct _pxprpc_libuv *self=(struct _pxprpc_libuv *)pxprpc__malloc(sizeof(struct _pxprpc_libuv));
     self->loop=loop;
     self->listener=listener;
-    self->lenOfNamedFunc=lenOfNamedFunc;
-    self->namedFunc=namedFunc;
+    self->funcmap=funcmap;
     self->acceptedConn=NULL;
     return self;
 }
@@ -234,7 +232,9 @@ static struct _pxprpc_libuv_sockconn * __buildLibuvSockconn(struct _pxprpc_libuv
     memset(&sockconn->stream,0,sizeof(uv_stream_t));
     sockconn->readError=NULL;
     sockconn->writeError=NULL;
-    servapi->context_new(&sockconn->rpcCtx,&sockconn->io1,sCtx->namedFunc,sCtx->lenOfNamedFunc);
+    servapi->context_new(&sockconn->rpcCtx,&sockconn->io1);
+    servapi->context_exports(sockconn->rpcCtx)->funcmap=sCtx->funcmap;
+    servapi->context_exports_apply(sockconn->rpcCtx);
     if(sCtx->acceptedConn==NULL){
         sCtx->acceptedConn=sockconn;
         sockconn->prev=NULL;

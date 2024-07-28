@@ -22,10 +22,7 @@ static struct pxprpc_server_context_exports *pxprpc_server_context_exports(pxprp
 
 
 struct _pxprpc__ServCo{
-    struct pxprpc_abstract_io *io1;
     struct pxprpc_server_context_exports exp;
-    int lengthOfNamedFuncs;
-    struct pxprpc_namedfunc *namedfuncs;
     uint32_t status;
     uint32_t sequenceSessionMask;
     char sequenceMaskBitsCnt;
@@ -62,7 +59,7 @@ static int pxprpc_close(pxprpc_server_context server_context){
         ref->object=NULL;
     }
     self->status|=0x1;
-    self->io1->close(self->io1);
+    self->exp.io->close(self->exp.io);
     return 0;
 }
 
@@ -163,7 +160,7 @@ static void _pxprpc__finishRequest(pxprpc_request *r){
     struct _pxprpc__ServCo * ctx=(struct _pxprpc__ServCo *)r->server_context;
     if(r->on_finish!=NULL)r->on_finish(r);
     if(r->parameter.base!=NULL){
-        ctx->io1->buf_free(r->parameter.base);
+        ctx->exp.io->buf_free(r->parameter.base);
     }
     if(r->inSequence){
         if(r->lastReq!=NULL){
@@ -203,7 +200,7 @@ static void _pxprpc__stepCall2(pxprpc_request *r){
         r->sendBuf.next_part=NULL;
     }
     r->next_step=_pxprpc__finishRequest;
-    ctx->io1->send(ctx->io1,&r->sendBuf,(void *)r->next_step,r);
+    ctx->exp.io->send(ctx->exp.io,&r->sendBuf,(void *)r->next_step,r);
 }
 static void _pxprpc__stepCall1(pxprpc_request *r){
     struct _pxprpc__ServCo * ctx=(struct _pxprpc__ServCo *)r->server_context;
@@ -219,50 +216,16 @@ static void _pxprpc__stepFreeRef1(pxprpc_request *r){
     _pxprpc__stepCall2(r);
 }
 
-//str1(2)Len = -1 indicate 0-ending string, In this case the real length will be put into *str1(2)Len after function return.
-//string length is limited to 0x1000
-static int _pxprpc__strcmp2(const char *str1,int *str1Len,const char *str2,int *str2Len){
-    int i,r;
-    if(*str1Len==-1){
-        for(i=0;i<0x1000;i++){
-            if(str1[i]==0){
-                break;
-            }
-        }
-        *str1Len=i;
-    }
-    if(*str2Len==-1){
-        for(i=0;i<0x1000;i++){
-            if(str2[i]==0){
-                break;
-            }
-        }
-        *str2Len=i;
-    }
-    if(*str1Len==*str2Len){
-        for(i=0,r=0;i<*str1Len;i++){
-            if(str1[i]!=str2[i]){
-                r=str1[i]-str2[i];
-                break;
-            }
-        }
-    }else{
-        r=*str1Len-*str2Len;
-    }
-    return r;
-}
 //GetFunc handler
 static void _pxprpc__stepGetFunc1(pxprpc_request *r){
     struct _pxprpc__ServCo *self=(struct _pxprpc__ServCo *)r->server_context;
     r->temp1=-1;
     int lenOut=-1;
-    for(int i=0;i<self->lengthOfNamedFuncs;i++){
-        lenOut=-1;
-        int cmp1=_pxprpc__strcmp2(self->namedfuncs[i].name,&lenOut,(const char *)r->parameter.base,&r->parameter.length);
-        if(!cmp1){
+    if(self->exp.funcmap!=NULL){
+        pxprpc_callable *func=self->exp.funcmap->get(self->exp.funcmap,r->parameter.base,r->parameter.length);
+        if(func!=NULL){
             pxprpc_ref *ref2=pxprpc_alloc_ref(self,&r->temp1);
-            ref2->object=self->namedfuncs[i].callable;
-            break;
+            ref2->object=func;
         }
     }
     r->result.bytes.base=&r->temp1;
@@ -310,9 +273,9 @@ static void _pxprpc__stepSequence1(pxprpc_request *r){
     _pxprpc__stepCall2(r);
 }
 
-#include <stdio.h>
+
 static void _pxprpc__step2(struct _pxprpc__ServCo *self){
-    self->exp.last_error=self->io1->get_error(self->io1,(void *)self->io1->receive);
+    self->exp.last_error=self->exp.io->get_error(self->exp.io,(void *)self->exp.io->receive);
     if(self->exp.last_error!=NULL){
         pxprpc_close(self);
         return;
@@ -358,17 +321,15 @@ static void _pxprpc__step1(struct _pxprpc__ServCo *self){
     self->recvBuf[0].next_part=&self->recvBuf[1];
     self->recvBuf[1].bytes.base=NULL;
     self->recvBuf[1].bytes.length=0;
-    self->io1->receive(self->io1,&self->recvBuf[0],(void *)_pxprpc__step2,self);
+    self->exp.io->receive(self->exp.io,&self->recvBuf[0],(void *)_pxprpc__step2,self);
 }
 
 
 
-static int pxprpc_new_server_context(pxprpc_server_context *server_context,struct pxprpc_abstract_io *io1,struct pxprpc_namedfunc *namedfuncs,int len_namedfuncs){
+static int pxprpc_new_server_context(pxprpc_server_context *server_context,struct pxprpc_abstract_io *io1){
     struct _pxprpc__ServCo *ctx=(struct _pxprpc__ServCo *)pxprpc__malloc(sizeof(struct _pxprpc__ServCo));
     memset(ctx,0,sizeof(struct _pxprpc__ServCo));
-    ctx->io1=io1;
-    ctx->namedfuncs=namedfuncs;
-    ctx->lengthOfNamedFuncs=len_namedfuncs;
+    ctx->exp.io=io1;
     *server_context=ctx;
     return 0;
 }
@@ -392,9 +353,15 @@ static struct pxprpc_server_context_exports *pxprpc_server_context_exports(pxprp
     return &self->exp;
 }
 
+
+static void pxprpc_server_context_exports_apply(pxprpc_server_context context){
+}
+
+
 static pxprpc_server_api exports={
     &pxprpc_new_server_context,&pxprpc_start_serve,&pxprpc_closed,&pxprpc_close,&pxprpc_free_context,
-    &pxprpc_alloc_ref,&pxprpc_free_ref,&pxprpc_get_ref,&pxprpc_server_context_exports
+    &pxprpc_alloc_ref,&pxprpc_free_ref,&pxprpc_get_ref,&pxprpc_server_context_exports,
+    &pxprpc_server_context_exports_apply
 };
 
 extern int pxprpc_server_query_interface(pxprpc_server_api **outapi){

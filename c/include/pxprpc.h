@@ -104,12 +104,6 @@ typedef struct _pxprpc_request_s{
     char inSequence;
 } pxprpc_request;
 
-struct pxprpc_server_context_exports{
-    pxprpc_ref *ref_pool;
-    pxprpc_ref *free_ref_entry;
-    uint16_t ref_pool_size;
-    const char *last_error;
-};
 
 
 typedef struct _pxprpc_callable_s{
@@ -117,14 +111,25 @@ typedef struct _pxprpc_callable_s{
     void *user_data;
 }pxprpc_callable;
 
-struct pxprpc_namedfunc{
-    const char *name;
-    pxprpc_callable *callable;
+
+typedef struct pxprpc_funcmap_s{
+    pxprpc_callable *(*get)(struct pxprpc_funcmap_s *self,char *funcname,int namelen);
+    void *p;
+} pxprpc_funcmap;
+
+struct pxprpc_server_context_exports{
+    pxprpc_ref *ref_pool;
+    pxprpc_ref *free_ref_entry;
+    uint16_t ref_pool_size;
+    const char *last_error;
+    /* io is READONLY, Modify it may cause unexpected behaviour */
+    struct pxprpc_abstract_io *io;
+    pxprpc_funcmap *funcmap;
 };
 
+
 typedef struct pxprpc_server_api{
-    int (*context_new)(pxprpc_server_context *server_context,struct pxprpc_abstract_io *io1,
-                                     struct pxprpc_namedfunc *namedfuncs,int len_namedfuncs);
+    int (*context_new)(pxprpc_server_context *server_context,struct pxprpc_abstract_io *io1);
     int (*context_start)(pxprpc_server_context);
     int (*context_closed)(pxprpc_server_context);
     int (*context_close)(pxprpc_server_context);
@@ -133,6 +138,8 @@ typedef struct pxprpc_server_api{
     void (*free_ref)(pxprpc_server_context context,pxprpc_ref *ref);
     pxprpc_ref *(*get_ref)(pxprpc_server_context context,uint32_t index);
     struct pxprpc_server_context_exports *(*context_exports)(pxprpc_server_context context);
+    /* Change in exports may don't take effect immediately, use context_exports_apply to make it.*/
+    void (*context_exports_apply)(pxprpc_server_context context);
 }pxprpc_server_api;
 
 extern int pxprpc_server_query_interface(pxprpc_server_api **outapi);

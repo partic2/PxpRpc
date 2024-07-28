@@ -8,7 +8,7 @@
 typedef void *pxprpc_server_tbox;
 
 typedef struct pxprpc_tbox_api{
-    pxprpc_server_tbox (*new_server)(tb_socket_ref_t sock,struct pxprpc_namedfunc *namedFunc,int lenOfNamedFunc);
+    pxprpc_server_tbox (*new_server)(tb_socket_ref_t sock,pxprpc_funcmap *funcmap);
     void (*serve_block)(pxprpc_server_tbox tbox);
     int (*delete_server)(pxprpc_server_tbox serv);
     const char *(*get_error)();

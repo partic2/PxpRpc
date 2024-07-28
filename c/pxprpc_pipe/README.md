@@ -1,0 +1,1 @@
+pxprpc_pipe is a struct pxprpc_abstract_io backend to communicate in ONE process.

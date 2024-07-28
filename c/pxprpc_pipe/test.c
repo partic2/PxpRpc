@@ -1,7 +1,10 @@
 
+
 #include <pxprpc.h>
 #include <pxprpc_pipe.h>
 #include <stdio.h>
+
+
 
 struct pxprpc_buffer_part buff;
 
@@ -9,7 +12,7 @@ void serverReceiveDone(void *p);
 
 void serverSendDone(void *p){
     puts("serverSendDone\n");
-    struct pxprpc_abstract_io *io1=p;
+    struct pxprpc_abstract_io *io1=(struct pxprpc_abstract_io *)p;
     if(io1->get_error(io1,io1->send)!=NULL){
         if(io1->get_error(io1,io1->send)==pxprpc_pipe_error_connection_closed){
             printf("closed");
@@ -26,7 +29,7 @@ void serverSendDone(void *p){
 
 void serverReceiveDone(void *p){
     puts("serverReceiveDone\n");
-    struct pxprpc_abstract_io *io1=p;
+    struct pxprpc_abstract_io *io1=(struct pxprpc_abstract_io *)p;
     if(io1->get_error(io1,io1->receive)!=NULL){
         if(io1->get_error(io1,io1->receive)==pxprpc_pipe_error_connection_closed){
             printf("closed");
@@ -53,7 +56,7 @@ struct pxprpc_buffer_part clientBuff2;
 
 void testClientRecvDone(void *p){
     puts("testClientRecvDone\n");
-    struct pxprpc_abstract_io *io1=p;
+    struct pxprpc_abstract_io *io1=(struct pxprpc_abstract_io *)p;
     if(io1->get_error(io1,io1->receive)!=NULL){
         if(io1->get_error(io1,io1->receive)==pxprpc_pipe_error_connection_closed){
             printf("closed");
@@ -73,7 +76,7 @@ void testClientRecvDone(void *p){
 
 void testClientSendDone(void *p){
     puts("testClientSendDone\n");
-    struct pxprpc_abstract_io *io1=p;
+    struct pxprpc_abstract_io *io1=(struct pxprpc_abstract_io *)p;
     if(io1->get_error(io1,io1->send)!=NULL){
         if(io1->get_error(io1,io1->send)==pxprpc_pipe_error_connection_closed){
             printf("closed");
@@ -97,12 +100,12 @@ void test1(){
     struct pxprpc_abstract_io *client=pxprpc_pipe_connect("testEchoServer1");
     clientBuff1.bytes.base=malloc(10);
     clientBuff1.bytes.length=5;
-    sprintf(clientBuff1.bytes.base,"12345");
+    sprintf((char *)clientBuff1.bytes.base,"12345");
     clientBuff1.next_part=&clientBuff2;
     clientBuff2.bytes.base=malloc(10);
     clientBuff2.bytes.length=5;
     clientBuff2.next_part=NULL;
-    sprintf(clientBuff2.bytes.base,"67890");
+    sprintf((char *)clientBuff2.bytes.base,"67890");
     client->send(client,&clientBuff1,testClientSendDone,client);
 }
 

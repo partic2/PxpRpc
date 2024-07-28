@@ -41,6 +41,11 @@ void Java_pxprpc_pipe_NativeHelper_pushInvoc(JNIEnv *env,jlong rtb,jobject jevtb
     pxprpc_rtbridge_push_invoc(c,evt);
 }
 
-jlong Java_pxprpc_pipe_NativeHelper_init(JNIEnv *env){
+jlong Java_pxprpc_pipe_NativeHelper_allocRuntimeBridge(JNIEnv *env){
+    return pxprpc_rtbridge_alloc();
+}
+
+void Java_pxprpc_pipe_NativeHelper_freeRuntimeBridge(JNIEnv *env,jlong rtb){
+    pxprpc_rtbridge_free((void *)rtb);
     return pxprpc_rtbridge_alloc();
 }

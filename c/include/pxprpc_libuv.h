@@ -8,7 +8,7 @@
 typedef void *pxprpc_server_libuv;
 
 typedef struct pxprpc_libuv_api{
-    pxprpc_server_libuv (*new_server)(uv_loop_t *loop,uv_stream_t *serv,struct pxprpc_namedfunc *namedFunc,int lenOfNamedFunc);
+    pxprpc_server_libuv (*new_server)(uv_loop_t *loop,uv_stream_t *serv,pxprpc_funcmap *funcmap);
     void (*serve_start)(pxprpc_server_libuv serv);
     int (*delete_server)(pxprpc_server_libuv serv);
     const char *(*get_error)();
