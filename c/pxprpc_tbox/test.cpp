@@ -93,7 +93,7 @@ int main(int argc,char *argv[]){
     if(tb_socket_bind(sock,&ipaddr)==tb_false){
         std::cerr<<"tb_socket_bind failed"<<std::endl;
     }
-    defaultFuncMap.add(&fnPrintString)->add(&fnPrintSerilizedArgs)->add(&fnPrintSerilizedTable);
+    defaultFuncMap.add(&fnPrintString).add(&fnPrintSerilizedArgs).add(&fnPrintSerilizedTable);
     auto tbrpc=srvtbox->new_server(sock,defaultFuncMap.cFuncmap());
     srvtbox->serve_block(tbrpc);
     std::cerr<<"serve_block failed"<<srvtbox->get_error()<<std::endl;

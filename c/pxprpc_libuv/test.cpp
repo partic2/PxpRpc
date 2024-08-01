@@ -100,7 +100,7 @@ int main(int argc,char *argv[]){
     if(r){
         printf("uv_tcp_bind failed.");
     }
-    defaultFuncMap.add(&fnPrintString)->add(&fnPrintSerilizedArgs)->add(&fnPrintSerilizedTable);
+    defaultFuncMap.add(&fnPrintString).add(&fnPrintSerilizedArgs).add(&fnPrintSerilizedTable);
     auto rpc=pxpuv->new_server(loop,(uv_stream_t *)&servTcp,defaultFuncMap.cFuncmap());
     pxpuv->serve_start(rpc);
     uv_run(loop,UV_RUN_DEFAULT);

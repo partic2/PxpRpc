@@ -138,7 +138,7 @@ static void __wrap_call(pxprpc_callable *self,pxprpc_request *r);
 
 pxprpc_server_api *servapi;
 
-extern void init(){
+void init(){
     pxprpc_server_query_interface(&servapi);
 }
 
@@ -277,13 +277,13 @@ class FunctionMap{
     public:
     std::unordered_map<std::string,pxprpc_callable *> map;
     pxprpc_funcmap cfm;
-    FunctionMap *add(std::string name,pxprpc_callable *fn){
+    FunctionMap& add(std::string name,pxprpc_callable *fn){
         this->map[name]=fn;
-        return this;
+        return *this;
     }
-    FunctionMap *add(NamedFunctionPP *func){
+    FunctionMap& add(NamedFunctionPP *func){
         this->map[func->name]=&func->callable;
-        return this;
+        return *this;
     }
     pxprpc_funcmap *cFuncmap(){
         this->cfm.get=__wrap_funcmap_get;
