@@ -12,11 +12,11 @@ class TableSerializer{
     Serializer *ser=nullptr;
     int32_t flag=0;
     int32_t rowCnt=0;
-    std::string headerType;
-    std::vector<std::string> headerName;
+    std::string columnType;
+    std::vector<std::string> columnName;
     std::vector<void *> cols;
     public:
-    static const int FLAG_NO_HEADER_NAME=1;
+    static const int FLAG_NO_COLUMN_NAME=1;
     TableSerializer *bindSerializer(Serializer *ser){
         this->ser=ser;
         return this;
@@ -29,14 +29,14 @@ class TableSerializer{
     TableSerializer *load(){
         this->flag=this->ser->getVarint();
         this->rowCnt=this->ser->getVarint();
-        this->headerType=this->ser->getString();
-        this->headerName.clear();
-        if(!(this->flag&FLAG_NO_HEADER_NAME)){
-            for(int i1=0;i1<this->headerType.size();i1++){
-                this->headerName.push_back(this->ser->getString());
+        this->columnType=this->ser->getString();
+        this->columnName.clear();
+        if(!(this->flag&FLAG_NO_COLUMN_NAME)){
+            for(int i1=0;i1<this->columnType.size();i1++){
+                this->columnName.push_back(this->ser->getString());
             }
         }
-        for(auto typ=this->headerType.begin();typ!=this->headerType.end();typ++){
+        for(auto typ=this->columnType.begin();typ!=this->columnType.end();typ++){
             switch(*typ){
                 case 'i':{
                     auto col=new std::vector<int32_t>();
@@ -100,20 +100,20 @@ class TableSerializer{
             this->ser=(new Serializer())->prepareSerializing(16);
         }
         int flag=0;
-        if(this->headerName.size()==0 && this->headerType.size()>0){
-            flag|=FLAG_NO_HEADER_NAME;
+        if(this->columnName.size()==0 && this->columnType.size()>0){
+            flag|=FLAG_NO_COLUMN_NAME;
         };
         this->ser->putVarint(flag);
         this->ser->putVarint(this->rowCnt);
-        this->ser->putString(this->headerType);
-        if(!(flag & FLAG_NO_HEADER_NAME)){
-            for(auto name=this->headerName.begin();name!=this->headerName.end();name++){
+        this->ser->putString(this->columnType);
+        if(!(flag & FLAG_NO_COLUMN_NAME)){
+            for(auto name=this->columnName.begin();name!=this->columnName.end();name++){
                 this->ser->putString(*name);
             }
         }
         
-        for(int i1=0;i1<this->headerType.length();i1++){
-            switch(this->headerType.at(i1)){
+        for(int i1=0;i1<this->columnType.length();i1++){
+            switch(this->columnType.at(i1)){
                 case 'i':{
                     auto col=reinterpret_cast<std::vector<int32_t>*>(this->cols[i1]);
                     for(auto it=col->begin();it!=col->end();it++){
@@ -190,9 +190,9 @@ class TableSerializer{
         return reinterpret_cast<std::vector<uint8_t> *>(this->cols[index])->data();
     }
     TableSerializer *addRow(void **row){
-        auto size=this->headerType.size();
+        auto size=this->columnType.size();
         for(int i1=0;i1<size;i1++){
-            switch(this->headerType.at(i1)){
+            switch(this->columnType.at(i1)){
                 case 'i':
                 reinterpret_cast<std::vector<int32_t> *>(this->cols[i1])->push_back(*reinterpret_cast<int32_t *>(row[i1]));
                 break;
@@ -219,11 +219,11 @@ class TableSerializer{
         this->rowCnt+=1;
         return this;
     }
-    TableSerializer *setHeader(std::string headerType,std::vector<std::string> headerName){
-        this->headerType=headerType;
-        this->headerName=headerName;
-        for(int i1=0;i1<headerType.size();i1++){
-            switch(headerType.at(i1)){
+    TableSerializer *setColumnInfo(std::string columnType,std::vector<std::string> columnName){
+        this->columnType=columnType;
+        this->columnName=columnName;
+        for(int i1=0;i1<columnType.size();i1++){
+            switch(columnType.at(i1)){
                 case 'i':
                 this->cols.push_back(new std::vector<int32_t>());
                 break;
@@ -249,23 +249,23 @@ class TableSerializer{
         }
         return this;
     }
-    TableSerializer *setHeader(std::string headerType){
-        return this->setHeader(headerType,std::vector<std::string>());
+    TableSerializer *setColumnInfo(std::string columnType){
+        return this->setColumnInfo(columnType,std::vector<std::string>());
     }
     std::vector<std::string> getColumnsName(){
-        return this->headerName;
+        return this->columnName;
     }
     std::string getColumnType(){
-        return this->headerType;
+        return this->columnType;
     }
     int getRowCount(){
         return this->rowCnt;
     }
     ~TableSerializer(){
-        for(int i1=0;i1<this->cols.size()&&i1<this->headerType.size();i1++){
+        for(int i1=0;i1<this->cols.size()&&i1<this->columnType.size();i1++){
             auto col=this->cols[i1];
             if(col!=nullptr){
-                switch(this->headerType.at(i1)){
+                switch(this->columnType.at(i1)){
                     case 'i':
                     delete reinterpret_cast<std::vector<int32_t> *>(col);
                     break;

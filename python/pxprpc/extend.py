@@ -16,18 +16,18 @@ def pytypeToDeclChar(t):
     return typemap.get(t,'o')
 
 class TableSerializer:
-    FLAG_NO_HEADER_NAME=1
+    FLAG_NO_COLUMN_NAME=1
     def __init__(self):
         self.rows:List[List[Any]]=[]
-        self.headerType=None
-        self.headerName=None
+        self.columnType=None
+        self.columnName=None
         self.ser=None
         self.boundServContext=None
         self.boundClieContext=None
 
-    def setHeader(self,types:Optional[str],names:Optional[List[str]]):
-        self.headerName=names
-        self.headerType=types
+    def setColumnInfo(self,types:Optional[str],names:Optional[List[str]]):
+        self.columnName=names
+        self.columnType=types
         return self
     
     def getRow(self,index:int):
@@ -50,14 +50,14 @@ class TableSerializer:
         return self
     
     def getRowsData(self,rowCnt:int)->List[List[Any]]:
-        headerType=NotNone(self.headerType)
-        colCnt=len(headerType)
+        columnType=NotNone(self.columnType)
+        colCnt=len(columnType)
         ser=NotNone(self.ser)
         rows=[]
         for i1 in range(rowCnt):
             rows.append([None]*colCnt)
         for i1 in range(colCnt):
-            typ=headerType[i1]
+            typ=columnType[i1]
             if typ=='i':
                 for i2 in range(rowCnt):
                     rows[i2][i1]=ser.getInt()
@@ -94,12 +94,12 @@ class TableSerializer:
         return rows
 
     def putRowsData(self,rows:List[List[Any]]):
-        headerType=NotNone(self.headerType)
-        colsCnt=len(headerType)
+        columnType=NotNone(self.columnType)
+        colsCnt=len(columnType)
         rowCnt=len(rows)
         ser=NotNone(self.ser)
         for i1 in range(colsCnt):
-            typ=headerType[i1]
+            typ=columnType[i1]
             if typ=='i':
                 for i2 in range(rowCnt):
                     ser.putInt(rows[i2][i1])
@@ -141,73 +141,73 @@ class TableSerializer:
         ser=NotNone(self.ser)
         flag=ser.getVarint()
         rowCnt=ser.getVarint()
-        headerType=ser.getString()
-        self.headerType=headerType
-        colCnt=len(headerType)
-        if (flag & TableSerializer.FLAG_NO_HEADER_NAME)==0:
-            headerName2 = []
+        columnType=ser.getString()
+        self.columnType=columnType
+        colCnt=len(columnType)
+        if (flag & TableSerializer.FLAG_NO_COLUMN_NAME)==0:
+            colName2 = []
             for i1 in range(colCnt):
-                headerName2.append(ser.getString())
-            self.headerName=headerName2
+                colName2.append(ser.getString())
+            self.columnName=colName2
         self.rows=self.getRowsData(rowCnt)
         return self
 
     def build(self):
         if self.ser==None:
             self.ser=Serializer().prepareSerializing()
-        if self.headerType==None:
+        if self.columnType==None:
             if len(self.rows)>=1:
-                self.headerType=''
+                self.columnType=''
                 for t1 in self.rows[0]:
-                    self.headerType+=pytypeToDeclChar(type(t1))
+                    self.columnType+=pytypeToDeclChar(type(t1))
             else:
-                self.headerType=''
-        colsCnt=len(self.headerType)
+                self.columnType=''
+        colsCnt=len(self.columnType)
         flag=0
-        if self.headerName==None:
-            flag|=TableSerializer.FLAG_NO_HEADER_NAME
+        if self.columnName==None:
+            flag|=TableSerializer.FLAG_NO_COLUMN_NAME
         
         self.ser.putVarint(flag)
         rowCnt=len(self.rows)
         self.ser.putVarint(rowCnt)
-        self.ser.putString(self.headerType)
-        if self.headerName!=None:
-            for e in self.headerName:
+        self.ser.putString(self.columnType)
+        if self.columnName!=None:
+            for e in self.columnName:
                 self.ser.putString(e)
         self.putRowsData(self.rows)
         return self.ser.build()
     
     def toMapArray(self)->List[Dict[str,Any]]:
         r=[]
-        assert self.headerName!=None
+        assert self.columnName!=None
         for t1 in range(self.getRowCount()):
             r0={}
             row=self.getRow(t1)
-            for t2,t3 in enumerate(self.headerName):
+            for t2,t3 in enumerate(self.columnName):
                 r0[t3]=row[t2]
             r.append(r0)
         return r
 
     def fromMapArray(self,val:List[Dict[str,Any]]):
-        if len(val)>=1 and self.headerName==None:
-            self.headerName=list(val[0].keys())
+        if len(val)>=1 and self.columnName==None:
+            self.columnName=list(val[0].keys())
         for t1 in val:
             row=[]
-            for t2 in NotNone(self.headerName):
+            for t2 in NotNone(self.columnName):
                 row.append(t1[t2])
             self.addRow(row)
         return self
     
     def toArray(self)->List[Dict[str,Any]]:
         r=[]
-        assert self.headerName!=None
+        assert self.columnName!=None
         for t1 in range(self.getRowCount()):
             r.append(self.getRow(t1)[0])
         return r
 
     def fromArray(self,val:List[Dict[str,Any]]):
-        if len(val)>=1 and self.headerName==None:
-            self.headerName=list(val[0].keys())
+        if len(val)>=1 and self.columnName==None:
+            self.columnName=list(val[0].keys())
         for t1 in val:
             self.addRow([t1])
         return self
@@ -280,7 +280,7 @@ available type typedecl characters:
         else:
             ser=Serializer().prepareSerializing()
             TableSerializer()\
-                .bindContext(None,self.client).bindSerializer(ser).setHeader(self.tParam,None)\
+                .bindContext(None,self.client).bindSerializer(ser).setColumnInfo(self.tParam,None)\
                 .putRowsData([list(args)])
 
             packed=ser.build()
@@ -292,7 +292,7 @@ available type typedecl characters:
             else:
                 ser=Serializer().prepareUnserializing(result)
                 results=TableSerializer()\
-                    .bindContext(None,self.client).bindSerializer(ser).setHeader(self.tResult,None)\
+                    .bindContext(None,self.client).bindSerializer(ser).setColumnInfo(self.tResult,None)\
                     .getRowsData(1)[0]
 
                 if len(self.tResult)==0:
@@ -413,7 +413,7 @@ class PyCallableWrap(PxpCallable):
         else:
             ser=Serializer().prepareUnserializing(req.parameter)
             para=TableSerializer()\
-                .bindContext(req.context,None).bindSerializer(ser).setHeader(self.tParam,None)\
+                .bindContext(req.context,None).bindSerializer(ser).setColumnInfo(self.tParam,None)\
                 .getRowsData(1)[0]
         return para
     
@@ -433,7 +433,7 @@ class PyCallableWrap(PxpCallable):
             ser=Serializer().prepareSerializing()
             result2=[result] if len(self.tResult)<=1 else result
             TableSerializer()\
-                .bindContext(req.context,None).bindSerializer(ser).setHeader(self.tResult,None)\
+                .bindContext(req.context,None).bindSerializer(ser).setColumnInfo(self.tResult,None)\
                 .putRowsData([result2])
             b=ser.build()
             return b

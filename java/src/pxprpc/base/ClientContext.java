@@ -22,10 +22,10 @@ public class ClientContext {
     public void run(){
         if(this.running)return;
         this.running=true;
-        ByteBuffer header=ByteBuffer.allocate(4);
+        final ByteBuffer header=ByteBuffer.allocate(4);
         header.order(ByteOrder.LITTLE_ENDIAN);
-        ByteBuffer[] recv=new ByteBuffer[]{header,null};
-        ClientContext that=this;
+        final ByteBuffer[] recv=new ByteBuffer[]{header,null};
+        final ClientContext that=this;
         new Thread(new Runnable() {
             @Override
             public void run() {
@@ -66,9 +66,9 @@ public class ClientContext {
         this.io.send(new ByteBuffer[]{header,parameter});
     }
     public ByteBuffer callBlock(int callableIndex,ByteBuffer parameter,int sid) throws IOException, InterruptedException {
-        Object lock=new Object();
-        ByteBuffer[] result=new ByteBuffer[1];
-        RemoteError[] exc=new RemoteError[1];
+        final Object lock=new Object();
+        final ByteBuffer[] result=new ByteBuffer[1];
+        final RemoteError[] exc=new RemoteError[1];
         Ret ar = new Ret() {
             @Override
             public void cb(ByteBuffer r, RemoteError e) {

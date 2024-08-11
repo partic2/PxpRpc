@@ -68,7 +68,7 @@ FunctionPPWithSerializer fnPrintSerilizedTable("printSerilizedTable",[](auto r,a
         
         
         tabser=new TableSerializer();
-        tabser->setHeader("slc",std::vector<std::string>({"name","filesize","isdir"}));
+        tabser->setColumnInfo("slc",std::vector<std::string>({"name","filesize","isdir"}));
         std::string names[2]={"myfile.txt","mydir"};
         int64_t sizes[2]={123,0};
         uint8_t isdirs[2]={0,1};

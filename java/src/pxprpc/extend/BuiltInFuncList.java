@@ -99,7 +99,7 @@ public class BuiltInFuncList {
 				}
 			}
 		}
-		return new TableSerializer().setHeader(null,hdrs.toArray(new String[0]))
+		return new TableSerializer().setColumnInfo(null,hdrs.toArray(new String[0]))
 				.addRow(row.toArray(new Object[0])).build();
 	}
 

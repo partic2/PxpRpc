@@ -65,7 +65,7 @@ s  string(bytes will be decode to string)
         }else{
             let ser=new Serializer().prepareSerializing(32);
             new TableSerializer().
-                bindContext(null,this.client).bindSerializer(ser).setHeader(this.tParam,null).
+                bindContext(null,this.client).bindSerializer(ser).setColumnInfo(this.tParam,null).
                 putRowsData([args])
             let serbuf=ser.build()
             buf=[serbuf];
@@ -78,7 +78,7 @@ s  string(bytes will be decode to string)
             }else{
                 let ser=new Serializer().prepareUnserializing(resp);
                 let rets=new TableSerializer().
-                    bindContext(null,this.client).bindSerializer(ser).setHeader(this.tResult,null).
+                    bindContext(null,this.client).bindSerializer(ser).setColumnInfo(this.tResult,null).
                     getRowsData(1)[0]
                 if(this.tResult.length===1){
                     return rets[0];
@@ -208,7 +208,7 @@ export class RpcExtendServerCallable implements PxpCallable{
         }else{
             let ser=new Serializer().prepareUnserializing(buf);
             param=new TableSerializer().
-                bindContext(req.context,null).bindSerializer(ser).setHeader(this.tParam,null).
+                bindContext(req.context,null).bindSerializer(ser).setColumnInfo(this.tParam,null).
                 getRowsData(1)[0]
         }
         return param;
@@ -228,7 +228,7 @@ export class RpcExtendServerCallable implements PxpCallable{
             let ser=new Serializer().prepareSerializing(8);
             let results=this.tResult.length>1?r:[r]
             new TableSerializer().
-                bindContext(req.context,null).bindSerializer(ser).setHeader(this.tResult,null).
+                bindContext(req.context,null).bindSerializer(ser).setColumnInfo(this.tResult,null).
                 putRowsData([results]);
             let buf=ser.build();
             if(buf.byteLength==0)return [];
@@ -266,16 +266,16 @@ export class RpcExtendServer1{
 }
 
 export class TableSerializer {
-    FLAG_NO_HEADER_NAME=1;
-    headerName:string[]|null=null;
-    headerType:string|null=null;
+    FLAG_NO_COLUMN_NAME=1;
+    columnName:string[]|null=null;
+    columnType:string|null=null;
     rows:any[][]=[];
     boundServContext:Server|null=null;
     boundClieContext:RpcExtendClient1|null=null;
     ser:Serializer|null=null;
-    public setHeader(types:string|null,names:string[]|null){
-        this.headerName=names;
-        this.headerType=types;
+    public setColumnInfo(types:string|null,names:string[]|null){
+        this.columnName=names;
+        this.columnType=types;
         return this;
     }
     public bindContext(serv:Server|null,clie:RpcExtendClient1|null){
@@ -298,13 +298,13 @@ export class TableSerializer {
     }
     public getRowsData(rowCnt:number):any[][]{
         let rows:any[][]=[];
-        let colCnt=this.headerType!.length;
+        let colCnt=this.columnType!.length;
         let ser=this.ser!;
         for(let i1=0;i1<rowCnt;i1++){
             rows.push(new Array(colCnt));
         }
         for(let i1=0;i1<colCnt;i1++){
-            let type=this.headerType!.charAt(i1);
+            let type=this.columnType!.charAt(i1);
             switch(type){
                 case 'i':
                     for(let i2=0;i2<rowCnt;i2++){
@@ -368,23 +368,23 @@ export class TableSerializer {
         let ser=this.ser!;
         let flag=ser.getVarint();
         let rowCnt=ser.getVarint();
-        this.headerType=ser.getString();
-        let colCnt=this.headerType.length;
-        if((flag & this.FLAG_NO_HEADER_NAME)===0){
-            this.headerName=[]
+        this.columnType=ser.getString();
+        let colCnt=this.columnType.length;
+        if((flag & this.FLAG_NO_COLUMN_NAME)===0){
+            this.columnName=[]
             for(let i1=0;i1<colCnt;i1++){
-                this.headerName.push(ser.getString());
+                this.columnName.push(ser.getString());
             }
         }
         this.rows=this.getRowsData(rowCnt);
         return this;
     }
     public putRowsData(rows:any[][]){
-        let colCnt=this.headerType!.length;
+        let colCnt=this.columnType!.length;
         let rowCnt=rows.length;
         let ser=this.ser!;
         for(let i1=0;i1<colCnt;i1++){
-            let type=this.headerType!.charAt(i1);
+            let type=this.columnType!.charAt(i1);
             switch(type){
                 case 'i':
                     for(let i2=0;i2<rowCnt;i2++){
@@ -445,28 +445,28 @@ export class TableSerializer {
             this.bindSerializer(new Serializer().prepareSerializing(64));
         }
         let ser=this.ser!;
-        if(this.headerType==null){
-            this.headerType=''
+        if(this.columnType==null){
+            this.columnType=''
             if(this.rows.length>=1){
                 for(let t1 of this.rows[0]){
                     switch(typeof t1){
                         case 'number':
-                            this.headerType+='d';
+                            this.columnType+='d';
                             break;
                         case 'string':
-                            this.headerType+='s';
+                            this.columnType+='s';
                             break;
                         case 'boolean':
-                            this.headerType+='c';
+                            this.columnType+='c';
                             break;
                         case 'bigint':
-                            this.headerType+='l';
+                            this.columnType+='l';
                             break;
                         default:
                             if(t1 instanceof Uint8Array){
-                                this.headerType+='b'
+                                this.columnType+='b'
                             }else{
-                                this.headerType+='o'
+                                this.columnType+='o'
                             }
                             break;
                     }
@@ -474,15 +474,15 @@ export class TableSerializer {
             }
         }
         let flag=0;
-        if(this.headerName==null){
-            flag|=this.FLAG_NO_HEADER_NAME;
+        if(this.columnName==null){
+            flag|=this.FLAG_NO_COLUMN_NAME;
         }
         ser.putVarint(flag);
         let rowCnt=this.rows.length;
         ser.putVarint(rowCnt);
-        ser.putString(this.headerType!);
-        if(this.headerName!==null){
-            for(let e of this.headerName){
+        ser.putString(this.columnType!);
+        if(this.columnName!==null){
+            for(let e of this.columnName){
                 ser.putString(e);
             }
         }
@@ -492,30 +492,30 @@ export class TableSerializer {
     public toMapArray():any[]{
         let r:any[]=[]
         let rowCount=this.getRowCount()
-        let colCount=this.headerName!.length;
+        let colCount=this.columnName!.length;
         for(let t1=0;t1<rowCount;t1++){
             let r0={} as any;
             let row=this.getRow(t1);
             for(let t2=0;t2<colCount;t2++){
-                r0[this.headerName![t2]]=row[t2];
+                r0[this.columnName![t2]]=row[t2];
             }
             r.push(r0);
         }
         return r
     }
     public fromMapArray(val:any[]):this{
-        if(val.length>0 && this.headerName===null){
-            this.headerName=[];
+        if(val.length>0 && this.columnName===null){
+            this.columnName=[];
             for(let k in val[0]){
-                this.headerName.push(k);
+                this.columnName.push(k);
             }
         }
         let rowCount=val.length;
-        let colCount=this.headerName!.length;
+        let colCount=this.columnName!.length;
         for(let t1=0;t1<rowCount;t1++){
             let row=[];
             for(let t2=0;t2<colCount;t2++){
-                row.push(val[t1][this.headerName![t2]]);
+                row.push(val[t1][this.columnName![t2]]);
             }
             this.addRow(row);
         }

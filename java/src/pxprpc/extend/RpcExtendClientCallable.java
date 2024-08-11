@@ -23,14 +23,14 @@ public class RpcExtendClientCallable extends RpcExtendClientObject {
     public static interface Ret{
         void cb(Object[] r,RemoteError err);
     }
-    public void call(Ret result,Object ...parameters) throws IOException {
+    public void call(final Ret result,Object ...parameters) throws IOException {
         ByteBuffer buf;
         if(tParam.length==1 && tParam[0]=='b'){
             buf=(ByteBuffer)parameters[0];
         }else{
             Serializer2 ser = new Serializer2().prepareSerializing(32);
             new TableSerializer().bindSerializer(ser)
-                    .bindContext(null,this.client).setHeader2(tParam,null)
+                    .bindContext(null,this.client).setColumnInfo2(tParam,null)
                     .putRowsData(Arrays.asList(new Object[][]{parameters}));
             buf = ser.build();
         }
@@ -48,7 +48,7 @@ public class RpcExtendClientCallable extends RpcExtendClientObject {
                 }
                 Serializer2 ser = new Serializer2().prepareUnserializing(result2);
                 Object[] result3 = new TableSerializer().bindSerializer(ser)
-                        .bindContext(null, RpcExtendClientCallable.this.client).setHeader2(tResult, null)
+                        .bindContext(null, RpcExtendClientCallable.this.client).setColumnInfo2(tResult, null)
                         .getRowsData(1).get(0);
                 result.cb(result3,null);
             }
@@ -61,7 +61,7 @@ public class RpcExtendClientCallable extends RpcExtendClientObject {
         }else{
             Serializer2 ser = new Serializer2().prepareSerializing(32);
             new TableSerializer().bindSerializer(ser)
-                    .bindContext(null,this.client).setHeader2(tParam,null)
+                    .bindContext(null,this.client).setColumnInfo2(tParam,null)
                     .putRowsData(Arrays.asList(new Object[][]{parameters}));
             buf = ser.build();
         }
@@ -73,7 +73,7 @@ public class RpcExtendClientCallable extends RpcExtendClientObject {
             }
             Serializer2 ser = new Serializer2().prepareUnserializing(result2);
             Object[] result3 = new TableSerializer().bindSerializer(ser)
-                    .bindContext(null, RpcExtendClientCallable.this.client).setHeader2(tResult, null)
+                    .bindContext(null, RpcExtendClientCallable.this.client).setColumnInfo2(tResult, null)
                     .getRowsData(1).get(0);
             return result3;
         }finally {

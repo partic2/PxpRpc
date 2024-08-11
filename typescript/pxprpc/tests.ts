@@ -3,53 +3,7 @@ import { WebSocketIo } from "./backend";
 import { Client, Serializer, Server } from "./base";
 import { RpcExtendClient1, RpcExtendClientObject, RpcExtendServer1, RpcExtendServerCallable, TableSerializer, defaultFuncMap } from "./extend";
 
-/*
-//Test code for WebMessage(Worker) backend, require test environent.
-import { CreateWorkerThread } from 'partic2/jsutils1/webutils';
-import {WebMessage} from 'pxprpc/backend'
-import { RpcExtendServer1,RpcExtendClient1 } from 'pxprpc/extend';
-import { Server,Client } from 'pxprpc/base';
-var __name__='testxxx/index'
 
-;(async ()=>{
-    if(globalThis.window!=undefined){
-        let workerThread=CreateWorkerThread();
-        await workerThread.start();
-        WebMessage.bind(workerThread.port!);
-        let serv=new WebMessage.Server(async (conn)=>{
-            let server2=await new RpcExtendServer1(new Server(conn));
-            await testAsServer(server2);
-        });
-        serv.listen('pxprpc test 1');
-        await workerThread.runScript(`require(['${__name__}'])`)
-    }else{
-        console.log('worker')
-        WebMessage.bind(globalThis);
-        let client2=await new RpcExtendClient1(new Client(
-            await new WebMessage.Connection().connect('pxprpc test 1'))).init();
-        await testAsClient(client2);
-    }
-})();
-;(async ()=>{
-    if(globalThis.window!=undefined){
-        let workerThread=new WorkerThread();
-        await workerThread.start();
-        WebMessage.bind(workerThread.worker!);
-        let serv=new WebMessage.Server(async (conn)=>{
-            let server2=await new RpcExtendServer1(new Server(conn));
-            await testAsServer(server2);
-        });
-        serv.listen('pxprpc test 1');
-        await workerThread.runScript(`require(['${__name__}'])`)
-    }else{
-        console.log('worker')
-        WebMessage.bind(globalThis);
-        let client2=await new RpcExtendClient1(new Client(
-            await new WebMessage.Connection().connect('pxprpc test 1'))).init();
-        await testAsClient(client2);
-    }
-})();
-*/
 
 export async function testAsClient(client2?:RpcExtendClient1){
     try{
@@ -80,7 +34,7 @@ export async function testAsClient(client2?:RpcExtendClient1){
     await testUnser.call(serdata);
     let testTableUnser=(await client2.getFunc('test1.testTableUnser'))!;
     testTableUnser.typedecl('b->')
-    serdata=new TableSerializer().setHeader('iscl',null).fromMapArray([{id:1554,name:'1.txt',isdir:false,filesize:BigInt('12345')},{id:1555,name:'docs',isdir:true,filesize:BigInt('0')}]).build();
+    serdata=new TableSerializer().setColumnInfo('iscl',null).fromMapArray([{id:1554,name:'1.txt',isdir:false,filesize:BigInt('12345')},{id:1555,name:'docs',isdir:true,filesize:BigInt('0')}]).build();
     await testTableUnser.call(serdata);
     let raiseError1=(await client2.getFunc('test1.raiseError1'))!
     try{
@@ -132,3 +86,32 @@ export async function testAsServer(server2?:RpcExtendServer1){
         console.error(e)
     }
 }
+
+
+//Test code for WebMessage(Worker) backend, require test environent.
+import { CreateWorkerThread } from 'partic2/jsutils1/webutils';
+import {WebMessage} from 'pxprpc/backend'
+var __name__='pxprpc/tests'
+
+;(async ()=>{
+    if(globalThis.window!=undefined){
+        let workerThread=CreateWorkerThread();
+        await workerThread.start();
+        WebMessage.bind(workerThread.port!);
+        let serv=new WebMessage.Server(async (conn)=>{
+            let server2=await new RpcExtendServer1(new Server(conn));
+            await testAsServer(server2);
+        });
+        serv.listen('pxprpc test 1');
+        await workerThread.runScript(`require(['${__name__}'])`)
+    }else{
+        console.log('worker')
+        WebMessage.bind(globalThis);
+        let client2=await new RpcExtendClient1(new Client(
+            await new WebMessage.Connection().connect('pxprpc test 1'))).init();
+        await testAsClient(client2);
+    }
+    await testAsClient();
+    await testAsServer();
+})();
+
