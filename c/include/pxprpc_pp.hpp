@@ -3,6 +3,8 @@
 #pragma once
 
 
+namespace pxprpc{
+
 extern "C"{
 #include <pxprpc.h>
 }
@@ -14,8 +16,6 @@ extern "C"{
 #include <memory>
 #include <unordered_map>
 
-namespace pxprpc{
-    
 
 class Serializer{
     public:
@@ -311,5 +311,6 @@ static void __wrap_call(pxprpc_callable *self,pxprpc_request *r){
     NamedFunctionPP *selfpp=static_cast<NamedFunctionPP *>(self->user_data);
     selfpp->call(PxpRequestWrap::wrap(r));
 }
+
 
 }

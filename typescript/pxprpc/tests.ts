@@ -90,8 +90,8 @@ export async function testAsServer(server2?:RpcExtendServer1){
 
 //Test code for WebMessage(Worker) backend, require test environent.
 import { CreateWorkerThread } from 'partic2/jsutils1/webutils';
-import {WebMessage} from 'pxprpc/backend'
-var __name__='pxprpc/tests'
+import {WebMessage} from './backend'
+var __name__='./tests'
 
 ;(async ()=>{
     if(globalThis.window!=undefined){

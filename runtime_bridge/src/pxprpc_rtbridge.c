@@ -83,7 +83,7 @@ char *_rtbioreqdispatch(struct _rtbioreq *req){
     uv_mutex_unlock(&req->mut);
     uv_cond_destroy(&req->cond);
     uv_mutex_destroy(&req->mut);
-    return req->err;
+    return (char *)req->err;
 }
 
 char *pxprpc_rtbridge_brecv(struct pxprpc_abstract_io *io,struct pxprpc_buffer_part *buf){
