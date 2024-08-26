@@ -2,6 +2,8 @@
 
 # PXPRPC_SOURCE_DIR=path of this project.
 
+ifndef PXPRPC_LIBUV_CFLAGS
+
 include $(PXPRPC_SOURCE_DIR)/c/pxprpc/make-config.mk
 
 PXPRPC_LIBUV_CFLAGS=$(PXPRPC_CFLAGS) $(LIBUV_CFLAGS)
@@ -16,3 +18,5 @@ pxprpc_libuv_test:build_pxprpc_libuv $(PXPRPC_SOURCE_DIR)/c/pxprpc_libuv/test.cp
 
 build_pxprpc_libuv:$(PXPRPC_SOURCE_DIR)/c/pxprpc_libuv/pxprpc_libuv.c build_pxprpc
 	$(CC) -o pxprpc_libuv.o -c $(CFLAGS) $(PXPRPC_CFLAGS) $<
+
+endif

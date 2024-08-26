@@ -2,6 +2,8 @@
 
 # PXPRPC_SOURCE_DIR=path of this project.
 
+ifndef PXPRPC_TBOX_CFLAGS
+
 include $(PXPRPC_SOURCE_DIR)/c/pxprpc/make-config.mk
 
 PXPRPC_TBOX_CFLAGS=$(PXPRPC_CFLAGS) $(TBOX_CFLAGS)
@@ -16,3 +18,5 @@ pxprpc_tbox_test:build_pxprpc_tbox $(PXPRPC_SOURCE_DIR)/c/pxprpc_tbox/test.cpp
 
 build_pxprpc_tbox:$(PXPRPC_SOURCE_DIR)/c/pxprpc_tbox/pxprpc_tbox.c build_pxprpc
 	$(CC) -o pxprpc_tbox.o -c $(CFLAGS) $(PXPRPC_CFLAGS) $<
+
+endif

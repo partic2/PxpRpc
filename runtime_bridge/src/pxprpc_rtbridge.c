@@ -26,6 +26,8 @@ void _rtbioasyncentry(uv_async_t *asy){
 
 static void pxprpc_rtbridge_async_exec(void (*fn)(void *),void *p){
     struct _rtbasyncreq *r=(struct _rtbasyncreq *)pxprpc__malloc(sizeof(struct _rtbasyncreq));
+    r->fn=fn;
+    r->p=p;
     uv_async_init(rtbloop,&r->uv,_rtbioasyncentry);
     uv_handle_set_data((uv_handle_t *)&r->uv,r);
     uv_async_send(&r->uv);
