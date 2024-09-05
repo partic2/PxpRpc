@@ -12,30 +12,45 @@
 
 static uv_loop_t *rtbloop;
 
+
 struct _rtbasyncreq{
-    uv_async_t uv;
+    struct _rtbasyncreq *next;
     void (*fn)(void *);
     void *p;
 };
 
-void _rtbioasyncentry(uv_async_t *asy){
-    struct _rtbasyncreq *r=(struct _rtbasyncreq *)uv_handle_get_data((uv_handle_t *)asy);
-    r->fn(r->p);
-    pxprpc__free(r);
+static struct _rtbasyncreq *_rtbasyncqueue;
+
+static uv_async_t _rtbwakeup;
+static uv_mutex_t _rtbmutex;
+
+static void _rtbasyncb(uv_async_t *asy){
+    struct _rtbasyncreq *queue;
+    uv_mutex_lock(&_rtbmutex);
+    queue=_rtbasyncqueue;
+    _rtbasyncqueue=NULL;
+    uv_mutex_unlock(&_rtbmutex);
+    while(queue!=NULL){
+        struct _rtbasyncreq *r=queue;
+        queue=r->next;
+        r->fn(r->p);
+        pxprpc__free(r);
+    }
 }
 
 static void pxprpc_rtbridge_async_exec(void (*fn)(void *),void *p){
     struct _rtbasyncreq *r=(struct _rtbasyncreq *)pxprpc__malloc(sizeof(struct _rtbasyncreq));
     r->fn=fn;
     r->p=p;
-    uv_async_init(rtbloop,&r->uv,_rtbioasyncentry);
-    uv_handle_set_data((uv_handle_t *)&r->uv,r);
-    uv_async_send(&r->uv);
+    uv_mutex_lock(&_rtbmutex);
+    r->next=_rtbasyncqueue;
+    _rtbasyncqueue=r;
+    uv_mutex_unlock(&_rtbmutex);
+    uv_async_send(&_rtbwakeup);
 }
 
 
 struct _rtbioreq{
-    struct _rtbioreq *next;
     struct pxprpc_abstract_io *io;
     /* receive 1, send 2, connect 3, listen 4, accept 5*/
     char rs;
@@ -46,8 +61,6 @@ struct _rtbioreq{
     const char *err;
     char *servname;
 };
-
-static struct _rtbioreq *_rtbqueued;
 
 
 static void _rtbiocb(struct _rtbioreq *req){
@@ -74,7 +87,7 @@ static void _rtbiohandle(struct _rtbioreq *req){
     }
 }
 
-char *_rtbioreqdispatch(struct _rtbioreq *req){
+static char *_rtbioreqdispatch(struct _rtbioreq *req){
     uv_mutex_init(&req->mut);
     uv_cond_init(&req->cond);
     pxprpc_pipe_executor((void (*)(void *))_rtbiohandle,req);
@@ -120,16 +133,95 @@ struct pxprpc_abstract_io *pxprpc_rtbridge_pipe_connect(char *servname){
 /* constant name for runtime bridge "/pxprpc/runtime_bridge/0", can use pxprpc_pipe_connect to connect */
 const char *pxprpc_rtbridge_rtbmanager_name="/pxprpc/runtime_bridge/0";
 
+static int _rtbmgrstatus=0;
+static pxprpc_server_api *servapi;
+
+
+static void _rtbmgrconnclosed(void *context){
+    servapi->context_delete(&context);
+}
+pxprpc_funcmap *pxprpc_rtbridgepp_getfuncmap();
+static void _rtbmgrconnhandler(struct pxprpc_abstract_io *io,void *p){
+    pxprpc_server_context context;
+    servapi->context_new(&context,io);
+    struct pxprpc_server_context_exports *ctxexp=servapi->context_exports(context);
+    ctxexp->on_closed=_rtbmgrconnclosed;
+    ctxexp->cb_data=context;
+    ctxexp->funcmap=pxprpc_rtbridgepp_getfuncmap();
+    servapi->context_start(context);
+}
+
 static void _rtbmgrserve(){
-
-}
-
-/* init rtbridge with libuv */
-void pxprpc_rtbridge_init_uv(void *uvloop){
-    rtbloop=uvloop;
-    if(pxprpc_pipe_executor==NULL && uvloop!=NULL){
-        pxprpc_pipe_executor=pxprpc_rtbridge_async_exec;
+    if(_rtbmgrstatus==0){
+        _rtbmgrstatus=1;
+        pxprpc_server_query_interface(&servapi);
+        pxprpc_pipe_serve(pxprpc_rtbridge_rtbmanager_name,_rtbmgrconnhandler,NULL);
     }
-   pxprpc_pipe_executor(_rtbmgrserve,NULL);
 }
 
+char *pxprpc_rtbridge_init_uv(void *uvloop){
+    if(rtbloop==NULL){
+        rtbloop=uvloop;
+        uv_mutex_init(&_rtbmutex);
+        uv_async_init(rtbloop,&_rtbwakeup,&_rtbasyncb);
+        if(pxprpc_pipe_executor==NULL){
+            pxprpc_pipe_executor=pxprpc_rtbridge_async_exec;
+        }
+        pxprpc_pipe_executor(_rtbmgrserve,NULL);   
+        return NULL;
+    }else{
+        return "inited";
+    }
+}
+
+
+
+static uv_thread_t _newloopttid;
+static int _rtbinitandrunstat=0;
+static void _newloopthread(void *loop){
+    if(loop!=NULL){
+        _rtbinitandrunstat=1;
+        pxprpc_pipe_executor(_newloopthread,NULL);
+        uv_run(loop,UV_RUN_DEFAULT);
+    }else{
+        if(_rtbinitandrunstat==1){
+            _rtbinitandrunstat=2;
+        }
+    }
+}
+char *pxprpc_rtbridge_init_and_run(){
+    if (rtbloop != NULL) {
+        return "inited";
+    }
+    uv_loop_t *newloop=(uv_loop_t *)pxprpc__malloc(sizeof(uv_loop_t));
+    uv_loop_init(newloop);
+    char *r=pxprpc_rtbridge_init_uv(newloop);
+    if(r!=NULL){
+        uv_loop_close(newloop);
+        pxprpc__free(newloop);
+        return r;
+    }else{
+        uv_thread_create(&_newloopttid,&_newloopthread,newloop);
+        for(int i=0;i<100;i++){
+            if(_rtbinitandrunstat==2){
+                return NULL;
+            }
+            uv_sleep(16);
+        }
+        return "uv thread timeout";
+    }
+}
+
+char *pxprpc_rtbridge_deinit(){
+    if(rtbloop!=NULL){
+        uv_mutex_destroy(&_rtbmutex);
+        uv_close((uv_handle_t *)&_rtbwakeup,NULL);
+        rtbloop=NULL;
+    }
+    if(_rtbinitandrunstat!=0){
+        uv_loop_close(rtbloop);
+        pxprpc__free(rtbloop);
+        rtbloop=NULL;
+    }
+    return NULL;
+}

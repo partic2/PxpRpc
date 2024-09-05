@@ -7,7 +7,7 @@ extern "C"{
     #include <stdint.h>
 }
 
-namespace pxprpc_host{        
+namespace pxprpc_rtbirdgepp{        
     void __wrap_on_connect(struct pxprpc_abstract_io *io1,void *server);
     std::queue<struct pxprpc_abstract_io *> connected;
     using namespace pxprpc;
@@ -47,22 +47,31 @@ namespace pxprpc_host{
         serv->onConnect(io1);
     }
     FunctionPPWithSerializer fn1("pxprpc_pipe.serve",[](PxpRequestWrap *r,Serializer *p,auto done)->void{
-        PxpStringObject *name=new PxpStringObject(p->getString());
-        auto res=new Serializer()->prepareSerializing();
-        auto obj=new PxpPipeServer();
+        auto res=(new Serializer())->prepareSerializing(16);
+        auto obj=new PxpPipeServer(p->getString());
         auto refid=r->context().allocRef(obj);
-        res->putInt(refid)
+        res->putInt(refid);
         done(res);
     });
     FunctionPPWithSerializer fn2("pxprpc_pipe.accept",[](PxpRequestWrap *r,Serializer *p,auto done)->void{
         auto servref=p->getInt();
         auto serv=static_cast<PxpPipeServer *>(r->context().dereference(servref));
-        serv->accept([](auto io)->void{
+        serv->accept([done](auto io)->void{
             auto ioi64=reinterpret_cast<int64_t>(io);
-            done(new Serializer()->prepareSerializing()->putLong(ioi64));
-        })
+            done((new Serializer())->prepareSerializing(16)->putLong(ioi64));
+        });
     });
+    bool inited=false;
     void init(){
-        defaultFuncMap.add(&fn1).add(&fn2);
+        if(!inited){
+            defaultFuncMap.add(&fn1).add(&fn2);
+        }
+    }
+}
+
+extern "C"{
+    extern pxprpc_funcmap *pxprpc_rtbridgepp_getfuncmap(){
+        pxprpc_rtbirdgepp::init();
+        return pxprpc::defaultFuncMap.cFuncmap();
     }
 }

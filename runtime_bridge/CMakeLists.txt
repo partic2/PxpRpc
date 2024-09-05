@@ -13,14 +13,23 @@ project(pxprpc_rtbridge)
 
 list(APPEND pxprpc_rtbridge_sources src/pxprpc_rtbridge.c)
 
-# consider use FindJNI?
+# Check jni.h directly first.
 include(CheckIncludeFileCXX)
 CHECK_INCLUDE_FILE_CXX("jni.h" JNI_H_FOUND)
 
-if(JNI_H_FOUND)
-list(APPEND pxprpc_rtbridge_sources java/jnibridge.cpp)
+if(NOT JNI_H_FOUND)
+  #fallback to FindJNI (use JAVA_HOME)
+  find_package(JNI)
+  if(JNI_FOUND)
+    include_directories(${JNI_INCLUDE_DIRS})
+    set(JNI_H_FOUND 1)
+  endif()
 endif()
 
+if(JNI_H_FOUND)
+message("java jnibridge enabled")
+list(APPEND pxprpc_rtbridge_sources java/jnibridge.cpp)
+endif()
 
 if(NOT TARGET pxprpc)
 add_subdirectory("../c" build-pxprpc)

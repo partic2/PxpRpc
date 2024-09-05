@@ -125,6 +125,9 @@ struct pxprpc_server_context_exports{
     /* io is READONLY, Modify it may cause unexpected behaviour */
     struct pxprpc_abstract_io *io;
     pxprpc_funcmap *funcmap;
+    void *user_data;
+    void *cb_data;
+    void (*on_closed)(void *cb_data);
 };
 
 

@@ -60,6 +60,9 @@ static int pxprpc_close(pxprpc_server_context server_context){
     }
     self->status|=0x1;
     self->exp.io->close(self->exp.io);
+    if(self->exp.on_closed!=NULL){
+        self->exp.on_closed(self->exp.cb_data);
+    }
     return 0;
 }
 

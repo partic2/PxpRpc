@@ -12,5 +12,6 @@ public class NativeHelper{
     public static native ByteBuffer ioReceive(long io,ByteBuffer errorString);
     public static native void ioBufFree(long io,ByteBuffer b);
     public static native void ioClose(long io);
+    public static native void ensureRtbInited(ByteBuffer errorString);
 }
 

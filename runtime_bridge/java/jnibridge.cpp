@@ -74,3 +74,13 @@ void Java_pxprpc_runtimebridge_NativeHelper_ioClose(JNIEnv *env,jlong io,jobject
     struct pxprpc_abstract_io *tio=reinterpret_cast<struct pxprpc_abstract_io *>(&io);
     tio->close(tio);
 }
+
+#include <uv.h>
+
+
+void Java_pxprpc_runtimebridge_NativeHelper_ensureRtbInited(JNIEnv *env,jobject errorString){
+    char *err=pxprpc_rtbridge_init_and_run();
+    if(err!=NULL){
+        strncpy(static_cast<char *>(env->GetDirectBufferAddress(errorString)),err,env->GetDirectBufferCapacity(errorString));
+    }
+}

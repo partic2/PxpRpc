@@ -2,9 +2,6 @@
 
 #pragma once
 
-
-namespace pxprpc{
-
 extern "C"{
 #include <pxprpc.h>
 }
@@ -15,6 +12,9 @@ extern "C"{
 #include <vector>
 #include <memory>
 #include <unordered_map>
+
+
+namespace pxprpc{
 
 
 class Serializer{
