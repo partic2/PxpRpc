@@ -1,4 +1,5 @@
 
+#include <pxprpc_rtbridge_host.hpp>
 
 #include <jni.h>
 
@@ -79,8 +80,5 @@ void Java_pxprpc_runtimebridge_NativeHelper_ioClose(JNIEnv *env,jlong io,jobject
 
 
 void Java_pxprpc_runtimebridge_NativeHelper_ensureRtbInited(JNIEnv *env,jobject errorString){
-    char *err=pxprpc_rtbridge_init_and_run();
-    if(err!=NULL){
-        strncpy(static_cast<char *>(env->GetDirectBufferAddress(errorString)),err,env->GetDirectBufferCapacity(errorString));
-    }
+    pxprpc_rtbridge_host::ensureInited();
 }

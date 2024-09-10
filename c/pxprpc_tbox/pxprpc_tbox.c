@@ -44,6 +44,7 @@ struct _pxprpc_tbox_sockconn{
     void *nextFnArg0;
     const char* readError;
     const char* writeError;
+    char running;
 };
 
 
@@ -115,7 +116,9 @@ static const void __sockAbsIo1Close(struct pxprpc_abstract_io *self1){
     tb_socket_exit(self->sock);
 }
 
-static void __freeTboxSockconn(struct _pxprpc_tbox_sockconn *sc);
+static void __stopServeSockconn(struct _pxprpc_tbox_sockconn *sc){
+    sc->running=0;
+}
 
 static struct _pxprpc_tbox_sockconn * __buildTboxSockconn(tb_socket_ref_t sock,struct _pxprpc_tbox *sCtx){
     struct _pxprpc_tbox_sockconn *sockconn=pxprpc__malloc(sizeof(struct _pxprpc_tbox_sockconn));
@@ -129,10 +132,11 @@ static struct _pxprpc_tbox_sockconn * __buildTboxSockconn(tb_socket_ref_t sock,s
     sockconn->sock=sock;
     sockconn->readError=NULL;
     sockconn->writeError=NULL;
+    sockconn->running=0;
     servapi->context_new(&sockconn->rpcCtx,&sockconn->io1);
     struct pxprpc_server_context_exports *ctxexp=servapi->context_exports(sockconn->rpcCtx);
     ctxexp->funcmap=sCtx->funcmap;
-    ctxexp->on_closed=(void(*)(void *cb_data))__freeTboxSockconn;
+    ctxexp->on_closed=(void(*)(void *cb_data))__stopServeSockconn;
     ctxexp->cb_data=sockconn;
     servapi->context_exports_apply(sockconn->rpcCtx);
     if(sCtx->acceptedConn==NULL){
@@ -166,7 +170,8 @@ static void __freeTboxSockconn(struct _pxprpc_tbox_sockconn *sc){
 static tb_int_t __serveTboxSockconn(tb_cpointer_t arg0){
     struct _pxprpc_tbox_sockconn *s1=(struct _pxprpc_tbox_sockconn *)arg0;
     servapi->context_start(s1->rpcCtx);
-    while(s1->nextFn!=NULL){
+    s1->running=1;
+    while(s1->running && s1->nextFn!=NULL){
         void (*fn)(void *);
         fn=s1->nextFn;
         s1->nextFn=NULL;

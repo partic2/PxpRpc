@@ -281,10 +281,11 @@ void pxprpc_pipe_serve(const char *name,void (*on_connect)(struct pxprpc_abstrac
         lastServ=serv;
         serv=serv->next;
     }
-    if(serv==NULL){
+    if(serv==NULL && on_connect!=NULL){
         serv=pxprpc__malloc(sizeof(_pxprpcPipeServer));
         serv->name=name;
         serv->on_connect=on_connect;
+        serv->p=p;
         serv->next=_pxprpcServerList;
         _pxprpcServerList=serv;
     }
@@ -298,6 +299,7 @@ struct pxprpc_abstract_io *pxprpc_pipe_connect(const char *name){
         if(strcmp(name,serv->name)==0){            
             break;
         }
+        serv=serv->next;
     }
     if(serv==NULL){
         return NULL;

@@ -295,4 +295,148 @@ class TableSerializer{
     }
 };
 
+
+class NamedFunctionPPImpl1:public NamedFunctionPP{
+    public:
+    class AsyncReturn{
+        public:
+        PxpRequestWrap *req;
+        std::function<void()> onReqFinished=[]()->void{};
+        void resolve(struct pxprpc_buffer_part &buf,std::function<void()> onReqFinished){
+            req->result()=buf;
+            onReqFinished=this->onReqFinished;
+            req->nextStep();
+        }
+        //"buf" will be copied
+        void resolve(void *buf,size_t size){
+            auto rawbuf=new uint8_t[size];
+            req->result().bytes.base=rawbuf;
+            req->result().bytes.length=size;
+            req->result().next_part=nullptr;
+            memmove(req->result().bytes.base,buf,size);
+            this->onReqFinished=[rawbuf]()->void{
+                delete rawbuf;
+            };
+            req->nextStep();
+        }
+        //"ser" will be deleted by callee.
+        void resolve(Serializer *ser){
+            ser->buildPxpBytes(&req->result().bytes);
+            this->onReqFinished=[ser,this]()->void{
+                ser->freeBuiltBuffer(req->result().bytes.base);
+                delete ser;
+            };
+            req->nextStep();
+        }
+        void resolve(){
+            req->result().bytes.length=0;
+            req->result().bytes.base=nullptr;
+            req->nextStep();
+        }
+        void resolve(int32_t v){
+            auto ser=new Serializer();
+            ser->prepareSerializing(8)->putInt(v);
+            resolve(ser);
+        }
+        void resolve(int64_t v){
+            auto ser=new Serializer();
+            ser->prepareSerializing(8)->putLong(v);
+            resolve(ser);
+        }
+        void resolve(float v){
+            auto ser=new Serializer();
+            ser->prepareSerializing(8)->putFloat(v);
+            resolve(ser);
+        }
+        void resolve(double v){
+            auto ser=new Serializer();
+            ser->prepareSerializing(8)->putDouble(v);
+            resolve(ser);
+        }
+        void resolve(std::string v){
+            auto ser=new Serializer();
+            ser->prepareSerializing(8)->putString(v);
+            resolve(ser);
+        }
+        void resolve(PxpObject *obj){
+            int32_t refid=this->req->context().allocRef(obj);
+            resolve(refid);
+        }
+        void reject(const std::string &errorMessage){
+            auto len=errorMessage.length();
+            auto rawbuf=new uint8_t[len];
+            req->result().bytes.base=rawbuf;
+            req->result().bytes.length=len;
+            req->result().next_part=nullptr;
+            memmove(req->result().bytes.base,errorMessage.c_str(),len);
+            req->onFinishPP=[rawbuf](PxpRequestWrap *req)->void{
+                delete rawbuf;
+            };
+            req->setRejected(true);
+            req->nextStep();
+        }
+        
+    };
+    class Parameter{
+        public:
+        PxpRequestWrap *req;
+        Serializer *ser=nullptr; 
+        Serializer *asSerializer(){
+            if(this->ser==nullptr){
+                this->ser=Serializer::fromPxpBytes(req->parameter());
+            }
+            return this->ser;
+        }
+        struct pxprpc_bytes *asRaw(){
+            return req->parameter();
+        }
+        //nextXXX will use asSerializer
+        int32_t nextInt(){
+            return this->asSerializer()->getInt();
+        }
+        int64_t nextLong(){
+            return this->asSerializer()->getLong();
+        }
+        float nextFloat(){
+            return this->asSerializer()->getFloat();
+        }
+        double nextDouble(){
+            return this->asSerializer()->getDouble();
+        }
+        PxpObject *nextObject(){
+            return req->context().dereference(this->nextInt());
+        }
+        std::string nextString(){
+            return this->asSerializer()->getString();
+        }
+        std::tuple<int,uint8_t *> nextBytes(){
+            return this->asSerializer()->getBytes();
+        }
+        virtual ~Parameter(){
+            if(this->ser!=nullptr){
+                delete this->ser;
+            }
+        }
+    };
+    std::function<void(Parameter *para,AsyncReturn *ret)> handler=[](auto a,auto b)->void{};
+    virtual NamedFunctionPPImpl1 *init(std::string name,std::function<void(Parameter *para,AsyncReturn *ret)> handler){
+        this->handler=handler;
+        this->setName(name);
+        return this;
+    }
+    virtual void call(PxpRequestWrap *r){
+        auto para=new Parameter();
+        para->req=r;
+        auto ret=new AsyncReturn();
+        ret->req=r;
+        r->onFinishPP=[para,ret](auto req)->void{
+            ret->onReqFinished();
+            delete para;
+            delete ret;
+        };
+        this->handler(para,ret);
+    }
+    virtual ~NamedFunctionPPImpl1(){}
+};
+
 }

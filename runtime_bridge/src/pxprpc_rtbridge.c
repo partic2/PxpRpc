@@ -130,34 +130,6 @@ struct pxprpc_abstract_io *pxprpc_rtbridge_pipe_connect(char *servname){
     return req.io;
 }
 
-/* constant name for runtime bridge "/pxprpc/runtime_bridge/0", can use pxprpc_pipe_connect to connect */
-const char *pxprpc_rtbridge_rtbmanager_name="/pxprpc/runtime_bridge/0";
-
-static int _rtbmgrstatus=0;
-static pxprpc_server_api *servapi;
-
-
-static void _rtbmgrconnclosed(void *context){
-    servapi->context_delete(&context);
-}
-pxprpc_funcmap *pxprpc_rtbridgepp_getfuncmap();
-static void _rtbmgrconnhandler(struct pxprpc_abstract_io *io,void *p){
-    pxprpc_server_context context;
-    servapi->context_new(&context,io);
-    struct pxprpc_server_context_exports *ctxexp=servapi->context_exports(context);
-    ctxexp->on_closed=_rtbmgrconnclosed;
-    ctxexp->cb_data=context;
-    ctxexp->funcmap=pxprpc_rtbridgepp_getfuncmap();
-    servapi->context_start(context);
-}
-
-static void _rtbmgrserve(){
-    if(_rtbmgrstatus==0){
-        _rtbmgrstatus=1;
-        pxprpc_server_query_interface(&servapi);
-        pxprpc_pipe_serve(pxprpc_rtbridge_rtbmanager_name,_rtbmgrconnhandler,NULL);
-    }
-}
 
 char *pxprpc_rtbridge_init_uv(void *uvloop){
     if(rtbloop==NULL){
@@ -167,7 +139,6 @@ char *pxprpc_rtbridge_init_uv(void *uvloop){
         if(pxprpc_pipe_executor==NULL){
             pxprpc_pipe_executor=pxprpc_rtbridge_async_exec;
         }
-        pxprpc_pipe_executor(_rtbmgrserve,NULL);   
         return NULL;
     }else{
         return "inited";
@@ -189,7 +160,7 @@ static void _newloopthread(void *loop){
         }
     }
 }
-char *pxprpc_rtbridge_init_and_run(){
+char *pxprpc_rtbridge_init_and_run(void **uvloop){
     if (rtbloop != NULL) {
         return "inited";
     }
@@ -201,6 +172,7 @@ char *pxprpc_rtbridge_init_and_run(){
         pxprpc__free(newloop);
         return r;
     }else{
+        *uvloop=newloop;
         uv_thread_create(&_newloopttid,&_newloopthread,newloop);
         for(int i=0;i<100;i++){
             if(_rtbinitandrunstat==2){
@@ -222,6 +194,13 @@ char *pxprpc_rtbridge_deinit(){
         uv_loop_close(rtbloop);
         pxprpc__free(rtbloop);
         rtbloop=NULL;
+        _rtbinitandrunstat=0;
     }
     return NULL;
+}
+
+void pxprpc_rtbridge_get_current_state(struct pxprpc_rtbridge_state *out){
+    out->uv_loop=rtbloop;
+    out->uv_tid=_newloopttid;
+    out->run_state=_rtbinitandrunstat;
 }

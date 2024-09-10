@@ -19,36 +19,32 @@ using namespace pxprpc;
 pxprpc_tbox_api *srvtbox;
 
 
-
-FunctionPPWithSerializer fnPrintString("printString",[](auto r,auto parameter,auto done)->void{
-    std::cout<<parameter->getString()<<std::endl;
-    done((new Serializer())->prepareSerializing(8)->putString("server:hello client"));
-});
-
-FunctionPPWithSerializer fnPrintSerilizedArgs("printSerilizedArgs",[](auto r,auto parameter,auto done)->void{
-    auto i=parameter->getInt();
-    auto l=parameter->getLong();
-    auto f=parameter->getFloat();
-    auto d=parameter->getDouble();
-    auto s=parameter->getString();
-    auto b=parameter->getString();
-    std::cout<<i<<","<<l<<","<<f<<","<<d<<","<<s<<","<<b<<std::endl;
-    done(nullptr);
-});
-
-
-
 template<typename E>
 int vectorIndexOf(std::vector<E> vec,E elem){
     auto found=std::find(vec.begin(),vec.end(),elem);
     if(found==vec.end())return -1;
     return std::distance(vec.begin(),found);
 }
-
 #include <pxprpc_ext.hpp>
-FunctionPPWithSerializer fnPrintSerilizedTable("printSerilizedTable",[](auto r,auto parameter,auto done)->void{
-    TableSerializer *tabser=new TableSerializer();
-        tabser->bindSerializer(parameter)->load();
+void defFunc(){
+    defaultFuncMap.add((new NamedFunctionPPImpl1())->init("printString",
+    [](auto *para,auto *ret)->void{
+        std::cout<<para->nextString()<<std::endl;
+        ret->resolve("server:hello client");
+    })).add((new NamedFunctionPPImpl1())->init("printSerilizedArgs",
+    [](auto *para,auto *ret)->void{
+        auto i=para->nextInt();
+        auto l=para->nextLong();
+        auto f=para->nextFloat();
+        auto d=para->nextDouble();
+        auto s=para->nextString();
+        auto b=para->nextString();
+        std::cout<<i<<","<<l<<","<<f<<","<<d<<","<<s<<","<<b<<std::endl;
+        ret->resolve();
+    })).add((new NamedFunctionPPImpl1())->init("printSerilizedTable",
+    [](auto para,auto ret)->void{
+        TableSerializer *tabser=new TableSerializer();
+        tabser->bindSerializer(para->asSerializer())->load();
         auto colName=tabser->getColumnsName();
         auto nameCol=tabser->getStringColumn(vectorIndexOf(colName,std::string("name")));
         auto sizeCol=tabser->getInt64Column(vectorIndexOf(colName,std::string("filesize")));
@@ -72,9 +68,14 @@ FunctionPPWithSerializer fnPrintSerilizedTable("printSerilizedTable",[](auto r,a
             void *row[3]={&names[0],&sizes[1],&isdirs[1]};
             tabser->addRow(row);
         }
-        done(tabser->buildSer());
+        ret->resolve(tabser->buildSer());
         delete tabser;
-});
+    })).add((new NamedFunctionPPImpl1())->init("testDummyError",
+    [](auto para,auto ret)->void{
+        ret->reject("dummy error");
+    }));
+
+}
 
 
 
@@ -93,7 +94,7 @@ int main(int argc,char *argv[]){
     if(tb_socket_bind(sock,&ipaddr)==tb_false){
         std::cerr<<"tb_socket_bind failed"<<std::endl;
     }
-    defaultFuncMap.add(&fnPrintString).add(&fnPrintSerilizedArgs).add(&fnPrintSerilizedTable);
+    defFunc();
     auto tbrpc=srvtbox->new_server(sock,defaultFuncMap.cFuncmap());
     srvtbox->serve_block(tbrpc);
     std::cerr<<"serve_block failed"<<srvtbox->get_error()<<std::endl;

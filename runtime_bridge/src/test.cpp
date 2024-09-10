@@ -1,9 +1,14 @@
 
-
+extern "C"{
 #include <pxprpc.h>
 #include <pxprpc_pipe.h>
 #include <pxprpc_rtbridge.h>
 #include <uv.h>
+#include <pxprpc_libuv.h>
+}
+
+#include <pxprpc_pp.hpp>
+
 
 
 uv_thread_t thread1;
@@ -50,10 +55,42 @@ void pipeOnConnect(struct pxprpc_abstract_io *io,void *p1){
     servSideIo=io;
 }
 
+pxprpc_libuv_api *pxpuv;
+uv_tcp_t servTcp;
+uv_loop_t *loop;
+
+int exitflag=0;
+
+
+
+void initTcpServer(void *){
+    //pxprpc remote function test
+    pxprpc_libuv_query_interface(&pxpuv);
+    
+    memset(&servTcp,0,sizeof(uv_tcp_t));
+    
+    uv_tcp_init(loop,&servTcp);
+    struct sockaddr_in saddr;
+    int r=uv_ip4_addr("127.0.0.1",1089,&saddr);
+    if(r){
+        printf("uv_ip4_addr failed.");
+    }
+    r=uv_tcp_bind(&servTcp,(const sockaddr *)&saddr,0);
+    if(r){
+        printf("uv_tcp_bind failed.");
+    }
+    auto rpc=pxpuv->new_server(loop,(uv_stream_t *)&servTcp,pxprpc::defaultFuncMap.cFuncmap());
+    pxpuv->serve_start(rpc);
+    printf("libuv tcp server inited.");
+}
+
+#include <pxprpc_rtbridge_host.hpp>
+
 int main(int argc,char *argv[]){
     printf("pxprpc_rtbridge_test begin\n");
+    pxprpc::init();
     printf("uv_run\n");
-    char *err=pxprpc_rtbridge_init_and_run();
+    char *err=pxprpc_rtbridge_init_and_run(reinterpret_cast<void **>(&loop));
     if(err!=NULL){
         printf("error occur:%s\n",err);
         return 1;
@@ -62,7 +99,19 @@ int main(int argc,char *argv[]){
     cliSideIo=pxprpc_pipe_connect("test1");
     uv_thread_create(&thread1,thread1Entry,NULL);
     uv_thread_create(&thread2,thread2Entry,NULL);
-    uv_sleep(3000);
+    
+    pxprpc_pipe_executor(initTcpServer,NULL);
+
+    pxprpc::defaultFuncMap.add((new pxprpc::NamedFunctionPPImpl1())->init("pxprpc_rtbridge.test.exitTest",
+    [](auto para,auto ret)->void{
+        exitflag=1;
+        ret->resolve();
+    }));
+
+    while(!exitflag){
+        uv_sleep(1000);
+    }
+
     printf("exit...\n");
     return 0;
 }

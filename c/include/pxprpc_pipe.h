@@ -4,9 +4,9 @@
 #include <pxprpc.h>
 
 
-void pxprpc_pipe_serve(const char *name,void (*on_connect)(struct pxprpc_abstract_io *,void *p),void *p);
+extern void pxprpc_pipe_serve(const char *name,void (*on_connect)(struct pxprpc_abstract_io *,void *p),void *p);
 
-struct pxprpc_abstract_io *pxprpc_pipe_connect(const char *name);
+extern struct pxprpc_abstract_io *pxprpc_pipe_connect(const char *name);
 
 /* 
 pxprpc_pipe API is not thread safe. 

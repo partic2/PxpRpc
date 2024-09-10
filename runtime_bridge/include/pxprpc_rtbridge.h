@@ -1,3 +1,6 @@
+#ifndef _PXPRPC_RTBIRDGE_H
+#define _PXPRPC_RTBIRDGE_H
+
 /* 
   pxprpc runtime bridge is mainly about communicate between runtime in one process. 
 */
@@ -33,10 +36,22 @@ char *pxprpc_rtbridge_init_uv(void *uvloop);
   return NULL if no error.
   return "inited" if rtbridge has been inited by other loop.
   return error meesage for other error.
+  If "uvloop" is not NULL, will be set to the internally created uvloop;
 */
-char *pxprpc_rtbridge_init_and_run();
+char *pxprpc_rtbridge_init_and_run(void **uvloop);
 
 /*
   Deinitialize rtbridge. Return error string if error occured, or NULL.
 */
 char *pxprpc_rtbridge_deinit();
+
+
+struct pxprpc_rtbridge_state{
+  /* the uv loop inited by pxprpc_rtbridge_init_uv, or created by pxprpc_rtbridge_init_and_run */
+  void *uv_loop;
+  void *uv_tid;
+  int run_state;
+};
+void pxprpc_rtbridge_get_current_state(struct pxprpc_rtbridge_state *out);
+
+#endif

@@ -254,6 +254,16 @@ async def ctestmain():
             [dict(id=1554,name='1.txt',isdir=False,filesize=12345),dict(id=1555,name='docs',isdir=True,filesize=0)])\
                 .build())
     print(TableSerializer().load(t2).toMapArray())
+
+    t1=await client2.getFunc('testDummyError')
+    assert t1!=None
+    print('testDummyError:',t1.value)
+    t1.typedecl('->')
+    print('expect dummy error raised')
+    try:
+        await t1()
+    except Exception as ex:
+        print(ex)
     
     
 async def cstestmain():
@@ -263,6 +273,45 @@ async def cstestmain():
     print('start client')
     await testClient(client1.rpcconn,'c# test')
 
+#runtime bridge host test
+async def runtimebridge_test():
+    import pxprpc.extend
+    import pxprpc.backend
+    client1=pxprpc.backend.TcpClient('127.0.0.1',2048);
+    await client1.start()
+    client2=pxprpc.extend.RpcExtendClient1(client1.rpcconn)
+    await client2.init()
+    
+    pipeConnect=await client2.getFunc('pxprpc_pipe.connect')
+    pipeConnect.typedecl('s->l')
+    ioClose=await client2.getFunc('pxprpc.io_close')
+    ioClose.typedecl('l->')
+    
+    pipeServe=await client2.getFunc('pxprpc_pipe.serve')
+    pipeServe.typedecl('s->o')
+    
+    pipeAccept=await client2.getFunc('pxprpc_pipe.accept')
+    pipeAccept.typedecl('o->l')
+    
+    ioSend=await client2.getFunc('pxprpc.io_send')
+    ioSend.typedecl('lb->')
+    
+    ioReceive=await client2.getFunc('pxprpc.io_receive')
+    ioReceive.typedecl('l->b')
+    
+    mytest2024Server=await pipeServe('mytest2024')
+    async def fn():
+        global testconn1
+        testconn1=await pipeAccept(mytest2024Server)
+    task1=asyncio.create_task(fn())
+    await asyncio.sleep(0.3)
+    testconn2=await pipeConnect('mytest2024')
+    
+    async def fn():
+        global testconn1
+        print(await ioReceive(testconn1))
+    task1=asyncio.create_task(fn())
+    await ioSend(testconn2,b'12345')
 
 import sys
 if __name__=='__main__':

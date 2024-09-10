@@ -207,6 +207,12 @@ class PxpRequestWrap{
     struct pxprpc_bytes *parameter(){
         return &req->parameter;
     }
+    struct pxprpc_buffer_part &result(){
+        return req->result;
+    }
+    void setRejected(bool rejected){
+        req->rejected=rejected?1:0;
+    }
     void onWrapFree(){
         this->onFinishPP(this);
         delete this;
@@ -237,38 +243,6 @@ class NamedFunctionPP{
     virtual ~NamedFunctionPP(){}
 };
 
-
-class FunctionPPWithSerializer:public NamedFunctionPP{
-    public:
-    std::function<void(
-        PxpRequestWrap *r,Serializer *parameter,
-        std::function<void(Serializer *result)> done)>
-        callSer;
-
-    FunctionPPWithSerializer(std::string name,std::function<void(
-        PxpRequestWrap *r,Serializer *parameter,
-        std::function<void(Serializer *result)> done)> callSer){
-        this->setName(name);
-        this->callSer=callSer;
-    }
-    virtual void call(PxpRequestWrap *r){
-        auto ser=Serializer::fromPxpBytes(r->parameter());
-        this->callSer(r,ser,[ser,r](Serializer *result)->void{
-            delete ser;
-            if(result!=nullptr){
-                r->onFinishPP=[](PxpRequestWrap *r)->void{    
-                    if(r->req->result.bytes.base!=nullptr){
-                        Serializer::freeBuiltBuffer(r->req->result.bytes.base);
-                    }
-                };
-                result->buildPxpBytes(&r->req->result.bytes);
-                delete result;
-                r->req->result.next_part=NULL;
-            }
-            r->nextStep();
-        });
-    }
-};
 
 
 static pxprpc_callable *__wrap_funcmap_get(pxprpc_funcmap *self,char *funcname,int namelen);
