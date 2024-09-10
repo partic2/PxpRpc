@@ -1,5 +1,5 @@
 
-cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 3.19)
 
 if(COMMAND cmake_policy)
     cmake_policy(SET CMP0003 NEW)
@@ -9,7 +9,28 @@ set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)
 
 project(pxprpc_rtbridge)
 
+macro(pxprpc_rtbridge_add_module entry source)
+  list(APPEND PXPRPC_RTBRIDGE_MODULES_ENTRY ${entry})
+  file(REAL_PATH ${source} abs_source BASE_DIRECTORY ${CMAKE_CURRENT_LIST_DIR})
+  list(APPEND PXPRPC_RTBRIDGE_MODULES_SOURCE ${abs_source})
+endmacro()
 
+
+file(GLOB module_list "c-modules/*/def.cmake")
+
+foreach(module ${module_list})
+  include(${module})
+endforeach(module)
+
+file(WRITE "src/__gen-mod-entry.txt" "")
+foreach(entry ${PXPRPC_RTBRIDGE_MODULES_ENTRY})
+  file(APPEND "src/__gen-mod-entry.txt" "&${entry},\n")
+endforeach(entry)
+
+file(WRITE "src/__gen-mod-include.txt" "")
+foreach(source ${PXPRPC_RTBRIDGE_MODULES_SOURCE})
+  file(APPEND "src/__gen-mod-include.txt" "#include \"${source}\"\n")
+endforeach(source)
 
 list(APPEND pxprpc_rtbridge_sources src/pxprpc_rtbridge.c src/pxprpc_rtbridge_host.cpp)
 

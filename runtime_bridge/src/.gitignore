@@ -1,3 +1,5 @@
 /*.o
 /*.dll
 /*.exe
+/__gen-mod-entry.txt
+/__gen-mod-include.txt

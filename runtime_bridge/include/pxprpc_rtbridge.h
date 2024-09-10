@@ -1,5 +1,5 @@
-#ifndef _PXPRPC_RTBIRDGE_H
-#define _PXPRPC_RTBIRDGE_H
+#ifndef _PXPRPC_RTBRIDGE_H
+#define _PXPRPC_RTBRIDGE_H
 
 /* 
   pxprpc runtime bridge is mainly about communicate between runtime in one process. 
@@ -25,7 +25,7 @@ struct pxprpc_abstract_io *pxprpc_rtbridge_pipe_connect(char *servname);
   Initialize rtbridge with libuv.
   Return error string if error occured, or NULL.
   The "uvloop" will be used as "main loop" for rtbridge and can be only set once. 
-  The second and later pxprpc_rtbrige_init_uv call before uv_rtbirdge_deinit will take no effect and return "inited".
+  The second and later pxprpc_rtbrige_init_uv call before pxprpc_rtbridge_deinit will take no effect and return "inited".
   This function will modify pxprpc_pipe_executor if pxprpc_pipe_executor is NULL.
   BTW rtbridge will register an async_handle so uv_run(uvloop,UV_RUN_DEFAULT) will never return before pxprpc_rtbridge_deinit is called.
 */

@@ -1,4 +1,4 @@
-
+#pragma once
 
 #include <pxprpc_pp.hpp>
 #include <queue>
@@ -9,7 +9,7 @@ extern "C"{
 
 #include <iostream>
 
-namespace pxprpc_rtbirdge_base{
+namespace pxprpc_rtbridge_base{
     void __callArg0Function(void *cb){
         auto cb2=reinterpret_cast<std::function<void()>*>(cb);
         (*cb2)();
