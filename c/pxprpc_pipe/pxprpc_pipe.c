@@ -57,7 +57,7 @@ static void _pxpTransferBuffer(struct pxprpc_buffer_part *providerBuffer,struct 
             consumerOffset=0;
         }
     }
-    if(consumerBuffer->bytes.length==0){
+    if(consumerBuffer->bytes.length==0 && providerBuffer!=NULL){
         int remain=providerBuffer->bytes.length-providerOffset;
         tBuff=providerBuffer->next_part;
         while(tBuff!=NULL){

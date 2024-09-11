@@ -13,5 +13,18 @@ public class NativeHelper{
     public static native void ioBufFree(long io,ByteBuffer b);
     public static native void ioClose(long io);
     public static native void ensureRtbInited(ByteBuffer errorString);
+    public static void loadNativeLibrary(){
+        boolean ok=false;
+        try {
+            System.loadLibrary("pxprpc_rtbridge");
+            ok=true;
+        }catch(UnsatisfiedLinkError e){
+        }
+        if(!ok){
+            //Some system requre lib prefix manually(windows)
+            System.loadLibrary("libpxprpc_rtbridge");
+            ok=true;
+        }
+    }
 }
 
