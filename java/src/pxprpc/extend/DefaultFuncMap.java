@@ -16,6 +16,9 @@ public class DefaultFuncMap implements FuncMap {
         if(!registered.containsKey("builtin")){
             registered.put("builtin", builtIn);
         }
+        if(!registered.containsKey("pxprpc_pp")){
+            registered.put("pxrpc_pp",new PxprpcPPFuncList());
+        }
         return defaultInstance;
     }
     @Override

@@ -1,4 +1,4 @@
-import { Client, PxpCallable, PxpRequest, Serializer, Server } from './base'
+import { Client, Io, PxpCallable, PxpRequest, Serializer, Server } from './base'
 
 
 export class RpcExtendError extends Error {
@@ -251,6 +251,8 @@ defaultFuncMap['builtin.typeof']=new RpcExtendServerCallable(async (arg:any)=>ty
 defaultFuncMap['builtin.toJSON']=new RpcExtendServerCallable(async (arg:any)=>JSON.stringify(arg)).typedecl('o->s');
 defaultFuncMap['builtin.fromJSON']=new RpcExtendServerCallable(async (arg:string)=>JSON.parse(arg)).typedecl('s->o');
 defaultFuncMap['builtin.bufferData']=new RpcExtendServerCallable(async (arg:Uint8Array)=>arg).typedecl('o->b');
+defaultFuncMap['pxprpc_pp.io_send']=new RpcExtendServerCallable(async (io:Io,arg:Uint8Array)=>io.send([arg])).typedecl('ob->');
+defaultFuncMap['pxprpc_pp.io_receive']=new RpcExtendServerCallable(async (io:Io)=>await io.receive()).typedecl('o->b');
 
 export class RpcExtendServer1{
     public constructor(public serv:Server){
