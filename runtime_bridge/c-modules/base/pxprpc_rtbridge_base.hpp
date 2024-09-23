@@ -50,6 +50,15 @@ namespace pxprpc_rtbridge_base{
             pxprpc_pipe_serve(s.c_str(),nullptr,nullptr);
         }
     };
+    class PxpConnection:public pxprpc::PxpObject{
+        public:
+        pxprpc_abstract_io *io;
+        PxpConnection(pxprpc_abstract_io *io_in):io(io_in){
+        }
+        virtual ~PxpConnection(){
+            io->close(io);
+        }
+    };
     void __wrap_on_connect(struct pxprpc_abstract_io *io1,void *server){
         auto serv=reinterpret_cast<PxpPipeServer *>(server);
         serv->onConnect(io1);
@@ -58,26 +67,31 @@ namespace pxprpc_rtbridge_base{
     bool inited=false;
     void init(){
         if(!inited){
-            defaultFuncMap.add((new pxprpc::NamedFunctionPPImpl1())->init("pxprpc_pipe.serve",
+            defaultFuncMap.add((new pxprpc::NamedFunctionPPImpl1())->init("pxprpc_pipe_pp.serve",
             [](auto para,auto ret)->void{
                 auto obj=new PxpPipeServer(para->nextString());
                 obj->serve();
                 ret->resolve(obj);
-            })).add((new pxprpc::NamedFunctionPPImpl1())->init("pxprpc_pipe.accept",
+            })).add((new pxprpc::NamedFunctionPPImpl1())->init("pxprpc_pipe_pp.accept",
             [](auto para,auto ret)->void{
                 auto serv=static_cast<PxpPipeServer *>(para->nextObject());
                 serv->accept([ret](auto io)->void{
-                    auto ioi64=reinterpret_cast<int64_t>(io);
-                    ret->resolve(ioi64);
+                    ret->resolve(new PxpConnection(io));
                 });
-            })).add((new pxprpc::NamedFunctionPPImpl1())->init("pxprpc_pipe.connect",
+            })).add((new pxprpc::NamedFunctionPPImpl1())->init("pxprpc_pipe_pp.connect",
             [](auto para,auto ret)->void{
                 auto servName=para->nextString();
-                auto conn=reinterpret_cast<int64_t>(pxprpc_pipe_connect(servName.c_str()));
-                ret->resolve(conn);
-            })).add((new pxprpc::NamedFunctionPPImpl1())->init("pxprpc.io_send",
+                ret->resolve(new PxpConnection(pxprpc_pipe_connect(servName.c_str())));
+            })).add((new pxprpc::NamedFunctionPPImpl1())->init("pxprpc_pp.io_to_raw_addr",
             [](auto para,auto ret)->void{
-                auto ioaddr=reinterpret_cast<struct pxprpc_abstract_io *>(para->nextLong());
+                auto ioaddr=reinterpret_cast<int64_t>(static_cast<PxpConnection *>((para->nextObject()))->io);
+                ret->resolve(ioaddr);
+            })).add((new pxprpc::NamedFunctionPPImpl1())->init("pxprpc_pp.io_from_raw_addr",
+            [](auto para,auto ret)->void{
+                ret->resolve(new PxpConnection(reinterpret_cast<struct pxprpc_abstract_io *>(para->nextLong())));
+            })).add((new pxprpc::NamedFunctionPPImpl1())->init("pxprpc_pp.io_send",
+            [](auto para,auto ret)->void{
+                auto ioaddr=static_cast<PxpConnection *>((para->nextObject()))->io;
                 auto buffer1=new pxprpc_buffer_part();
                 auto p2=para->nextBytes();
                 buffer1->bytes.length=std::get<0>(p2);
@@ -93,9 +107,9 @@ namespace pxprpc_rtbridge_base{
                     delete buffer1;
                 });
                 ioaddr->send(ioaddr,buffer1,__callArg0Function,cb);
-            })).add((new pxprpc::NamedFunctionPPImpl1())->init("pxprpc.io_receive",
+            })).add((new pxprpc::NamedFunctionPPImpl1())->init("pxprpc_pp.io_receive",
             [](pxprpc::NamedFunctionPPImpl1::Parameter *para,auto ret)->void{
-                auto ioaddr=reinterpret_cast<struct pxprpc_abstract_io *>(para->nextLong());
+                auto ioaddr=static_cast<PxpConnection *>((para->nextObject()))->io;
                 auto buffer1=new pxprpc_buffer_part();
                 buffer1->bytes.base=nullptr;
                 buffer1->bytes.length=0;
@@ -112,11 +126,6 @@ namespace pxprpc_rtbridge_base{
                     delete buffer1;
                 });
                 ioaddr->receive(ioaddr,buffer1,__callArg0Function,cb);
-            })).add((new pxprpc::NamedFunctionPPImpl1())->init("pxprpc.io_close",
-            [](auto para,auto ret)->void{
-                auto ioaddr=reinterpret_cast<struct pxprpc_abstract_io *>(para->nextLong());
-                ioaddr->close(ioaddr);
-                ret->resolve();
             })).add((new pxprpc::NamedFunctionPPImpl1())->init("pxprpc_rtbridge_host.new_tcp_rpc_server",
             [](auto para,auto ret)->void{
                 auto ser=para->asSerializer();
