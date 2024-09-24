@@ -49,6 +49,9 @@ export class WebSocketIo implements Io{
         return this;
     }
     async receive(): Promise<Uint8Array> {
+        if(this.ws?.readyState!=WebSocket.OPEN){
+            throw new Error('Illegal websocket readState '+String(this.ws?.readyState));
+        }
         if(this.queuedData.length>0){
             return this.queuedData.shift()!;
         }else{
@@ -66,6 +69,9 @@ export class WebSocketIo implements Io{
         }
     }
     async send(data: Uint8Array[]): Promise<void> {
+        if(this.ws?.readyState!=WebSocket.OPEN){
+            throw new Error('Illegal websocket readState '+String(this.ws?.readyState));
+        }
         let len=data.reduce((prev,curr)=>prev+curr.byteLength,0);
         let buf=new Uint8Array(len);
         let pos=0;
@@ -124,7 +130,10 @@ export let WebMessage=(function(){
                     conn.onmsg?.(null);
                 }
             }else if(type==='notfound'){
-                //TODO: Notify Connection if all bound port return notfound
+                let conn=connections[id];
+                if(conn!==undefined){
+                    conn.__notfoundResponse();
+                }
             }else if(type==='data'){
                 let conn=connections[id];
                 if(conn===undefined){
@@ -174,21 +183,30 @@ export let WebMessage=(function(){
         port?:BasicMessagePort;
         id:string='';
         connected:boolean=false;
+        __broadcastCount=0;
+        __notfoundCount=0;
         constructor(){
         }
         async connect(servId:string,timeout?:number){
             this.id=(new Date().getTime()%2176782336).toString(36)+'-'+Math.floor(Math.random()*2176782336).toString(36);
             connections[this.id]=this;
-            for(let port of boundList){
-                port.postMessage({[pxprpcMessageMark]:true,id:this.id,type:'connect',servId})
+            try{
+                this.__broadcastCount=boundList.length;
+                if(this.__broadcastCount===0){throw new Error('WebMessageConnection connect failed. server not found.')}
+                for(let port of boundList){
+                    port.postMessage({[pxprpcMessageMark]:true,id:this.id,type:'connect',servId})
+                }
+                if(!this.connected){
+                    await this.__waitMessage(timeout)
+                }
+                if(!this.connected){
+                    throw new Error('WebMessageConnection connect failed. timeout. server not found.');
+                }
+                return this;
+            }catch(e){
+                delete connections[this.id];
+                throw e;
             }
-            if(!this.connected){
-                await this.__waitMessage(timeout)
-            }
-            if(!this.connected){
-                throw new Error('WebMessageConnection connect failed.');
-            }
-            return this;
         }
         __waitMessage(timeout?:number){
             return new Promise((resolve,reject)=>{
@@ -203,6 +221,12 @@ export let WebMessage=(function(){
                     setTimeout(resolve,timeout);
                 }
             });
+        }
+        __notfoundResponse(){
+            this.__notfoundCount++;
+            if(this.__notfoundCount>=this.__broadcastCount){
+                this.onmsg?.(new Error('WebMessageConnection connect failed. server not found.'))
+            }
         }
         async receive(): Promise<Uint8Array> {
             if(!this.connected){
