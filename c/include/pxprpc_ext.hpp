@@ -315,7 +315,7 @@ class NamedFunctionPPImpl1:public NamedFunctionPP{
             req->result().next_part=nullptr;
             memmove(req->result().bytes.base,buf,size);
             this->onReqFinished=[rawbuf]()->void{
-                delete rawbuf;
+                delete[] rawbuf;
             };
             req->nextStep();
         }
@@ -370,7 +370,7 @@ class NamedFunctionPPImpl1:public NamedFunctionPP{
             req->result().next_part=nullptr;
             memmove(req->result().bytes.base,errorMessage.c_str(),len);
             req->onFinishPP=[rawbuf](PxpRequestWrap *req)->void{
-                delete rawbuf;
+                delete[] rawbuf;
             };
             req->setRejected(true);
             req->nextStep();

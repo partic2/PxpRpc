@@ -201,6 +201,6 @@ char *pxprpc_rtbridge_deinit(){
 
 void pxprpc_rtbridge_get_current_state(struct pxprpc_rtbridge_state *out){
     out->uv_loop=rtbloop;
-    out->uv_tid=_newloopttid;
+    out->uv_tid=&_newloopttid;
     out->run_state=_rtbinitandrunstat;
 }

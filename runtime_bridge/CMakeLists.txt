@@ -1,13 +1,18 @@
 
 cmake_minimum_required(VERSION 3.19)
 
-if(COMMAND cmake_policy)
-    cmake_policy(SET CMP0003 NEW)
-endif()
 
+cmake_policy(SET CMP0003 NEW)
 set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)
 
+
 project(pxprpc_rtbridge)
+
+
+#Seemed shared object on linux require this options to build shared object.
+if(CMAKE_SYSTEM_NAME STREQUAL Linux)
+set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
+endif()
 
 macro(pxprpc_rtbridge_add_module entry source)
   list(APPEND PXPRPC_RTBRIDGE_MODULES_ENTRY ${entry})
@@ -60,7 +65,6 @@ endif()
 add_library(pxprpc_rtbridge SHARED ${pxprpc_rtbridge_sources})
 target_include_directories(pxprpc_rtbridge PUBLIC include)
 target_link_libraries(pxprpc_rtbridge PRIVATE pxprpc pxprpc_pipe pxprpc_libuv)
-
 
 add_executable(pxprpc_rtbridge_host_test ${pxprpc_rtbridge_sources})
 target_include_directories(pxprpc_rtbridge_host_test PUBLIC include)

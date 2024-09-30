@@ -216,7 +216,7 @@ static const char *__sockAbsIo1GetError(struct pxprpc_abstract_io *self1,void *f
 }
 
 
-static const void __sockAbsIo1Close(struct pxprpc_abstract_io *self1){
+static void __sockAbsIo1Close(struct pxprpc_abstract_io *self1){
     struct _pxprpc_libuv_sockconn *self=(void *)self1-offsetof(struct _pxprpc_libuv_sockconn,io1);
     if(!(self->status&__sockconn_status_streamClosed)){
         self->status|=__sockconn_status_streamClosed;

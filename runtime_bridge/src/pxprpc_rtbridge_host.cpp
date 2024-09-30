@@ -100,6 +100,13 @@ char *ensureInited(){
 }
 }
 
+extern "C"{
+    char *pxprpc_rtbridge_host_ensureInited(){
+        return pxprpc_rtbridge_host::ensureInited();
+    }
+}
+
+
 
 #ifdef PXPRPC_RTBRIDGE_ENABLE_TEST_TCPSERVER_EXE
 static int pxprpc_rtbridge_host_running=1;
