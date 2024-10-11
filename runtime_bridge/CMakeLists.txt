@@ -8,6 +8,7 @@ set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)
 
 project(pxprpc_rtbridge)
 
+option(PXPRPC_RTBRIDGE_BUILD_EXE "Indicate whether build standalone executable pxprpc_rtbridge host." OFF)
 
 #Seemed shared object on linux require this options to build shared object.
 if(CMAKE_SYSTEM_NAME STREQUAL Linux)
@@ -18,6 +19,10 @@ macro(pxprpc_rtbridge_add_module entry source)
   list(APPEND PXPRPC_RTBRIDGE_MODULES_ENTRY ${entry})
   file(REAL_PATH ${source} abs_source BASE_DIRECTORY ${CMAKE_CURRENT_LIST_DIR})
   list(APPEND PXPRPC_RTBRIDGE_MODULES_SOURCE ${abs_source})
+endmacro()
+
+macro(pxprpc_rtbridge_add_link_library)
+  list(APPEND PXPRPC_RTBRIDGE_LINK_LIBRARY ${ARGV})
 endmacro()
 
 
@@ -61,15 +66,29 @@ if(NOT TARGET pxprpc)
 add_subdirectory("../c" build-pxprpc)
 endif()
 
+list(APPEND PXPRPC_RTBRIDGE_LINK_LIBRARY pxprpc pxprpc_pipe pxprpc_libuv)
+
+list(REMOVE_DUPLICATES PXPRPC_RTBRIDGE_LINK_LIBRARY)
 
 add_library(pxprpc_rtbridge SHARED ${pxprpc_rtbridge_sources})
 target_include_directories(pxprpc_rtbridge PUBLIC include)
-target_link_libraries(pxprpc_rtbridge PRIVATE pxprpc pxprpc_pipe pxprpc_libuv)
+target_link_libraries(pxprpc_rtbridge PUBLIC ${PXPRPC_RTBRIDGE_LINK_LIBRARY})
 
-add_executable(pxprpc_rtbridge_host_test ${pxprpc_rtbridge_sources})
-target_include_directories(pxprpc_rtbridge_host_test PUBLIC include)
-target_link_libraries(pxprpc_rtbridge_host_test PRIVATE pxprpc pxprpc_pipe pxprpc_libuv)
-target_compile_definitions(pxprpc_rtbridge_host_test PRIVATE PXPRPC_RTBRIDGE_ENABLE_TEST_TCPSERVER PXPRPC_RTBRIDGE_ENABLE_TEST_TCPSERVER_EXE)
+#PXPRPC_RTBRIDGE_BUILD_EXE build standalone executable 
+if(PXPRPC_RTBRIDGE_BUILD_EXE)
+  add_executable(pxprpc_rtbridge_exe ${pxprpc_rtbridge_sources})
+  target_include_directories(pxprpc_rtbridge_exe PUBLIC include)
+  target_link_libraries(pxprpc_rtbridge_exe PUBLIC ${PXPRPC_RTBRIDGE_LINK_LIBRARY})
+  target_compile_definitions(pxprpc_rtbridge_exe PRIVATE PXPRPC_RTBRIDGE_BUILD_EXE)
+endif(PXPRPC_RTBRIDGE_BUILD_EXE)
+
+
+if(PXPRPC_RTBRIDGE_ENABLE_TEST_TCPSERVER)
+  target_compile_definitions(pxprpc_rtbridge PRIVATE PXPRPC_RTBRIDGE_ENABLE_TEST_TCPSERVER)
+  if(PXPRPC_RTBRIDGE_BUILD_EXE)
+    target_compile_definitions(pxprpc_rtbridge_exe PRIVATE PXPRPC_RTBRIDGE_ENABLE_TEST_TCPSERVER)
+  endif(PXPRPC_RTBRIDGE_BUILD_EXE)
+endif(PXPRPC_RTBRIDGE_ENABLE_TEST_TCPSERVER)
 
 
 

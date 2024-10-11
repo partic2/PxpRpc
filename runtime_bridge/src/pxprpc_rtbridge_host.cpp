@@ -108,7 +108,7 @@ extern "C"{
 
 
 
-#ifdef PXPRPC_RTBRIDGE_ENABLE_TEST_TCPSERVER_EXE
+#ifdef PXPRPC_RTBRIDGE_BUILD_EXE
 static int pxprpc_rtbridge_host_running=1;
 int main(int argc,char *argv[]){
     pxprpc_rtbridge_host::ensureInited();
@@ -118,6 +118,7 @@ int main(int argc,char *argv[]){
         uv_sleep(1000);
         pxprpc_rtbridge_get_current_state(&state);
     }
+    return 0;
 }
 #endif
 
