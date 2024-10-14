@@ -25,12 +25,16 @@ macro(pxprpc_rtbridge_add_link_library)
   list(APPEND PXPRPC_RTBRIDGE_LINK_LIBRARY ${ARGV})
 endmacro()
 
+list(APPEND PXPRPC_RTBIRDGE_MODULES_DIRS "c-modules")
 
-file(GLOB module_list "c-modules/*/def.cmake")
+foreach(mod_dir ${PXPRPC_RTBIRDGE_MODULES_DIRS})
+  file(GLOB module_list "${mod_dir}/*/def.cmake")
+  foreach(module ${module_list})
+    include(${module})
+  endforeach(module)
+endforeach()
 
-foreach(module ${module_list})
-  include(${module})
-endforeach(module)
+
 
 file(WRITE "src/__gen-mod-entry.txt" "")
 foreach(entry ${PXPRPC_RTBRIDGE_MODULES_ENTRY})

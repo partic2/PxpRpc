@@ -58,6 +58,7 @@ export class WebSocketIo implements Io{
             let that=this;
             await new Promise((resolve,reject)=>{
                 that.onmsg=(err)=>{
+                    that.onmsg=null;
                     if(err==null){
                         resolve(null);
                     }else{
@@ -147,6 +148,7 @@ export let WebMessage=(function(){
                 if(conn!==undefined){
                     conn.connected=false;
                     delete connections[id];
+                    conn.onmsg?.(new Error('WebMessageConnection closed'));
                 }
             }
         }
@@ -210,16 +212,26 @@ export let WebMessage=(function(){
         }
         __waitMessage(timeout?:number){
             return new Promise((resolve,reject)=>{
+                let timer1: any=null;
+                if(timeout!=undefined){
+                    timer1=setTimeout(()=>{
+                        this.onmsg=null;
+                        resolve(null);
+                    },timeout);
+                }
                 this.onmsg=(err)=>{
+                    if(timer1!=null){
+                        clearTimeout(timer1);
+                    }
+                    this.onmsg=null;
                     if(err==null){
                         resolve(null);
                     }else{
                         reject(err);
                     }
+                    
                 }
-                if(timeout!=undefined){
-                    setTimeout(resolve,timeout);
-                }
+                
             });
         }
         __notfoundResponse(){
@@ -230,7 +242,7 @@ export let WebMessage=(function(){
         }
         async receive(): Promise<Uint8Array> {
             if(!this.connected){
-                throw new Error('WebMessageConnection send failed, Not connected.');
+                throw new Error('WebMessageConnection receive failed, Not connected.');
             }
             if(this.queuedData.length>0){
                 return this.queuedData.shift()!;
