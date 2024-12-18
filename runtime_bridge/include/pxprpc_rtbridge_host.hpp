@@ -28,4 +28,18 @@ namespace pxprpc_rtbridge_host{
         ~TcpPxpRpcServer();
     };
 
+    void __runCppFunction(void *cppFunc){
+        auto fn=static_cast<std::function<void()> *>(cppFunc);
+        (*fn)();
+    }
+
+    //Post function to be run in host event loop/thread.(by use pxprpc_pipe_executor).
+    //This function (and also "pxprpc_pipe_executor") can be call in other thread. 
+    //Caution: Except these functions explicitly noted, pxprpc function should only called in "host thread".
+    void postRunnable(std::function<void()> runnable){
+        auto pFn=new std::function<void()>();
+        *pFn=runnable;
+        pxprpc_pipe_executor(__runCppFunction,pFn);
+    }
+
 }
