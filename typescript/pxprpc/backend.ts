@@ -28,7 +28,7 @@ export class WebSocketIo implements Io{
     ensureConnected():Promise<this>{
         let that=this;
         return new Promise<this>((resolve,reject)=>{
-            if(that.ws!.readyState==WebSocket.CONNECTING){
+            if(that.ws!.readyState===WebSocket.CONNECTING){
                 that.ws!.addEventListener('open',function(ev){
                     resolve(that);
                 });
@@ -37,7 +37,7 @@ export class WebSocketIo implements Io{
                     reject(new Error('WebSocket error'))
                 }
                 that.ws!.addEventListener('error',onerr)
-            }else if(that.ws!.readyState==WebSocket.OPEN){
+            }else if(that.ws!.readyState===WebSocket.OPEN){
                 resolve(that);
             }else{
                 reject(new Error('Invalid WebSocket readyState:'+this.ws!.readyState))
@@ -59,7 +59,7 @@ export class WebSocketIo implements Io{
             await new Promise((resolve,reject)=>{
                 that.onmsg=(err)=>{
                     that.onmsg=null;
-                    if(err==null){
+                    if(err===null){
                         resolve(null);
                     }else{
                         reject(err);
@@ -90,13 +90,15 @@ export class WebSocketIo implements Io{
 interface BasicMessagePort{
     addEventListener:(type:'message',cb:(msg:MessageEvent)=>void)=>void
     removeEventListener:(type:'message',cb:(msg:MessageEvent)=>void)=>void
-    postMessage:(data:any,opt?:{transfer:Transferable[]})=>void
+    postMessage:(data:any,opt?:{transfer?:Transferable[]})=>void
 }
 
 export let WebMessage=(function(){
     //mark for pxprpc message
     const pxprpcMessageMark='__messageMark_pxprpc';
-    
+    //extra options for postMessage, like 'targetOrigin'
+    //Take care for security risk.
+    const postMessageOptions:Record<string,any>={};
     let servers={} as {[id:string]:Server};
     let connections={} as {[id:string]:Connection};
     let boundList:BasicMessagePort[]=[];
@@ -110,25 +112,27 @@ export let WebMessage=(function(){
                 let servId=msg.data.servId
                 let serv=servers[servId];
                 if(serv===undefined){
-                    source.postMessage({[pxprpcMessageMark]:true,type:'notfound',id:id});
+                    source.postMessage({[pxprpcMessageMark]:true,type:'notfound',id:id},postMessageOptions);
                 }else{
                     let conn=new Connection();
                     conn.connected=true;
                     conn.id=id;
                     conn.port=source!;
                     connections[conn.id]=conn;
-                    source.postMessage({[pxprpcMessageMark]:true,type:'connected',id:id});
+                    source.postMessage({[pxprpcMessageMark]:true,type:'connected',id:id},postMessageOptions);
                     serv.onConnection(conn);
                 }
             }else if(type==='connected'){
                 let conn=connections[id];
                 if(conn===undefined){
-                    source.postMessage({[pxprpcMessageMark]:true,type:'closed',id:id});
+                    source.postMessage({[pxprpcMessageMark]:true,type:'closed',id:id},postMessageOptions);
                 }else{
-                    //TODO: handler mutlitime connect?
-                    conn.connected=true;
-                    conn.port=source!;
-                    conn.onmsg?.(null);
+                    //Only handle the first 'connected' event.
+                    if(!conn.connected){
+                        conn.connected=true;
+                        conn.port=source!;
+                        conn.onmsg?.(null);
+                    }
                 }
             }else if(type==='notfound'){
                 let conn=connections[id];
@@ -138,7 +142,7 @@ export let WebMessage=(function(){
             }else if(type==='data'){
                 let conn=connections[id];
                 if(conn===undefined){
-                    source.postMessage({[pxprpcMessageMark]:true,type:'closed',id:id});
+                    source.postMessage({[pxprpcMessageMark]:true,type:'closed',id:id},postMessageOptions);
                 }else{
                     conn.queuedData.push(new Uint8Array(msg.data.data as ArrayBuffer));
                     conn.onmsg?.(null);
@@ -196,7 +200,7 @@ export let WebMessage=(function(){
                 this.__broadcastCount=boundList.length;
                 if(this.__broadcastCount===0){throw new Error('WebMessageConnection connect failed. server not found.')}
                 for(let port of boundList){
-                    port.postMessage({[pxprpcMessageMark]:true,id:this.id,type:'connect',servId})
+                    port.postMessage({[pxprpcMessageMark]:true,id:this.id,type:'connect',servId},{transfer:[],...postMessageOptions})
                 }
                 if(!this.connected){
                     await this.__waitMessage(timeout)
@@ -224,7 +228,7 @@ export let WebMessage=(function(){
                         clearTimeout(timer1);
                     }
                     this.onmsg=null;
-                    if(err==null){
+                    if(err===null){
                         resolve(null);
                     }else{
                         reject(err);
@@ -236,7 +240,7 @@ export let WebMessage=(function(){
         }
         __notfoundResponse(){
             this.__notfoundCount++;
-            if(this.__notfoundCount>=this.__broadcastCount){
+            if(!this.connected && this.__notfoundCount>=this.__broadcastCount){
                 this.onmsg?.(new Error('WebMessageConnection connect failed. server not found.'))
             }
         }
@@ -262,13 +266,13 @@ export let WebMessage=(function(){
                 buf.set(new Uint8Array(b.buffer,b.byteOffset,b.byteLength),pos);
                 pos+=b.byteLength;
             }
-            this.port!.postMessage({[pxprpcMessageMark]:true,id:this.id,type:'data',data:buf.buffer},{transfer:[buf.buffer]});
+            this.port!.postMessage({[pxprpcMessageMark]:true,id:this.id,type:'data',data:buf.buffer},{transfer:[buf.buffer],...postMessageOptions});
         }
         close(): void {
-            this.port!.postMessage({[pxprpcMessageMark]:true,type:'closed',id:this.id})
+            this.port!.postMessage({[pxprpcMessageMark]:true,type:'closed',id:this.id},postMessageOptions)
             this.connected=false;
             delete connections[this.id];
         }
     }
-    return {bind,unbind,Server,Connection}
+    return {bind,unbind,Server,Connection,postMessageOptions}
 })()
