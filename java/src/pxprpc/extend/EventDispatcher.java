@@ -17,10 +17,12 @@ public class EventDispatcher extends CommonCallable {
 	protected Queue<PxpRequest> receivers = new LinkedList<PxpRequest>();
 
 	public void fireEvent(Object evt) {
-		PxpRequest r = receivers.poll();
-		if(r!=null) {
-			writeResult(r,evt);
-			r.done();
+		synchronized (receivers){
+			PxpRequest r;
+			for(r = receivers.poll();r!=null;r=receivers.poll()){
+				writeResult(r,evt);
+				r.done();
+			}
 		}
 	}
 
@@ -30,6 +32,8 @@ public class EventDispatcher extends CommonCallable {
 
 	@Override
 	public void call(PxpRequest req) throws IOException {
-		receivers.offer(req);
+		synchronized (receivers) {
+			receivers.offer(req);
+		}
 	}
 }

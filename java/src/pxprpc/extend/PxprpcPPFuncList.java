@@ -9,7 +9,7 @@ public class PxprpcPPFuncList {
     public void io_send(AbstractIo io, ByteBuffer data) throws IOException {
         io.send(new ByteBuffer[]{data});
     }
-    public ByteBuffer io_receive(AsyncReturn<ByteBuffer> ret,AbstractIo io) throws IOException {
+    public ByteBuffer io_receive(final AsyncReturn<ByteBuffer> ret,final AbstractIo io) throws IOException {
         new Thread(new Runnable() {
             @Override
             public void run() {

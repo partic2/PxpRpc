@@ -174,12 +174,27 @@ public class PxpRpc {
 			ByteBuffer sered = new TableSerializer().fromTypedObjectArray(t2).build();
 			testTableUnser.callBlock(sered);
 
+
+			RpcExtendClientCallable wait1Sec=client1.getFunc("test1.wait1Sec");
+			wait1Sec.typedecl("->s");
+			System.out.println("print tick after 1 seconds");
+			System.out.println(wait1Sec.callBlock()[0]);
+			RpcExtendClientCallable getOnTick=client1.getFunc("test1.onTick");
+			getOnTick.typedecl("->o");
+			RpcExtendClientCallable onTick = ((RpcExtendClientObject) getOnTick.callBlock()[0]).asCallable();
+			onTick.typedecl("->s");
+			System.out.println("tick 3 times");
+			for(int i=0;i<3;i++){
+				System.out.println(onTick.callBlock()[0]);
+			}
+
 			try{
 				RpcExtendClientCallable raiseError1 = client1.getFunc("test1.raiseError1").typedecl("->");
 				raiseError1.callBlock(new Object[]{});
 			}catch(RemoteError e){
 				e.printStackTrace();
 			}
+
 		} catch (IOException e) {
 			e.printStackTrace();
 		} catch (InterruptedException e) {
