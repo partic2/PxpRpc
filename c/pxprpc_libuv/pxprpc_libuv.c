@@ -215,12 +215,12 @@ static const char *__sockAbsIo1GetError(struct pxprpc_abstract_io *self1,void *f
     }
 }
 
-
+static void __freeLibuvSockconn2(uv_handle_t *stream);
 static void __sockAbsIo1Close(struct pxprpc_abstract_io *self1){
     struct _pxprpc_libuv_sockconn *self=(void *)self1-offsetof(struct _pxprpc_libuv_sockconn,io1);
     if(!(self->status&__sockconn_status_streamClosed)){
         self->status|=__sockconn_status_streamClosed;
-        uv_close((uv_handle_t *)&self->stream,NULL);
+        uv_close((uv_handle_t *)&self->stream,&__freeLibuvSockconn2);
     }
 }
 static void __freeLibuvSockconn(struct _pxprpc_libuv_sockconn *sc);
@@ -238,7 +238,6 @@ static struct _pxprpc_libuv_sockconn * __buildLibuvSockconn(struct _pxprpc_libuv
     servapi->context_new(&sockconn->rpcCtx,&sockconn->io1);
     struct pxprpc_server_context_exports *ctxexp=servapi->context_exports(sockconn->rpcCtx);
     ctxexp->funcmap=sCtx->funcmap;
-    ctxexp->on_closed=(void(*)(void *cb_data))__freeLibuvSockconn;
     ctxexp->cb_data=sockconn;
     servapi->context_exports_apply(sockconn->rpcCtx);
     if(sCtx->acceptedConn==NULL){
@@ -263,12 +262,17 @@ static void __freeLibuvSockconn(struct _pxprpc_libuv_sockconn *sc){
     if(sc->prev!=NULL){
         sc->prev->next=sc->next;
     }
-    if(sc->serv->acceptedConn==sc){
+    //sc->serv==NULL when server is detached.
+    if(sc->serv!=NULL && sc->serv->acceptedConn==sc){
         sc->serv->acceptedConn=sc->next;
     }
     servapi->context_delete(&sc->rpcCtx);
     /* sc->stream is closed by io->close() before pxprpc__free */
     pxprpc__free(sc);
+}
+static void __freeLibuvSockconn2(uv_handle_t *stream){
+    struct _pxprpc_libuv_sockconn *sc=uv_handle_get_data(stream);
+    __freeLibuvSockconn(sc);
 }
 
 static void __uvListenConnectionCb(uv_stream_t *server, int status){
@@ -295,9 +299,11 @@ static void pxprpc_serve(pxprpc_server_libuv serv){
 static int pxprpc_server_delete(pxprpc_server_libuv serv){
     struct _pxprpc_libuv *self=(struct _pxprpc_libuv *)serv;
     struct _pxprpc_libuv_sockconn *conn2=NULL;
+    //Detach and closing connection.
     for(struct _pxprpc_libuv_sockconn *conn=self->acceptedConn;conn!=NULL;conn=conn2){
         conn2=conn->next;
-        __freeLibuvSockconn(conn);
+        conn->serv=NULL;
+        conn->io1.close(&conn->io1);
     }
     pxprpc__free(serv);
     return 0;
