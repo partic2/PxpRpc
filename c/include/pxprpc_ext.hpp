@@ -94,7 +94,7 @@ class TableSerializer{
         }
         return this;
     }
-    //Create new Serializer if bindSerializer not called, caller take response to delete the created Serializer.
+    //Write data into bound serializer, create new Serializer if no bound. caller take response to delete the created Serializer.
     Serializer *buildSer(){
         if(this->ser==nullptr){
             this->ser=(new Serializer())->prepareSerializing(16);
@@ -219,6 +219,54 @@ class TableSerializer{
         this->rowCnt+=1;
         return this;
     }
+    int currentAddValuePosX=-1;
+    protected:
+    void moveToNextValuePosX(){
+        currentAddValuePosX++;
+        if(currentAddValuePosX>=cols.size()){
+            currentAddValuePosX=0;
+        }
+        if(currentAddValuePosX==0){
+            this->rowCnt++;
+        }
+    }
+    public:
+    //Add value to next cell, from left to right, from top to bottom.
+    TableSerializer* addValue(int32_t v){
+        moveToNextValuePosX();
+        reinterpret_cast<std::vector<int32_t> *>(this->cols[currentAddValuePosX])->push_back(v);
+        return this;
+    }
+    TableSerializer* addValue(int64_t v){
+        moveToNextValuePosX();
+        reinterpret_cast<std::vector<int64_t> *>(this->cols[currentAddValuePosX])->push_back(v);
+        return this;
+    }
+    TableSerializer* addValue(float v){
+        moveToNextValuePosX();
+        reinterpret_cast<std::vector<float> *>(this->cols[currentAddValuePosX])->push_back(v);
+        return this;
+    }
+    TableSerializer* addValue(double v){
+        moveToNextValuePosX();
+        reinterpret_cast<std::vector<int32_t> *>(this->cols[currentAddValuePosX])->push_back(v);
+        return this;
+    }
+    TableSerializer* addValue(std::tuple<int,uint8_t *> v){
+        moveToNextValuePosX();
+        reinterpret_cast<std::vector<std::tuple<int,uint8_t *>> *>(this->cols[currentAddValuePosX])->push_back(v);
+        return this;
+    }
+    TableSerializer* addValue(std::string v){
+        moveToNextValuePosX();
+        reinterpret_cast<std::vector<std::string> *>(this->cols[currentAddValuePosX])->push_back(v);
+        return this;
+    }
+    TableSerializer* addValue(uint8_t v){
+        moveToNextValuePosX();
+        reinterpret_cast<std::vector<uint8_t> *>(this->cols[currentAddValuePosX])->push_back(v?1:0);
+        return this;
+    }
     TableSerializer *setColumnInfo(std::string columnType,std::vector<std::string> columnName){
         this->columnType=columnType;
         this->columnName=columnName;
@@ -301,7 +349,7 @@ class NamedFunctionPPImpl1:public NamedFunctionPP{
     class AsyncReturn{
         public:
         PxpRequestWrap *req;
-        std::function<void()> onReqFinished=[]()->void{};
+        std::function<void()> onReqFinished=[]()->void {};
         void resolve(struct pxprpc_buffer_part &buf,std::function<void()> onReqFinished){
             req->result()=buf;
             onReqFinished=this->onReqFinished;
@@ -314,7 +362,7 @@ class NamedFunctionPPImpl1:public NamedFunctionPP{
             req->result().bytes.length=size;
             req->result().next_part=nullptr;
             memmove(req->result().bytes.base,buf,size);
-            this->onReqFinished=[rawbuf]()->void{
+            this->onReqFinished=[rawbuf]()->void {
                 delete[] rawbuf;
             };
             req->nextStep();
@@ -322,7 +370,7 @@ class NamedFunctionPPImpl1:public NamedFunctionPP{
         //"ser" will be deleted by callee.
         void resolve(Serializer *ser){
             ser->buildPxpBytes(&req->result().bytes);
-            this->onReqFinished=[ser,this]()->void{
+            this->onReqFinished=[ser,this]()->void {
                 ser->freeBuiltBuffer(req->result().bytes.base);
                 delete ser;
             };
@@ -369,7 +417,7 @@ class NamedFunctionPPImpl1:public NamedFunctionPP{
             req->result().bytes.length=len;
             req->result().next_part=nullptr;
             memmove(req->result().bytes.base,errorMessage.c_str(),len);
-            req->onFinishPP=[rawbuf](PxpRequestWrap *req)->void{
+            req->onFinishPP=[rawbuf](PxpRequestWrap *req)->void {
                 delete[] rawbuf;
             };
             req->setRejected(true);
@@ -418,7 +466,7 @@ class NamedFunctionPPImpl1:public NamedFunctionPP{
             }
         }
     };
-    std::function<void(Parameter *para,AsyncReturn *ret)> handler=[](auto a,auto b)->void{};
+    std::function<void(Parameter *para,AsyncReturn *ret)> handler=[](auto a,auto b)->void {};
     virtual NamedFunctionPPImpl1 *init(std::string name,std::function<void(Parameter *para,AsyncReturn *ret)> handler){
         this->handler=handler;
         this->setName(name);
@@ -429,7 +477,7 @@ class NamedFunctionPPImpl1:public NamedFunctionPP{
         para->req=r;
         auto ret=new AsyncReturn();
         ret->req=r;
-        r->onFinishPP=[para,ret](auto req)->void{
+        r->onFinishPP=[para,ret](auto req)->void {
             ret->onReqFinished();
             delete para;
             delete ret;
