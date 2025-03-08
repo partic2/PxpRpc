@@ -9,7 +9,7 @@ namespace pxprpc_libuv {
 
 
 template<typename RT>
-void _uvcb_callDataAsFunction(RT *req){
+void _uvcb_callDataAsFunctionFreeReq(RT *req){
   auto ptr=reinterpret_cast<std::function<void(void)>*>(req->data);
   if(ptr!=nullptr){
     (*ptr)();
@@ -19,7 +19,7 @@ void _uvcb_callDataAsFunction(RT *req){
   delete req;
 }
 
-void _uvcb_callDataAsFunction(uv_fs_t *req){
+void _uvcb_callDataAsFunctionFreeReq(uv_fs_t *req){
   auto ptr=reinterpret_cast<std::function<void(void)>*>(req->data);
   if(ptr!=nullptr){
     (*ptr)();
@@ -30,27 +30,308 @@ void _uvcb_callDataAsFunction(uv_fs_t *req){
   delete req;
 }
 
+
+template<typename RT>
+void _uvcb_callDataAsFunction(RT *handle){
+  auto ptr=reinterpret_cast<std::function<void(void)>*>(handle->data);
+  if(ptr!=nullptr){
+    (*ptr)();
+    delete ptr;
+    handle->data=nullptr;
+  }
+}
+
+template<typename RT>
+void _uvcb_callDataAsFunctionWithStatFreeReq(RT* req, int status){
+  auto ptr=reinterpret_cast<std::function<void(int)>*>(req->data);
+  if(ptr!=nullptr){
+    (*ptr)(status);
+    delete ptr;
+    req->data=nullptr;
+  }
+  delete req;
+}
+
+
+
 class FileHandler:public pxprpc::PxpObject{
   public:
   uv_file fd=-1;
-  bool opened=false;
   virtual ~FileHandler(){
-    if(opened){
-      auto req=new uv_fs_t();
+    auto req=new uv_fs_t();
+    if(fd>=0){
       uv_fs_close(pxprpc_rtbridge_host::uvloop,req,fd,nullptr);
-      delete req;
+    }
+    delete req;
+  }
+};
+
+void _UvStreamWrapAlloc(uv_handle_t* handle,size_t suggested_size,uv_buf_t* buf);
+void _UvStreamWrapRead(uv_stream_t* stream,ssize_t nread,const uv_buf_t* buf);
+void _UvStreamWrapConnection(uv_stream_t* server, int status);
+class UvStreamWrap:public pxprpc::PxpObject{
+  public:
+  uv_stream_t *stream;
+  std::vector<char> readBuf;
+  std::queue<pxprpc::NamedFunctionPPImpl1::AsyncReturn *> readWaiting;
+  std::queue<pxprpc::NamedFunctionPPImpl1::AsyncReturn *> acceptWaiting;
+  int8_t closeOnDestruct=0;
+  int8_t listening=0;
+
+  int32_t errcode=0;
+  
+  void pushError(int errcode){
+    this->errcode=errcode;
+    processing();
+  }
+  void pushData(char *buf,int len){
+    if(len==0)return;
+    if(readBuf.size()>1024*1024){
+      //Too large buffer. discard
+      return;
+    }
+    std::copy(buf,buf+len,std::back_inserter(readBuf));
+    processing();
+  }
+  void processing(){
+    if(readWaiting.size()>0 && readBuf.size()>0){
+      //Zero length means END
+      readWaiting.front()->resolve(readBuf.data(),readBuf.size());
+      readWaiting.pop();
+      readBuf.clear();
+    }
+    if(errcode<0){
+      while(readWaiting.size()>0){
+        readWaiting.front()->reject(uv_err_name(errcode));
+        readWaiting.pop();
+      }
+      while(acceptWaiting.size()>0){
+        acceptWaiting.front()->reject(uv_err_name(errcode));
+        acceptWaiting.pop();
+      }
+    }
+  }
+  virtual int startReading(){
+    stream->data=this;
+    return uv_read_start(stream,_UvStreamWrapAlloc,_UvStreamWrapRead);
+  }
+  virtual int startListening(){
+    return uv_listen(stream,16,&_UvStreamWrapConnection);
+  }
+  virtual void init(){
+    //Implemented in subclass;
+  }
+  virtual UvStreamWrap *createStream(){
+    //Implemented in subclass;
+    return nullptr;
+  }
+  virtual void pushConn(UvStreamWrap *stream){
+    //No connection queue yet, maybe add in future?
+    if(acceptWaiting.size()>0){
+      acceptWaiting.front()->resolve(stream);
+      acceptWaiting.pop();
+    }
+  }
+  void pullData(pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret){
+    readWaiting.push(ret);
+    processing();
+  }
+  void acceptConn(pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret){
+    acceptWaiting.push(ret);
+    processing();
+  }
+  int writeData(uint8_t *buf,int32_t size){
+    if(errcode<0)return errcode;
+    auto bufs=new uv_buf_t[1];
+    bufs[0].base=(char *)buf;
+    bufs->len=size;
+    return uv_try_write(stream,bufs,1);
+    delete[] bufs;
+  }
+  
+  virtual ~UvStreamWrap(){
+    if(closeOnDestruct){
+      uv_close((uv_handle_t *)this->stream,_uvcb_callDataAsFunctionFreeReq);
     }
   }
 };
 
-template <typename T>
-inline void *voidPtr(T t){
-  return reinterpret_cast<void*>(t);
+void _UvStreamWrapAlloc(uv_handle_t* handle,size_t suggested_size,uv_buf_t* buf){
+  buf->base=new char[suggested_size];
+  buf->len=suggested_size;
+};
+void _UvStreamWrapRead(uv_stream_t* stream,ssize_t nread,const uv_buf_t* buf){
+  auto wrap=(UvStreamWrap *)(stream->data);
+  wrap->pushData(buf->base,nread);
+  delete[] buf->base;
+};
+void _UvStreamWrapConnection(uv_stream_t* server, int status){
+  auto wrap=(UvStreamWrap *)(server->data);
+  if(status==0){
+    auto newConn=wrap->createStream();
+    newConn->init();
+    uv_accept(server,newConn->stream);
+    newConn->closeOnDestruct=1;
+    newConn->startReading();
+    wrap->pushConn(newConn);
+  }else{
+    wrap->pushError(status);
+  }
+  
+}
+
+class UvProcessWrap:public pxprpc::PxpObject{
+  public:
+  uv_process_t proc;
+  uv_stdio_container_s stdio[3]={};
+  UvProcessWrap(){
+  }
+  void initStdio(){
+    for(int i1=0;i1<3;i1++){
+      (int &)stdio[i1].flags=UV_CREATE_PIPE|UV_READABLE_PIPE|UV_WRITABLE_PIPE;
+      auto p1=new uv_pipe_t();
+      stdio[i1].data.stream=(uv_stream_t *)p1;
+      uv_pipe_init(pxprpc_rtbridge_host::uvloop,p1,0);
+    }
+  }
+  ~UvProcessWrap(){
+    for(int i1=0;i1<3;i1++){
+      if(stdio[i1].data.stream!=nullptr){
+        uv_close((uv_handle_t *)stdio[i1].data.stream,_uvcb_callDataAsFunctionFreeReq);
+      }
+    }
+  }
+  int spawn(std::string& fileName,std::vector<std::string>& args,std::string& cwd,std::vector<std::string>& envs){
+    uv_process_options_s opt{};
+    
+    if(fileName!=""){
+      opt.file=fileName.c_str();
+    }else{
+      opt.file=args[0].c_str();
+    }
+    if(cwd!=""){
+      opt.cwd=cwd.c_str();
+    }
+    opt.stdio_count=3;
+    initStdio();
+
+    auto args2=new char*[args.size()+1];
+    for(int i1=0;i1<args.size();i1++){
+      args2[i1]=const_cast<char *>(args[i1].c_str());
+    }
+    opt.args=args2;
+
+    auto envs2=new char*[envs.size()+1];
+    if(envs.size()>0){
+      for(int i1=0;i1<envs.size();i1++){
+        envs2[i1]=const_cast<char *>(envs[i1].c_str());
+      }
+      opt.env=envs2;
+    }
+    
+    int r=uv_spawn(pxprpc_rtbridge_host::uvloop,&proc,&opt);
+    delete[] args2;
+    delete[] envs2;
+    return r;
+  }
+  UvStreamWrap *getStdio(int index){
+    auto sw=new UvStreamWrap();
+    sw->stream=stdio[index].data.stream;
+    sw->startReading();
+    return sw;
+  }
+};
+
+class UvPipeWrap:public UvStreamWrap{
+  public:
+  uv_pipe_t* pipe(){
+    return reinterpret_cast<uv_pipe_t *>(stream);
+  }
+  virtual void init() override{
+    stream=(uv_stream_t *)new uv_pipe_t();
+    uv_pipe_init(pxprpc_rtbridge_host::uvloop,pipe(),0);
+    closeOnDestruct=1;
+  }
+  virtual UvStreamWrap *createStream() override{
+    return new UvPipeWrap();
+  }
+  int bind(std::string path){
+    return uv_pipe_bind(pipe(),path.c_str());
+  }
+  void connect(const char* pipeName,std::function<void(int)> cb){
+    auto connReq=new uv_connect_t();
+    connReq->data=new decltype(cb)(cb);
+    uv_pipe_connect(connReq,pipe(),pipeName,&_uvcb_callDataAsFunctionWithStatFreeReq);
+  }
+};
+
+class UvTcpWrap:public UvStreamWrap{
+  public:
+  uv_tcp_t* tcp(){
+    return reinterpret_cast<uv_tcp_t *>(stream);
+  }
+  virtual void init() override{
+    stream=(uv_stream_t *)new uv_tcp_t();
+    uv_tcp_init(pxprpc_rtbridge_host::uvloop,tcp());
+    closeOnDestruct=1;
+  }
+  virtual UvStreamWrap *createStream() override{
+    return new UvTcpWrap();
+  }
+  int bind(std::string ip,int32_t port){
+    union{
+      sockaddr_in v4;
+      sockaddr_in6 v6;
+    } addrin;
+    int err=uv_ip4_addr(ip.c_str(),port,&addrin.v4);
+    if(err<0){
+      err=uv_ip6_addr(ip.c_str(),port,&addrin.v6);
+      if(err<0){
+        return err;
+      }
+    }
+    return uv_tcp_bind(tcp(),reinterpret_cast<const sockaddr *>(&addrin),0);
+  }
+  int connect(const char* ip,int32_t port,std::function<void(int)> cb){
+    auto connReq=new uv_connect_t();
+    connReq->data=new decltype(cb)(cb);
+    union{
+      sockaddr_in v4;
+      sockaddr_in6 v6;
+    } addrin;
+    int err=uv_ip4_addr(ip,port,&addrin.v4);
+    if(err<0){
+      err=uv_ip6_addr(ip,port,&addrin.v6);
+      if(err<0){
+        return err;
+      }
+    }
+    return uv_tcp_connect(connReq,tcp(),reinterpret_cast<const sockaddr *>(&addrin),_uvcb_callDataAsFunctionWithStatFreeReq);
+  }
+};
+
+
+std::tuple<std::string,int32_t> _addrinToString(sockaddr_storage *addr){
+  auto namestr=new char[256];
+  int port=0;
+  if(addr->ss_family==AF_INET){
+    uv_ip4_name(reinterpret_cast<sockaddr_in *>(addr),namestr,256);
+    port=reinterpret_cast<sockaddr_in *>(addr)->sin_port;
+  }else if(addr->ss_family==AF_INET6){
+    uv_ip6_name(reinterpret_cast<sockaddr_in6 *>(addr),namestr,256);
+    port=reinterpret_cast<sockaddr_in6 *>(addr)->sin6_port;
+  }else{
+    delete[] namestr;
+    return std::tuple("ERR:Unknown SS_FAMILY",-1);
+  }
+  auto r=std::tuple(std::string(namestr),port);
+  delete[] namestr;
+  return r;
 }
 
 
+
 void init() {
-  //For convinience, Some api implement in sync mode.
   pxprpc::defaultFuncMap.add(
       (new pxprpc::NamedFunctionPPImpl1())
           ->init("pxprpc_libuv.fs_open", [](pxprpc::NamedFunctionPPImpl1::Parameter *para, pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret) -> void {
@@ -75,7 +356,7 @@ void init() {
               }
               uv_fs_req_cleanup(req);
             });
-            uv_fs_open(pxprpc_rtbridge_host::uvloop,req,path->c_str(),nflag,0666,&_uvcb_callDataAsFunction);
+            uv_fs_open(pxprpc_rtbridge_host::uvloop,req,path->c_str(),nflag,0666,&_uvcb_callDataAsFunctionFreeReq);
           })
   );
   pxprpc::defaultFuncMap.add(
@@ -97,7 +378,7 @@ void init() {
             delete[] buf[0].base;
             delete[] buf;
           });
-          uv_fs_read(pxprpc_rtbridge_host::uvloop,req,fh->fd,buf,1,offset,&_uvcb_callDataAsFunction);
+          uv_fs_read(pxprpc_rtbridge_host::uvloop,req,fh->fd,buf,1,offset,&_uvcb_callDataAsFunctionFreeReq);
         })
   );
   pxprpc::defaultFuncMap.add(
@@ -118,7 +399,7 @@ void init() {
             }
             delete[] buf;
           });
-          uv_fs_write(pxprpc_rtbridge_host::uvloop,req,fh->fd,buf,1,offset,&_uvcb_callDataAsFunction);
+          uv_fs_write(pxprpc_rtbridge_host::uvloop,req,fh->fd,buf,1,offset,&_uvcb_callDataAsFunctionFreeReq);
         })
   );
   pxprpc::defaultFuncMap.add(
@@ -135,7 +416,7 @@ void init() {
               ret->resolve();
             }
           });
-          uv_fs_unlink(pxprpc_rtbridge_host::uvloop,req,path->c_str(),&_uvcb_callDataAsFunction);
+          uv_fs_unlink(pxprpc_rtbridge_host::uvloop,req,path->c_str(),&_uvcb_callDataAsFunctionFreeReq);
         })
   );
 
@@ -153,7 +434,7 @@ void init() {
               ret->resolve();
             }
           });
-          uv_fs_mkdir(pxprpc_rtbridge_host::uvloop,req,path->c_str(),0666,&_uvcb_callDataAsFunction);
+          uv_fs_mkdir(pxprpc_rtbridge_host::uvloop,req,path->c_str(),0666,&_uvcb_callDataAsFunctionFreeReq);
         })
   );
   pxprpc::defaultFuncMap.add(
@@ -170,7 +451,7 @@ void init() {
               ret->resolve();
             }
           });
-          uv_fs_rmdir(pxprpc_rtbridge_host::uvloop,req,path->c_str(),&_uvcb_callDataAsFunction);
+          uv_fs_rmdir(pxprpc_rtbridge_host::uvloop,req,path->c_str(),&_uvcb_callDataAsFunctionFreeReq);
         })
   );
   pxprpc::defaultFuncMap.add(
@@ -205,7 +486,7 @@ void init() {
               ret->resolve(tabser.buildSer());
             }
           });
-          uv_fs_scandir(pxprpc_rtbridge_host::uvloop,req,path->c_str(),0,&_uvcb_callDataAsFunction);
+          uv_fs_scandir(pxprpc_rtbridge_host::uvloop,req,path->c_str(),0,&_uvcb_callDataAsFunctionFreeReq);
         })
   );
   pxprpc::defaultFuncMap.add(
@@ -233,9 +514,10 @@ void init() {
               }
               tabser.addValue(req->statbuf.st_mtim.tv_sec*1000ll+req->statbuf.st_mtim.tv_nsec/1000000ll);
               tabser.addValue((int32_t)(req->statbuf.st_mode&0x7fffffff));
+              ret->resolve(tabser.buildSer());
             }
           });
-          uv_fs_stat(pxprpc_rtbridge_host::uvloop,req,path->c_str(),&_uvcb_callDataAsFunction);
+          uv_fs_stat(pxprpc_rtbridge_host::uvloop,req,path->c_str(),&_uvcb_callDataAsFunctionFreeReq);
         })
   );
   pxprpc::defaultFuncMap.add(
@@ -253,7 +535,7 @@ void init() {
               ret->resolve();
             }
           });
-          uv_fs_rename(pxprpc_rtbridge_host::uvloop,req,path1->c_str(),path2->c_str(),&_uvcb_callDataAsFunction);
+          uv_fs_rename(pxprpc_rtbridge_host::uvloop,req,path1->c_str(),path2->c_str(),&_uvcb_callDataAsFunctionFreeReq);
         })
   );
   pxprpc::defaultFuncMap.add(
@@ -271,7 +553,7 @@ void init() {
               ret->resolve();
             }
           });
-          uv_fs_ftruncate(pxprpc_rtbridge_host::uvloop,req,fh->fd,offset,&_uvcb_callDataAsFunction);
+          uv_fs_ftruncate(pxprpc_rtbridge_host::uvloop,req,fh->fd,offset,&_uvcb_callDataAsFunctionFreeReq);
         })
   );
   pxprpc::defaultFuncMap.add(
@@ -288,7 +570,7 @@ void init() {
               ret->resolve((char *)req->ptr);
             }
           });
-          uv_fs_readlink(pxprpc_rtbridge_host::uvloop,req,path->c_str(),&_uvcb_callDataAsFunction);
+          uv_fs_readlink(pxprpc_rtbridge_host::uvloop,req,path->c_str(),&_uvcb_callDataAsFunctionFreeReq);
         })
   );
   pxprpc::defaultFuncMap.add(
@@ -305,7 +587,352 @@ void init() {
               ret->resolve();
             }
           });
-          uv_fs_chmod(pxprpc_rtbridge_host::uvloop,req,path->c_str(),mode,&_uvcb_callDataAsFunction);
+          uv_fs_chmod(pxprpc_rtbridge_host::uvloop,req,path->c_str(),mode,&_uvcb_callDataAsFunctionFreeReq);
+        })
+  );
+
+  pxprpc::defaultFuncMap.add(
+    (new pxprpc::NamedFunctionPPImpl1())
+        ->init("pxprpc_libuv.stream_read", [](pxprpc::NamedFunctionPPImpl1::Parameter *para, pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret) -> void {
+          auto stream=static_cast<UvStreamWrap *>(para->nextObject());
+          stream->pullData(ret);
+        })
+  );
+
+  pxprpc::defaultFuncMap.add(
+    (new pxprpc::NamedFunctionPPImpl1())
+        ->init("pxprpc_libuv.stream_write", [](pxprpc::NamedFunctionPPImpl1::Parameter *para, pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret) -> void {
+          auto stream=static_cast<UvStreamWrap *>(para->nextObject());
+          auto data=para->nextBytes();
+          int32_t nwrite=stream->writeData(std::get<1>(data),std::get<0>(data));
+          if(nwrite<0){
+            ret->reject(uv_err_name(nwrite));
+          }else{
+            ret->resolve(nwrite);
+          }
+        })
+  );
+
+  pxprpc::defaultFuncMap.add(
+    (new pxprpc::NamedFunctionPPImpl1())
+        ->init("pxprpc_libuv.stream_accept", [](pxprpc::NamedFunctionPPImpl1::Parameter *para, pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret) -> void {
+          auto stream=static_cast<UvStreamWrap *>(para->nextObject());
+          stream->acceptConn(ret);
+        })
+  );
+
+  pxprpc::defaultFuncMap.add(
+    (new pxprpc::NamedFunctionPPImpl1())
+        ->init("pxprpc_libuv.spawn", [](pxprpc::NamedFunctionPPImpl1::Parameter *para, pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret) -> void {
+          UvProcessWrap *p=new UvProcessWrap();
+          std::vector<std::string> args;
+          std::vector<std::string> envs;
+
+          auto fileName=para->nextString();
+          auto cwd=para->nextString();
+
+          int argsCount=para->nextInt();
+          for(int i1=0;i1<argsCount;i1++){
+            args.push_back(para->nextString());
+          }
+          int envsCount=para->nextInt();
+          for(int i1=0;i1<envsCount;i1++){
+            args.push_back(para->nextString());
+          }
+          int r=p->spawn(fileName,args,cwd,envs);
+          if(r<0){
+            ret->reject(uv_err_name(r));
+            delete p;
+          }else{
+            ret->resolve(p);
+          }
+        })
+  );
+  pxprpc::defaultFuncMap.add(
+    (new pxprpc::NamedFunctionPPImpl1())
+        ->init("pxprpc_libuv.process_stdio", [](pxprpc::NamedFunctionPPImpl1::Parameter *para, pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret) -> void {
+          auto proc=reinterpret_cast<UvProcessWrap *>(para->nextObject());
+          auto index=para->nextInt();
+          ret->resolve(proc->getStdio(index));
+        })
+  );
+
+  pxprpc::defaultFuncMap.add(
+    (new pxprpc::NamedFunctionPPImpl1())
+        ->init("pxprpc_libuv.new_pipe", [](pxprpc::NamedFunctionPPImpl1::Parameter *para, pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret) -> void {
+          auto pipe=new UvPipeWrap();
+          pipe->init();
+          ret->resolve(pipe);
+        })
+  );
+  pxprpc::defaultFuncMap.add(
+    (new pxprpc::NamedFunctionPPImpl1())
+        ->init("pxprpc_libuv.pipe_bind", [](pxprpc::NamedFunctionPPImpl1::Parameter *para, pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret) -> void {
+          auto pipe=reinterpret_cast<UvPipeWrap *>(para->nextObject());
+          int err=pipe->bind(para->nextString());
+          if(err<0){
+            ret->reject(uv_err_name(err));
+          }else{
+            pipe->startListening();
+            ret->resolve();
+          }
+          
+        })
+  );
+  pxprpc::defaultFuncMap.add(
+    (new pxprpc::NamedFunctionPPImpl1())
+        ->init("pxprpc_libuv.pipe_connect", [](pxprpc::NamedFunctionPPImpl1::Parameter *para, pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret) -> void {
+          auto pipe=reinterpret_cast<UvPipeWrap *>(para->nextObject());
+          auto name=std::make_shared<std::string>(para->nextString());
+          pipe->connect(name->c_str(),[name,ret,pipe](int stat)->void {
+            if(stat==0){
+              pipe->startReading();
+              ret->resolve();
+            }else{
+              ret->reject(uv_err_name(stat));
+            }
+          });
+        })
+  );
+  
+  pxprpc::defaultFuncMap.add(
+    (new pxprpc::NamedFunctionPPImpl1())
+        ->init("pxprpc_libuv.new_tcp", [](pxprpc::NamedFunctionPPImpl1::Parameter *para, pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret) -> void {
+          auto tcp=new UvTcpWrap();
+          tcp->init();
+          ret->resolve(tcp);
+        })
+  );
+  pxprpc::defaultFuncMap.add(
+    (new pxprpc::NamedFunctionPPImpl1())
+        ->init("pxprpc_libuv.tcp_bind", [](pxprpc::NamedFunctionPPImpl1::Parameter *para, pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret) -> void {
+          auto tcp=reinterpret_cast<UvTcpWrap *>(para->nextObject());
+          auto ip=para->nextString();
+          auto port=para->nextInt();
+          int err=tcp->bind(ip,port);
+          if(err<0){
+            ret->reject(uv_err_name(err));
+          }else{
+            tcp->startListening();
+            ret->resolve();
+          }
+        })
+  );
+  pxprpc::defaultFuncMap.add(
+    (new pxprpc::NamedFunctionPPImpl1())
+        ->init("pxprpc_libuv.tcp_connect", [](pxprpc::NamedFunctionPPImpl1::Parameter *para, pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret) -> void {
+          auto tcp=reinterpret_cast<UvTcpWrap *>(para->nextObject());
+          auto ip=std::make_shared<std::string>(para->nextString());
+          auto port=para->nextInt();
+          tcp->connect(ip->c_str(),port,[ip,ret,tcp](int stat)->void {
+            if(stat==0){
+              tcp->startReading();
+              ret->resolve();
+            }else{
+              ret->reject(uv_err_name(stat));
+            }
+          });
+        })
+  );
+
+  pxprpc::defaultFuncMap.add(
+    (new pxprpc::NamedFunctionPPImpl1())
+        ->init("pxprpc_libuv.tcp_getpeername", [](pxprpc::NamedFunctionPPImpl1::Parameter *para, pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret) -> void {
+          auto tcp=reinterpret_cast<UvTcpWrap *>(para->nextObject());
+          sockaddr_storage addr;
+          int namelen=sizeof(sockaddr_storage);
+          int err=uv_tcp_getpeername(tcp->tcp(),reinterpret_cast<sockaddr *>(&addr),&namelen);
+          if(err<0){
+            ret->reject(uv_err_name(err));
+            return;
+          }
+          auto r=_addrinToString(&addr);
+          auto ser=new pxprpc::Serializer();
+          ser->putString(std::get<0>(r))->putInt(std::get<1>(r));
+          ret->resolve(ser);
+        })
+  );
+
+  pxprpc::defaultFuncMap.add(
+    (new pxprpc::NamedFunctionPPImpl1())
+        ->init("pxprpc_libuv.interface_address", [](pxprpc::NamedFunctionPPImpl1::Parameter *para, pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret) -> void {
+          uv_interface_address_t *addrs;
+          int count=0;
+          int err=uv_interface_addresses(&addrs,&count);
+          if(err<0){
+            ret->reject(uv_err_name(err));
+            return;
+          }
+          pxprpc::TableSerializer table;
+          table.setColumnInfo("sbss",std::vector<std::string>({"name","phys_addr","ip","netmask"}));
+          for(int i1=0;i1<count;i1++){
+            table.addValue(addrs[i1].name);
+            table.addValue(std::tuple(6,(uint8_t *)addrs[i1].phys_addr));
+            table.addValue(std::get<0>(_addrinToString((sockaddr_storage *)&addrs[i1].address)));
+            table.addValue(std::get<0>(_addrinToString((sockaddr_storage *)&addrs[i1].netmask)));
+          }
+          ret->resolve(table.buildSer());
+        })
+  );
+  
+  pxprpc::defaultFuncMap.add(
+    (new pxprpc::NamedFunctionPPImpl1())
+        ->init("pxprpc_libuv.os_getenv", [](pxprpc::NamedFunctionPPImpl1::Parameter *para, pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret) -> void {
+          auto name=para->nextString();
+          //Windows DO NOT support write back require length. So always use fix length buffer now.
+          size_t len=4096;
+          auto buf=new char[len];
+          int r=uv_os_getenv(name.c_str(),buf,&len);
+          if(r<0){
+            ret->reject(uv_err_name(r));
+          }else{
+            ret->resolve(buf);
+          }
+          delete[] buf;
+        })
+  );
+
+  pxprpc::defaultFuncMap.add(
+    (new pxprpc::NamedFunctionPPImpl1())
+        ->init("pxprpc_libuv.os_setenv", [](pxprpc::NamedFunctionPPImpl1::Parameter *para, pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret) -> void {
+          auto name=para->nextString();
+          auto val=para->nextString();
+          int r=uv_os_setenv(name.c_str(),val.c_str());
+          if(r<0){
+            ret->reject(uv_err_name(r));
+          }else{
+            ret->resolve();
+          }
+        })
+  );
+
+  pxprpc::defaultFuncMap.add(
+    (new pxprpc::NamedFunctionPPImpl1())
+        ->init("pxprpc_libuv.os_unsetenv", [](pxprpc::NamedFunctionPPImpl1::Parameter *para, pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret) -> void {
+          auto name=para->nextString();
+          int r=uv_os_unsetenv(name.c_str());
+          if(r<0){
+            ret->reject(uv_err_name(r));
+          }else{
+            ret->resolve();
+          }
+        })
+  );
+
+  pxprpc::defaultFuncMap.add(
+    (new pxprpc::NamedFunctionPPImpl1())
+        ->init("pxprpc_libuv.os_getprop", [](pxprpc::NamedFunctionPPImpl1::Parameter *para, pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret) -> void {
+          auto name=para->nextString();
+          size_t len=0;
+          char fakebuf;
+          if(name=="cwd"){
+            uv_err_name(uv_cwd(&fakebuf,&len));
+            auto buf=new char[len];
+            int r=uv_cwd(buf,&len);
+            if(r<0){
+              ret->reject(uv_err_name(r));
+            }else{
+              ret->resolve(buf);
+            }
+            delete[] buf;
+          }else if(name=="exepath"){
+            uv_exepath(&fakebuf,&len);
+            auto buf=new char[len];
+            int r=uv_exepath(buf,&len);
+            if(r<0){
+              ret->reject(uv_err_name(r));
+            }else{
+              ret->resolve(buf);
+            }
+            delete[] buf;
+          }else if(name=="tmpdir"){
+            uv_os_tmpdir(&fakebuf,&len);
+            auto buf=new char[len];
+            int r=uv_os_tmpdir(buf,&len);
+            if(r<0){
+              ret->reject(uv_err_name(r));
+            }else{
+              ret->resolve(buf);
+            }
+            delete[] buf;
+          }else if(name=="hostname"){
+            uv_os_gethostname(&fakebuf,&len);
+            auto buf=new char[len];
+            int r=uv_os_gethostname(buf,&len);
+            if(r<0){
+              ret->reject(uv_err_name(r));
+            }else{
+              ret->resolve(buf);
+            }
+            delete[] buf;
+          }else if(name=="process_title"){
+            len=256;
+            auto buf=new char[len];
+            int r=uv_get_process_title(buf,len);
+            if(r<0){
+              ret->reject(uv_err_name(r));
+            }else{
+              ret->resolve(buf);
+            }
+            delete[] buf;
+          }else{
+            ret->reject("Unsupported property");
+          }
+        })
+  );
+
+  pxprpc::defaultFuncMap.add(
+    (new pxprpc::NamedFunctionPPImpl1())
+        ->init("pxprpc_libuv.os_setprop", [](pxprpc::NamedFunctionPPImpl1::Parameter *para, pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret) -> void {
+          auto name=para->nextString();
+          auto val=para->nextString();
+          if(name=="cwd"){
+            int r=uv_chdir(val.c_str());
+            if(r<0){
+              ret->reject(uv_err_name(r));
+            }else{
+              ret->resolve();
+            }
+          }else if(name=="process_title"){
+            int r=uv_set_process_title(val.c_str());
+            if(r<0){
+              ret->reject(uv_err_name(r));
+            }else{
+              ret->resolve();
+            }
+          }else{
+            ret->reject("Unsupported property");
+          }
+        })
+  );
+
+  pxprpc::defaultFuncMap.add(
+    (new pxprpc::NamedFunctionPPImpl1())
+        ->init("pxprpc_libuv.get_memory_info", [](pxprpc::NamedFunctionPPImpl1::Parameter *para, pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret) -> void {
+          auto tabser=new pxprpc::TableSerializer();
+          tabser->setColumnInfo("lll",std::vector<std::string>({"free","total","available"}));
+          int r=0;
+          tabser->addValue((int64_t)uv_get_free_memory());
+          tabser->addValue((int64_t)uv_get_total_memory());
+          tabser->addValue((int64_t)uv_get_available_memory());
+          if(r<0){
+            ret->reject(uv_err_name(r));
+          }else{
+            ret->resolve(tabser->buildSer());
+          }
+          delete tabser;
+        })
+  );
+  pxprpc::defaultFuncMap.add(
+    (new pxprpc::NamedFunctionPPImpl1())
+        ->init("pxprpc_libuv.gettimeofday", [](pxprpc::NamedFunctionPPImpl1::Parameter *para, pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret) -> void {
+          uv_timeval64_t tim;
+          int r=uv_gettimeofday(&tim);
+          if(r<0){
+            ret->reject(uv_err_name(r));
+          }else{
+            ret->resolve(tim.tv_sec*1000+tim.tv_sec/1000000);
+          }
         })
   );
 }
