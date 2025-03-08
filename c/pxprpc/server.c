@@ -36,10 +36,22 @@ struct _pxprpc__ServCo{
     };
     #pragma pack()
     struct pxprpc_buffer_part recvBuf[2];
+    /* context should only free when refCount=0. Pending request will hold the reference.*/
+    int32_t refCount;
     pxprpc_request *pendingReqTail;
 };
 
 #define _pxprpc__ServCoIsClosed(self) self->status&0x1
+
+
+//Will free memory of  server_context when refCount reach 0;
+static int pxprpc_refCount_add(pxprpc_server_context server_context,int32_t addend){
+    struct _pxprpc__ServCo *self=server_context;
+    self->refCount+=addend;
+    if(self->refCount==0){
+        pxprpc__free(server_context);
+    }
+}
 
 static int pxprpc_closed(void *server_context){
     return _pxprpc__ServCoIsClosed(((struct _pxprpc__ServCo*)server_context));
@@ -176,6 +188,7 @@ static void _pxprpc__finishRequest(pxprpc_request *r){
             }
         }
     }
+    pxprpc_refCount_add(r->server_context,-1);
     pxprpc__free(r);
 }
 
@@ -186,6 +199,7 @@ static pxprpc_request *_pxprpc__newRequest(pxprpc_server_context context,uint32_
     r->server_context=context;
     r->nextReq=NULL;
     r->lastReq=NULL;
+    pxprpc_refCount_add(r->server_context,1);
     return r;
 }
 
@@ -334,6 +348,7 @@ static int pxprpc_new_server_context(pxprpc_server_context *server_context,struc
     memset(ctx,0,sizeof(struct _pxprpc__ServCo));
     ctx->exp.io=io1;
     *server_context=ctx;
+    ctx->refCount=1;
     return 0;
 }
 
@@ -344,10 +359,11 @@ static int pxprpc_start_serve(pxprpc_server_context server_context){
 }
 
 static int pxprpc_free_context(pxprpc_server_context *server_context){
+    if(*server_context==NULL)return 0;
     struct _pxprpc__ServCo *ctx=(struct _pxprpc__ServCo *)*server_context;
     pxprpc_close(ctx);
-    pxprpc__free(*server_context);
-    server_context=NULL;
+    pxprpc_refCount_add(*server_context,-1);
+    *server_context=NULL;
     return 0;
 }
 
