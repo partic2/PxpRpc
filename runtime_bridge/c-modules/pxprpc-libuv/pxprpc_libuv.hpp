@@ -485,9 +485,9 @@ std::tuple<std::string,int32_t> _addrinToString(sockaddr_storage *addr){
     port=reinterpret_cast<sockaddr_in6 *>(addr)->sin6_port;
   }else{
     delete[] namestr;
-    return std::tuple("ERR:Unknown SS_FAMILY",-1);
+    return std::tuple<std::string,int32_t>("ERR:Unknown SS_FAMILY",-1);
   }
-  auto r=std::tuple(std::string(namestr),port);
+  auto r=std::tuple<std::string,int32_t>(namestr,port);
   delete[] namestr;
   return r;
 }
@@ -675,7 +675,7 @@ void init() {
               }else{
                 tabser.addValue("unknown");
               }
-              tabser.addValue(req->statbuf.st_mtim.tv_sec*1000ll+req->statbuf.st_mtim.tv_nsec/1000000ll);
+              tabser.addValue((int64_t)(req->statbuf.st_mtim.tv_sec*1000+req->statbuf.st_mtim.tv_nsec/1000000));
               tabser.addValue((int32_t)(req->statbuf.st_mode&0x7fffffff));
               ret->resolve(tabser.buildSer());
             }
@@ -921,7 +921,7 @@ void init() {
           table.setColumnInfo("sbss",std::vector<std::string>({"name","phys_addr","ip","netmask"}));
           for(int i1=0;i1<count;i1++){
             table.addValue(addrs[i1].name);
-            table.addValue(std::tuple(6,(uint8_t *)addrs[i1].phys_addr));
+            table.addValue(std::tuple<int32_t,uint8_t *>(6,(uint8_t *)addrs[i1].phys_addr));
             table.addValue(std::get<0>(_addrinToString((sockaddr_storage *)&addrs[i1].address)));
             table.addValue(std::get<0>(_addrinToString((sockaddr_storage *)&addrs[i1].netmask)));
           }
