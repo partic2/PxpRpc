@@ -15,16 +15,19 @@ struct _pxprpc_libuv{
 
 struct pxprpc_server_api *servapi;
 
-int inited=0;
+static int __uvApiInited=0;
 
 static const char *errormsg=NULL;
 
 static pxprpc_server_libuv pxprpc_new_libuvserver(uv_loop_t *loop,uv_stream_t *listener,pxprpc_funcmap *funcmap){
-    if(inited==0){
-        inited=1;
+    if(__uvApiInited==0){
+        __uvApiInited=1;
         pxprpc_server_query_interface(&servapi);
     }
     struct _pxprpc_libuv *self=(struct _pxprpc_libuv *)pxprpc__malloc(sizeof(struct _pxprpc_libuv));
+    if(loop==NULL){
+        loop=listener->loop;
+    }
     self->loop=loop;
     self->listener=listener;
     self->funcmap=funcmap;
@@ -38,7 +41,10 @@ struct _pxprpc_libuv_sockconn{
     struct _pxprpc_libuv_sockconn *prev;
     struct _pxprpc_libuv_sockconn *next;
     struct pxprpc_abstract_io io1;
-    uv_tcp_t stream;
+    union{
+        uv_tcp_t tcp;
+        uv_pipe_t pipe;
+    } stream;
     pxprpc_server_context rpcCtx;
     void (*readCb)(void *);
     void *readCbArgs;
@@ -278,7 +284,14 @@ static void __freeLibuvSockconn2(uv_handle_t *stream){
 static void __uvListenConnectionCb(uv_stream_t *server, int status){
     struct _pxprpc_libuv *self=(struct _pxprpc_libuv *)uv_handle_get_data((uv_handle_t *)server);
     struct _pxprpc_libuv_sockconn *sockconn=__buildLibuvSockconn(self);
-    uv_tcp_init(self->loop, &sockconn->stream);
+    if(server->type==UV_TCP){
+        uv_tcp_init(self->loop, &sockconn->stream.tcp);
+    }else if(server->type==UV_NAMED_PIPE){
+        uv_pipe_init(self->loop,&sockconn->stream.pipe,0);
+    }else{
+        fprintf(stderr,"Unknown stream type");
+        abort();
+    }
     int r=uv_accept(server,(uv_stream_t *)&sockconn->stream);
     if(r<0){
         errormsg="libuv accept error";
@@ -305,7 +318,7 @@ static int pxprpc_server_delete(pxprpc_server_libuv serv){
         conn->serv=NULL;
         conn->io1.close(&conn->io1);
     }
-    pxprpc__free(serv);
+    pxprpc__free(self);
     return 0;
 }
 
