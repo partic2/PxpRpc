@@ -72,6 +72,7 @@ public class Io implements AbstractIo {
             Utils.setLimit(recv,limit);
             rest.duplicate().put(recv);
             buffs[buffs.length-1]=rest;
+            NativeHelper.ioBufFree(nativeId,recv);
         }
     }
 
