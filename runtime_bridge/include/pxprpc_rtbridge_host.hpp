@@ -31,6 +31,7 @@ namespace pxprpc_rtbridge_host{
     void __runCppFunction(void *cppFunc){
         auto fn=static_cast<std::function<void()> *>(cppFunc);
         (*fn)();
+        delete fn;
     }
 
     //Post function to be run in host event loop/thread.(by use pxprpc_pipe_executor).
@@ -41,5 +42,47 @@ namespace pxprpc_rtbridge_host{
         *pFn=runnable;
         pxprpc_pipe_executor(__runCppFunction,pFn);
     }
+    
+    void __runCppFunctionWorkCb(uv_work_t *req){
+        auto fn=static_cast<std::function<void()> *>(req->data);
+        (*fn)();
+        delete fn;
+    }
+    void __afterRunCppFunctionWorkCb(uv_work_t* req, int status){
+        delete req;
+    }
+    
 
+    //Thread safe resolve.
+    template<typename ...Args>
+    void resolveTS(pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret,Args... result){
+        uv_sem_t sem;
+        uv_sem_init(&sem,0);
+        postRunnable([&sem,ret,result...]()-> void {
+            ret->resolve(result...);
+            uv_sem_post(&sem);
+        });
+        uv_sem_wait(&sem);
+        uv_sem_destroy(&sem);
+    }
+    //Thread safe reject
+    void rejectTS(pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret,const std::string& reason){
+        uv_sem_t sem;
+        uv_sem_init(&sem,0);
+        postRunnable([&sem,ret,reason]()-> void {
+            ret->reject(reason);
+            uv_sem_post(&sem);
+        });
+        uv_sem_wait(&sem);
+        uv_sem_destroy(&sem);
+    }
+
+    //Run function in libuv thread pool.
+    void threadPoolRun(std::function<void()> runnable){
+        auto pFn=new std::function<void()>();
+        *pFn=runnable;
+        auto work=new uv_work_t();
+        work->data=(void *)pFn;
+        uv_queue_work(uvloop,work,__runCppFunctionWorkCb,__afterRunCppFunctionWorkCb);
+    }
 }

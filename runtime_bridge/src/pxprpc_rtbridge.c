@@ -54,10 +54,8 @@ struct _rtbioreq{
     struct pxprpc_abstract_io *io;
     /* receive 1, send 2, connect 3, listen 4, accept 5*/
     char rs;
-    char done;
     struct pxprpc_buffer_part *buf;
-    uv_mutex_t mut;
-    uv_cond_t cond;
+    uv_sem_t sem;
     const char *err;
     char *servname;
 };
@@ -69,10 +67,7 @@ static void _rtbiocb(struct _rtbioreq *req){
     }else if(req->rs==2){
         req->err=req->io->get_error(req->io,req->io->send);
     }
-    uv_mutex_lock(&req->mut);
-    req->done=1;
-    uv_cond_broadcast(&req->cond);
-    uv_mutex_unlock(&req->mut);
+    uv_sem_post(&req->sem);
 }
 
 static void _rtbiohandle(struct _rtbioreq *req){
@@ -88,16 +83,10 @@ static void _rtbiohandle(struct _rtbioreq *req){
 }
 
 static char *_rtbioreqdispatch(struct _rtbioreq *req){
-    uv_mutex_init(&req->mut);
-    uv_cond_init(&req->cond);
+    uv_sem_init(&req->sem,0);
     pxprpc_pipe_executor((void (*)(void *))_rtbiohandle,req);
-    uv_mutex_lock(&req->mut);
-    if(!req->done){
-        uv_cond_wait(&req->cond,&req->mut);
-    }
-    uv_mutex_unlock(&req->mut);
-    uv_cond_destroy(&req->cond);
-    uv_mutex_destroy(&req->mut);
+    uv_sem_wait(&req->sem);
+    uv_sem_destroy(&req->sem);
     return (char *)req->err;
 }
 
@@ -105,7 +94,6 @@ char *pxprpc_rtbridge_brecv(struct pxprpc_abstract_io *io,struct pxprpc_buffer_p
     struct _rtbioreq req;
     req.io=io;
     req.buf=buf;
-    req.done=0;
     req.rs=1;
     return _rtbioreqdispatch(&req);
 }
@@ -115,7 +103,6 @@ char *pxprpc_rtbridge_bsend(struct pxprpc_abstract_io *io,struct pxprpc_buffer_p
     struct _rtbioreq req;
     req.io=io;
     req.buf=buf;
-    req.done=0;
     req.rs=2;
     return _rtbioreqdispatch(&req);
 }
@@ -124,7 +111,6 @@ struct pxprpc_abstract_io *pxprpc_rtbridge_pipe_connect(char *servname){
     struct _rtbioreq req;
     req.io=NULL;
     req.servname=servname;
-    req.done=0;
     req.rs=3;
     _rtbioreqdispatch(&req);
     return req.io;
