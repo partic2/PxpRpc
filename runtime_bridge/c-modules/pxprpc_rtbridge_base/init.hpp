@@ -1,15 +1,15 @@
+
 #pragma once
 
 #include <pxprpc_pp.hpp>
 #include <pxprpc_ext.hpp>
 #include <queue>
 #include <functional>
-extern "C"{
-    #include <pxprpc_pipe.h>
-}
 
-#include <iostream>
-#include <memfile.h>
+extern "C" {
+    #include <pxprpc_pipe.h>
+    #include <memfile.h>
+}
 
 namespace pxprpc_rtbridge_base{
     void __callArg0Function(void *cb){
@@ -106,12 +106,34 @@ namespace pxprpc_rtbridge_base{
                 ::free(base);
                 break;
                 case 3:
-                printf("MemoryChunk free");
                 memfile_close(&mf);
                 break;
             }
             createBy=0;
             base=nullptr;
+        }
+    };
+    class OutputStream{
+        public:
+        virtual const char *write(void *data,int length)=0;
+    };
+    class MemoryChunkOutputStream:public OutputStream{
+        public:
+        pxprpc_rtbridge_base::MemoryChunk *chunk=nullptr;
+        int32_t pos=0;
+        void target(pxprpc_rtbridge_base::MemoryChunk *chunkIn){
+            chunk=chunkIn;
+            pos=0;
+        }
+        //Data exceed the buffer size will be discard. '->pos' will still increase, To get the properly size. 
+        virtual const char *write(void *data,int length){
+            if(pos<chunk->size){
+                memmove(((char *)chunk->base)+pos,data,std::min(chunk->size-pos,length));
+            }
+            pos+=length;
+            return nullptr;
+        }
+        virtual ~MemoryChunkOutputStream(){
         }
     };
     bool inited=false;

@@ -77,6 +77,9 @@ list(REMOVE_DUPLICATES PXPRPC_RTBRIDGE_LINK_LIBRARY)
 add_library(pxprpc_rtbridge SHARED ${pxprpc_rtbridge_sources})
 target_include_directories(pxprpc_rtbridge PUBLIC include)
 target_link_libraries(pxprpc_rtbridge PUBLIC ${PXPRPC_RTBRIDGE_LINK_LIBRARY})
+foreach(mod_dir ${PXPRPC_RTBIRDGE_MODULES_DIRS})
+  target_include_directories(pxprpc_rtbridge PRIVATE ${mod_dir})
+endforeach()
 
 #PXPRPC_RTBRIDGE_BUILD_EXE build standalone executable 
 if(PXPRPC_RTBRIDGE_BUILD_EXE)
@@ -84,6 +87,9 @@ if(PXPRPC_RTBRIDGE_BUILD_EXE)
   target_include_directories(pxprpc_rtbridge_exe PUBLIC include)
   target_link_libraries(pxprpc_rtbridge_exe PUBLIC ${PXPRPC_RTBRIDGE_LINK_LIBRARY})
   target_compile_definitions(pxprpc_rtbridge_exe PRIVATE PXPRPC_RTBRIDGE_BUILD_EXE)
+  foreach(mod_dir ${PXPRPC_RTBIRDGE_MODULES_DIRS})
+    target_include_directories(pxprpc_rtbridge_exe PRIVATE ${mod_dir})
+  endforeach()
 endif(PXPRPC_RTBRIDGE_BUILD_EXE)
 
 

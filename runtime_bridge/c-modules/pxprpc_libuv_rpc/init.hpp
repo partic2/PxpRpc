@@ -1,11 +1,18 @@
 
+#pragma once
+
 #include <pxprpc_pp.hpp>
 #include <pxprpc_rtbridge_host.hpp>
-#include <uv.h>
+extern "C" {
+  #include <uv.h>
+}
 #include <memory>
+#include <queue>
+
+#include <pxprpc_rtbridge_base/init.hpp>
 
 
-namespace pxprpc_libuv {
+namespace pxprpc_libuv_rpc {
 
 
 template<typename RT>
