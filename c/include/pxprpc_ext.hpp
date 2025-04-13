@@ -401,7 +401,7 @@ class NamedFunctionPPImpl1:public NamedFunctionPP{
             ser->prepareSerializing(8)->putDouble(v);
             resolve(ser);
         }
-        void resolve(std::string v){
+        void resolve(const std::string& v){
             auto ser=new Serializer();
             ser->prepareSerializing(8)->putString(v);
             resolve(ser);

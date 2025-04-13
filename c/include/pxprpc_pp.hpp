@@ -110,7 +110,7 @@ class Serializer{
         pxprpc_ser_put_varint(&this->wrapped,val);
         return this;
     }
-    Serializer *putString(std::string val){
+    Serializer *putString(const std::string& val){
         putBytes((uint8_t *)val.c_str(),val.size());
         return this;
     }
