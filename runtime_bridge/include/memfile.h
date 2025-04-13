@@ -27,6 +27,7 @@ const char* memfile_close(struct memfile_t *mem);
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <stdint.h>
 
 /*
  *  Linux
@@ -110,21 +111,7 @@ typedef struct{
   HANDLE fd, fm;
 }memfile_d;
 
-//Caller take response to delete the buffer.
-wchar_t* getWideChar(const std::string &utf8Str){
-  int wideCharCount = MultiByteToWideChar(CP_UTF8, 0, utf8Str.c_str(), utf8Str.length(), nullptr, 0);
-  if (wideCharCount == 0) {
-      return nullptr;
-  }
 
-  wchar_t* wideCharStr = new wchar_t[wideCharCount];
-
-  if (MultiByteToWideChar(CP_UTF8, 0, utf8Str.c_str(), utf8Str.length(), wideCharStr, wideCharCount) == 0) {
-      delete[] wideCharStr;
-      return nullptr;
-  }
-  return wideCharStr;
-}
 
 const char* memfile_create(const char filename[], unsigned char flags, unsigned long size, struct memfile_t *res){
   HANDLE fd, fm;
