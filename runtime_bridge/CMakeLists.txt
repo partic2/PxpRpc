@@ -10,10 +10,34 @@ project(pxprpc_rtbridge)
 
 option(PXPRPC_RTBRIDGE_BUILD_EXE "Indicate whether build standalone executable pxprpc_rtbridge host." OFF)
 
-#Seemed shared object on linux require this options to build shared object.
+#Seemed shared object on linux require this options to build.
 if(CMAKE_SYSTEM_NAME STREQUAL Linux)
 set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
 endif()
+
+
+# Check jni.h directly first.
+include(CheckIncludeFileCXX)
+CHECK_INCLUDE_FILE_CXX("jni.h" JNI_H_FOUND)
+
+if(NOT JNI_H_FOUND)
+  #fallback to FindJNI (use JAVA_HOME)
+  find_package(JNI)
+  if(JNI_FOUND)
+    include_directories(${JNI_INCLUDE_DIRS})
+    set(JNI_H_FOUND 1)
+  endif()
+endif()
+
+if(JNI_H_FOUND)
+message("java jnibridge enabled")
+add_compile_definitions(PXPRPC_RTBRIDGE_HAVE_JNI_H=1)
+endif()
+
+if(NOT TARGET pxprpc)
+add_subdirectory("../c" build-pxprpc)
+endif()
+
 
 macro(pxprpc_rtbridge_add_module entry source)
   list(APPEND PXPRPC_RTBRIDGE_MODULES_ENTRY ${entry})
@@ -48,31 +72,10 @@ endforeach(source)
 
 list(APPEND pxprpc_rtbridge_sources src/pxprpc_rtbridge.c src/pxprpc_rtbridge_host.cpp)
 
-# Check jni.h directly first.
-include(CheckIncludeFileCXX)
-CHECK_INCLUDE_FILE_CXX("jni.h" JNI_H_FOUND)
-
-if(NOT JNI_H_FOUND)
-  #fallback to FindJNI (use JAVA_HOME)
-  find_package(JNI)
-  if(JNI_FOUND)
-    include_directories(${JNI_INCLUDE_DIRS})
-    set(JNI_H_FOUND 1)
-  endif()
-endif()
-
-if(JNI_H_FOUND)
-message("java jnibridge enabled")
-add_compile_definitions(PXPRPC_RTBRIDGE_HAVE_JNI_H=1)
-endif()
-
-if(NOT TARGET pxprpc)
-add_subdirectory("../c" build-pxprpc)
-endif()
-
 list(APPEND PXPRPC_RTBRIDGE_LINK_LIBRARY pxprpc pxprpc_pipe pxprpc_libuv)
 
 list(REMOVE_DUPLICATES PXPRPC_RTBRIDGE_LINK_LIBRARY)
+
 
 add_library(pxprpc_rtbridge SHARED ${pxprpc_rtbridge_sources})
 target_include_directories(pxprpc_rtbridge PUBLIC include)
