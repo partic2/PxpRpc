@@ -45,7 +45,7 @@ struct _pxprpc__ServCo{
 
 
 //Will free memory of  server_context when refCount reach 0;
-static int pxprpc_refCount_add(pxprpc_server_context server_context,int32_t addend){
+static void pxprpc_refCount_add(pxprpc_server_context server_context,int32_t addend){
     struct _pxprpc__ServCo *self=server_context;
     self->refCount+=addend;
     if(self->refCount==0){
@@ -241,7 +241,7 @@ static void _pxprpc__stepGetFunc1(pxprpc_request *r){
     if(self->exp.funcmap!=NULL){
         pxprpc_callable *func=self->exp.funcmap->get(self->exp.funcmap,r->parameter.base,r->parameter.length);
         if(func!=NULL){
-            pxprpc_ref *ref2=pxprpc_alloc_ref(self,&r->temp1);
+            pxprpc_ref *ref2=pxprpc_alloc_ref(self,(uint32_t *)&r->temp1);
             ref2->object=func;
         }
     }

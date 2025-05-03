@@ -35,7 +35,7 @@ add_compile_definitions(PXPRPC_RTBRIDGE_HAVE_JNI_H=1)
 endif()
 
 if(NOT TARGET pxprpc)
-add_subdirectory("../c" build-pxprpc)
+add_subdirectory("../c" build-pxprpc EXCLUDE_FROM_ALL)
 endif()
 
 

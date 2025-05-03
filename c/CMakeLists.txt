@@ -20,7 +20,7 @@ target_include_directories(pxprpc_pipe PUBLIC include)
 if (DEPS_SOURCE_DIRS)
 
 if(NOT TARGET uv_a)
-add_subdirectory("${DEPS_SOURCE_DIRS}/libuv" build-libuv)
+add_subdirectory("${DEPS_SOURCE_DIRS}/libuv" build-libuv EXCLUDE_FROM_ALL)
 endif()
 
 add_library(pxprpc_libuv STATIC pxprpc_libuv/pxprpc_libuv.c)
