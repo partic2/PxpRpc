@@ -9,6 +9,7 @@ set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)
 project(pxprpc_rtbridge)
 
 option(PXPRPC_RTBRIDGE_BUILD_EXE "Indicate whether build standalone executable pxprpc_rtbridge host." OFF)
+option(DEPS_SOURCE_DIRS "dependency sources directory" ${CMAKE_CURRENT_LIST_DIR}/deps)
 
 #Seemed shared object on linux require this options to build.
 if(CMAKE_SYSTEM_NAME STREQUAL Linux)
@@ -35,7 +36,10 @@ add_compile_definitions(PXPRPC_RTBRIDGE_HAVE_JNI_H=1)
 endif()
 
 if(NOT TARGET pxprpc)
-add_subdirectory("../c" build-pxprpc EXCLUDE_FROM_ALL)
+  if(NOT TARGET uv_a)
+    add_subdirectory(${DEPS_SOURCE_DIRS}/libuv build-libuv EXCLUDE_FROM_ALL)
+  endif()
+  add_subdirectory("../c" build-pxprpc EXCLUDE_FROM_ALL)
 endif()
 
 

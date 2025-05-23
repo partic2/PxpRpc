@@ -15,7 +15,7 @@ asynchronous rpc server on C
 
 rpc server over tcp on C with libuv backend
 
-rpc server over tcp on C with tbox backend
+rpc server over tcp on C with tbox backend(deprecated)
 
 rpc server and client on Python(>=3.8)
 
