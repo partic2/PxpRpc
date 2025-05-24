@@ -9,7 +9,14 @@ set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)
 project(pxprpc_rtbridge)
 
 option(PXPRPC_RTBRIDGE_BUILD_EXE "Indicate whether build standalone executable pxprpc_rtbridge host." OFF)
-option(DEPS_SOURCE_DIRS "dependency sources directory" ${CMAKE_CURRENT_LIST_DIR}/deps)
+
+if("${DEPS_SOURCE_DIRS}" STREQUAL "")
+  if(NOT ("$ENV{DEPS_SOURCE_DIRS}" STREQUAL ""))
+    set(DEPS_SOURCE_DIRS $ENV{DEPS_SOURCE_DIRS})
+  else()
+    get_filename_component(DEPS_SOURCE_DIRS ../deps ABSOLUTE)
+  endif()
+endif()
 
 #Seemed shared object on linux require this options to build.
 if(CMAKE_SYSTEM_NAME STREQUAL Linux)
