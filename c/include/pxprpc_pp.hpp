@@ -234,7 +234,7 @@ class NamedFunctionPP{
         this->callable.call=__wrap_call;
     }
 
-    NamedFunctionPP *setName(std::string funcName){
+    NamedFunctionPP *setName(std::string& funcName){
         this->name=funcName;
         return this;
     }
@@ -265,10 +265,11 @@ class FunctionMap{
         return &this->cfm;
     }
     pxprpc_callable *get(std::string name){
-        if(this->map.count(name)>0){
-            return this->map[name];
+        auto found=this->map.find(name);
+        if(found==this->map.end()){
+            return nullptr;
         }else{
-            return NULL;
+            return found->second;
         }
     }
 };
