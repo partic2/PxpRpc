@@ -38,18 +38,8 @@ namespace pxprpc_rtbridge_host{
     //This function (and also "pxprpc_pipe_executor") can be call in other thread. 
     //Caution: Except these functions explicitly noted, pxprpc function should only called in "host thread".
     void postRunnable(std::function<void()> runnable){
-        auto pFn=new std::function<void()>();
-        *pFn=runnable;
+        auto pFn=new std::function<void()>(runnable);
         pxprpc_pipe_executor(__runCppFunction,pFn);
-    }
-    
-    void __runCppFunctionWorkCb(uv_work_t *req){
-        auto fn=static_cast<std::function<void()> *>(req->data);
-        (*fn)();
-        delete fn;
-    }
-    void __afterRunCppFunctionWorkCb(uv_work_t* req, int status){
-        delete req;
     }
     
 
@@ -77,12 +67,34 @@ namespace pxprpc_rtbridge_host{
         uv_sem_destroy(&sem);
     }
 
-    //Run function in libuv thread pool.
+    //Run function in libuv thread pool.DON'T block it.
     void threadPoolRun(std::function<void()> runnable){
         auto pFn=new std::function<void()>();
         *pFn=runnable;
         auto work=new uv_work_t();
         work->data=(void *)pFn;
-        uv_queue_work(uvloop,work,__runCppFunctionWorkCb,__afterRunCppFunctionWorkCb);
+        uv_queue_work(uvloop,work,
+        [](uv_work_t* req)-> void {
+            auto fn=static_cast<std::function<void()> *>(req->data);
+            (*fn)();
+            delete fn;
+        },
+        [](uv_work_t* req, int status)-> void {
+            delete req;
+        });
+    }
+
+    //Create native thread to run code. Will free the thread-related resource automaticly after thread exited.
+    //This function can be call in other thread. 
+    //uv_thread_t DON'T free all resource before uv_thread_join is called. So pxprpc modules should use this function instead.
+    void runInNewThread(std::function<void()> runnable){
+        uv_thread_t *thread=new uv_thread_t();
+        uv_thread_create(thread,__runCppFunction,new std::function([runnable,thread]() -> void {
+            runnable();
+            threadPoolRun([thread]()-> void {
+                uv_thread_join(thread);
+                delete thread;
+            });
+        }));
     }
 }

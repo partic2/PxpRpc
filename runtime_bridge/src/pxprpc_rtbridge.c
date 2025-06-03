@@ -182,6 +182,7 @@ char *pxprpc_rtbridge_deinit(){
         rtbloop=NULL;
         _rtbinitandrunstat=0;
     }
+    uv_thread_join(_newloopttid);
     return NULL;
 }
 
