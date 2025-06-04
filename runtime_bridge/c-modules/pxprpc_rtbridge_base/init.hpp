@@ -5,6 +5,7 @@
 #include <pxprpc_ext.hpp>
 #include <queue>
 #include <functional>
+#include <pxprpc_rtbridge_host.hpp>
 
 extern "C" {
     #include <pxprpc_pipe.h>
@@ -221,12 +222,18 @@ namespace pxprpc_rtbridge_base{
             })).add((new pxprpc::NamedFunctionPPImpl1())->init("pxprpc_rtbridge.memory_read",
             [](pxprpc::NamedFunctionPPImpl1::Parameter *para, pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret)->void {
                 auto chunk=static_cast<MemoryChunk *>(para->nextObject());
-                ret->resolve(chunk->base,chunk->size);
+                auto offset=para->nextInt();
+                auto size=para->nextInt();
+                if(size==-1){
+                    size=chunk->size;
+                }
+                ret->resolve((char *)chunk->base+offset,size);
             })).add((new pxprpc::NamedFunctionPPImpl1())->init("pxprpc_rtbridge.memory_write",
             [](pxprpc::NamedFunctionPPImpl1::Parameter *para, pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret)->void {
                 auto chunk=static_cast<MemoryChunk *>(para->nextObject());
+                auto offset=para->nextInt();
                 auto data=para->nextBytes();
-                memmove(chunk->base,std::get<1>(data),std::get<0>(data));
+                memmove((char *)chunk->base+offset,std::get<1>(data),std::get<0>(data));
                 ret->resolve();
             })).add((new pxprpc::NamedFunctionPPImpl1())->init("pxprpc_rtbridge.memory_info",
             [](pxprpc::NamedFunctionPPImpl1::Parameter *para, pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret)->void {
