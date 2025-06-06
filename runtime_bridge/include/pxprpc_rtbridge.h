@@ -17,7 +17,7 @@ char *pxprpc_rtbridge_brecv(struct pxprpc_abstract_io *io,struct pxprpc_buffer_p
 char *pxprpc_rtbridge_bsend(struct pxprpc_abstract_io *io,struct pxprpc_buffer_part *buf);
 
 /* thread safe pipe connect */
-struct pxprpc_abstract_io *pxprpc_rtbridge_pipe_connect(char *servname);
+struct pxprpc_abstract_io *pxprpc_rtbridge_pipe_connect(const char *servname);
 
 
 
@@ -29,7 +29,7 @@ struct pxprpc_abstract_io *pxprpc_rtbridge_pipe_connect(char *servname);
   This function will modify pxprpc_pipe_executor if pxprpc_pipe_executor is NULL.
   BTW rtbridge will register an async_handle so uv_run(uvloop,UV_RUN_DEFAULT) will never return before pxprpc_rtbridge_deinit is called.
 */
-char *pxprpc_rtbridge_init_uv(void *uvloop);
+const char *pxprpc_rtbridge_init_uv(void *uvloop);
 
 /*
   Initialize rtbridge with a new uv loop and run this loop in new thread.
@@ -38,12 +38,12 @@ char *pxprpc_rtbridge_init_uv(void *uvloop);
   return error meesage for other error.
   If "uvloop" is not NULL, will be set to the internally created uvloop;
 */
-char *pxprpc_rtbridge_init_and_run(void **uvloop);
+const char *pxprpc_rtbridge_init_and_run(void **uvloop);
 
 /*
   Deinitialize rtbridge. Return error string if error occured, or NULL.
 */
-char *pxprpc_rtbridge_deinit();
+const char *pxprpc_rtbridge_deinit();
 
 
 struct pxprpc_rtbridge_state{

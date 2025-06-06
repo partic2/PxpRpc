@@ -10,7 +10,7 @@
 
 #include <pxprpc_rtbridge.h>
 
-static uv_loop_t *rtbloop;
+static uv_loop_t *rtbloop=NULL;
 
 
 struct _rtbasyncreq{
@@ -19,7 +19,7 @@ struct _rtbasyncreq{
     void *p;
 };
 
-static struct _rtbasyncreq *_rtbasyncqueue;
+static struct _rtbasyncreq *_rtbasyncqueue=NULL;
 
 static uv_async_t _rtbwakeup;
 static uv_mutex_t _rtbmutex;
@@ -52,12 +52,12 @@ static void pxprpc_rtbridge_async_exec(void (*fn)(void *),void *p){
 
 struct _rtbioreq{
     struct pxprpc_abstract_io *io;
-    /* receive 1, send 2, connect 3, listen 4, accept 5*/
+    /* receive 1, send 2, connect 3, listen 4(Not implemented), accept 5(Not implemented), stop loop 6*/
     char rs;
     struct pxprpc_buffer_part *buf;
     uv_sem_t sem;
     const char *err;
-    char *servname;
+    const char *servname;
 };
 
 
@@ -72,13 +72,20 @@ static void _rtbiocb(struct _rtbioreq *req){
 
 static void _rtbiohandle(struct _rtbioreq *req){
     req->err=NULL;
-    if(req->rs==1){
+    switch(req->rs){
+        case 1:
         req->io->receive(req->io,req->buf,(void (*)(void *))_rtbiocb,req);
-    }else if(req->rs==2){
+        break;
+        case 2:
         req->io->send(req->io,req->buf,(void (*)(void *))_rtbiocb,req);
-    }else{
+        break;
+        case 3:
         req->io=pxprpc_pipe_connect(req->servname);
         _rtbiocb(req);
+        break;
+        case 6:
+        uv_stop(rtbloop);
+        break;
     }
 }
 
@@ -107,7 +114,7 @@ char *pxprpc_rtbridge_bsend(struct pxprpc_abstract_io *io,struct pxprpc_buffer_p
     return _rtbioreqdispatch(&req);
 }
 
-struct pxprpc_abstract_io *pxprpc_rtbridge_pipe_connect(char *servname){
+struct pxprpc_abstract_io *pxprpc_rtbridge_pipe_connect(const char *servname){
     struct _rtbioreq req;
     req.io=NULL;
     req.servname=servname;
@@ -117,7 +124,7 @@ struct pxprpc_abstract_io *pxprpc_rtbridge_pipe_connect(char *servname){
 }
 
 
-char *pxprpc_rtbridge_init_uv(void *uvloop){
+const char *pxprpc_rtbridge_init_uv(void *uvloop){
     if(rtbloop==NULL){
         rtbloop=uvloop;
         uv_mutex_init(&_rtbmutex);
@@ -134,54 +141,57 @@ char *pxprpc_rtbridge_init_uv(void *uvloop){
 
 
 static uv_thread_t _newloopttid;
-static int _rtbinitandrunstat=0;
-static void _newloopthread(void *loop){
-    if(loop!=NULL){
-        _rtbinitandrunstat=1;
-        pxprpc_pipe_executor(_newloopthread,NULL);
-        uv_run(loop,UV_RUN_DEFAULT);
-    }else{
-        if(_rtbinitandrunstat==1){
-            _rtbinitandrunstat=2;
-        }
-    }
-}
-char *pxprpc_rtbridge_init_and_run(void **uvloop){
-    if (rtbloop != NULL) {
-        return "inited";
-    }
-    uv_loop_t *newloop=(uv_loop_t *)pxprpc__malloc(sizeof(uv_loop_t));
-    uv_loop_init(newloop);
-    char *r=pxprpc_rtbridge_init_uv(newloop);
-    if(r!=NULL){
-        uv_loop_close(newloop);
-        pxprpc__free(newloop);
-        return r;
-    }else{
-        *uvloop=newloop;
-        uv_thread_create(&_newloopttid,&_newloopthread,newloop);
-        for(int i=0;i<100;i++){
-            if(_rtbinitandrunstat==2){
-                return NULL;
-            }
-            uv_sleep(16);
-        }
-        return "uv thread timeout";
-    }
-}
-
-char *pxprpc_rtbridge_deinit(){
+static const char *_lastRtbErr=NULL;
+static volatile int _rtbinitandrunstat=0;
+static void _newloopthread(void *sem){
     if(rtbloop!=NULL){
-        uv_mutex_destroy(&_rtbmutex);
-        uv_close((uv_handle_t *)&_rtbwakeup,NULL);
-        rtbloop=NULL;
+        _lastRtbErr="inited";
+        uv_sem_post((uv_sem_t *)sem);
+        return;
     }
-    if(_rtbinitandrunstat!=0){
+    uv_loop_t* uvloop=(uv_loop_t *)pxprpc__malloc(sizeof(uv_loop_t));
+    uv_loop_init(uvloop);
+    _lastRtbErr=pxprpc_rtbridge_init_uv(uvloop);
+    if(_lastRtbErr!=NULL){
         uv_loop_close(rtbloop);
         pxprpc__free(rtbloop);
         rtbloop=NULL;
+        uv_sem_post((uv_sem_t *)sem);
+        sem=NULL;
+    }else{
+        _rtbinitandrunstat=2;
+        uv_sem_post((uv_sem_t *)sem);
+        sem=NULL;
+        uv_run(rtbloop,UV_RUN_DEFAULT);
+        pxprpc_pipe_executor=NULL;
+        _rtbinitandrunstat=3;
+        uv_loop_close(rtbloop);
+        rtbloop=NULL;
         _rtbinitandrunstat=0;
     }
+}
+
+const char *pxprpc_rtbridge_init_and_run(void **uvloop){
+    if (rtbloop != NULL) {
+        return "inited";
+    }
+    _lastRtbErr=NULL;
+    uv_sem_t asyncInitDone;
+    uv_sem_init(&asyncInitDone,0);
+    uv_thread_create(&_newloopttid,&_newloopthread,&asyncInitDone);
+    uv_sem_wait(&asyncInitDone);
+    uv_sem_destroy(&asyncInitDone);
+    const char *lastErr=_lastRtbErr;
+    _lastRtbErr=NULL;
+    if(uvloop!=NULL){
+        *uvloop=rtbloop;
+    }
+    return lastErr;
+}
+
+const char *pxprpc_rtbridge_deinit(){
+    struct _rtbioreq stopreq;
+    _rtbioreqdispatch(&stopreq);
     uv_thread_join(_newloopttid);
     return NULL;
 }

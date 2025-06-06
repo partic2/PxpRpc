@@ -71,14 +71,10 @@ TcpPxpRpcServer::~TcpPxpRpcServer(){
     }
 }
 
-char *ensureInited(){
+const char *ensureInited(){
     if(inited==0){
         inited=1;
-        pxprpc_libuv_query_interface(&uvapi);
-        pxprpc_server_query_interface(&servapi);
-        pxprpc_pipe_serve(pxprpc_rtbridge_rtbmanager_name,_rtbmgrconnhandler,NULL);
-        pxprpc::init();
-        char *err=pxprpc_rtbridge_init_and_run(reinterpret_cast<void **>(&uvloop));
+        const char *err=pxprpc_rtbridge_init_and_run(reinterpret_cast<void **>(&uvloop));
         if(err!=nullptr)return err;
         for(int i=0;i<10000;i++){
             if(pxprpc_rtbridge_mod_init[i]==nullptr){
@@ -86,13 +82,22 @@ char *ensureInited(){
             }
             pxprpc_rtbridge_mod_init[i]();
         }
-        inited=2;
-        #ifdef PXPRPC_RTBRIDGE_ENABLE_TEST_TCPSERVER
-        //let it leak?
-        auto testtcp=new TcpPxpRpcServer("127.0.0.1",2048);
-        testtcp->start();
-        #endif
-        inited=3;
+        postRunnable([]()-> void {
+            pxprpc_libuv_query_interface(&uvapi);
+            pxprpc_server_query_interface(&servapi);
+            pxprpc_pipe_serve(pxprpc_rtbridge_rtbmanager_name,_rtbmgrconnhandler,NULL);
+            pxprpc::init();
+            inited=2;
+
+            #ifdef PXPRPC_RTBRIDGE_ENABLE_TEST_TCPSERVER
+            //let it leak?
+            auto testtcp=new TcpPxpRpcServer("127.0.0.1",2048);
+            testtcp->start(); 
+            #endif
+
+            inited=3;
+        });
+        
         return nullptr;
     }else{
         return const_cast<char *>("inited");
@@ -101,7 +106,7 @@ char *ensureInited(){
 }
 
 extern "C"{
-    char *pxprpc_rtbridge_host_ensureInited(){
+    const char *pxprpc_rtbridge_host_ensureInited(){
         return pxprpc_rtbridge_host::ensureInited();
     }
 }
@@ -109,9 +114,14 @@ extern "C"{
 
 
 #ifdef PXPRPC_RTBRIDGE_BUILD_EXE
+#include <iostream>
 static int pxprpc_rtbridge_host_running=1;
 int main(int argc,char *argv[]){
-    pxprpc_rtbridge_host::ensureInited();
+    auto err=pxprpc_rtbridge_host::ensureInited();
+    if(err!=nullptr){
+        std::cerr<<err<<std::endl;
+        return 1;
+    }
     struct pxprpc_rtbridge_state state;
     pxprpc_rtbridge_get_current_state(&state);
     while(state.run_state!=0){

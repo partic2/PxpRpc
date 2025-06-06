@@ -12,7 +12,7 @@ extern "C"{
 #include <pxprpc_ext.hpp>
 
 namespace pxprpc_rtbridge_host{
-    char *ensureInited();
+    const char *ensureInited();
     uv_loop_t *uvloop;
     
     class TcpPxpRpcServer : public pxprpc::PxpObject{
