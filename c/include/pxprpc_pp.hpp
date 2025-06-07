@@ -10,12 +10,61 @@ extern "C"{
 #include <functional>
 #include <tuple>
 #include <vector>
-#include <memory>
 #include <unordered_map>
 
 
 namespace pxprpc{
 
+void callAndFreeCppFunction(void *cppFn){
+    auto fn=static_cast<std::function<void()> *>(cppFn);
+    (*fn)();
+    delete fn;
+}
+
+namespace iopp{
+    void send(struct pxprpc_abstract_io *io1,std::vector<std::tuple<int32_t,void *>> bufs,std::function<void(const char *err)> cb){
+        int size=bufs.size();
+        auto bufList=new pxprpc_buffer_part[size];
+        for(int i1=0;i1<size;i1++){
+            bufList[i1].bytes.base=std::get<1>(bufs[i1]);
+            bufList[i1].bytes.length=std::get<0>(bufs[i1]);
+            if(i1+1<size){
+                bufList[i1].next_part=&bufList[i1+1];
+            }else{
+                bufList[i1].next_part=nullptr;
+            }
+        }
+        auto cCb=new std::function<void()>([io1,cb,bufList]()->void {
+            auto err=io1->get_error(io1,&io1->send);
+            delete[] bufList;
+            cb(err);
+        });
+        io1->send(io1,bufList,callAndFreeCppFunction,cCb);
+    }
+    //cb:(err,remainBuffer,freeBuf)->void
+    void receive(struct pxprpc_abstract_io *io1,std::vector<std::tuple<int32_t,void *>> bufs,
+        std::function<void(const char *err,std::tuple<int32_t,void *>,std::function<void()>)> cb){
+        int size=bufs.size();
+        auto bufList=new pxprpc_buffer_part[size+1];
+        for(int i1=0;i1<size;i1++){
+            bufList[i1].bytes.base=std::get<1>(bufs[i1]);
+            bufList[i1].bytes.length=std::get<0>(bufs[i1]);
+            bufList[i1].next_part=&bufList[i1+1];
+        }
+        bufList[size].next_part=nullptr;
+        bufList[size].bytes.base=nullptr;
+        bufList[size].bytes.length=0;
+        auto cCb=new std::function<void()>([io1,cb,bufList,size]()->void {
+            auto err=io1->get_error(io1,&io1->receive);
+            auto lastPart=bufList[size];
+            delete[] bufList;
+            cb(err,std::make_tuple(lastPart.bytes.length,lastPart.bytes.base),[io1,lastPart]()->void {
+                io1->buf_free(lastPart.bytes.base);
+            });
+        });
+        io1->receive(io1,bufList,callAndFreeCppFunction,cCb);
+    }
+}
 
 class Serializer{
     public:
