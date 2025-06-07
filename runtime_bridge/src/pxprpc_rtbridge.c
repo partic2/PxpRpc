@@ -85,6 +85,7 @@ static void _rtbiohandle(struct _rtbioreq *req){
         break;
         case 6:
         uv_stop(rtbloop);
+        uv_sem_post(&req->sem);
         break;
     }
 }
@@ -143,6 +144,13 @@ const char *pxprpc_rtbridge_init_uv(void *uvloop){
 static uv_thread_t _newloopttid;
 static const char *_lastRtbErr=NULL;
 static volatile int _rtbinitandrunstat=0;
+
+static void _uvclosenoop(uv_handle_t *){};
+static void _uvwalkhandles(uv_handle_t* handle, void* arg) {
+    if (!uv_is_closing(handle)) {
+        uv_close(handle, _uvclosenoop);
+    }
+}
 static void _newloopthread(void *sem){
     if(rtbloop!=NULL){
         _lastRtbErr="inited";
@@ -165,6 +173,8 @@ static void _newloopthread(void *sem){
         uv_run(rtbloop,UV_RUN_DEFAULT);
         pxprpc_pipe_executor=NULL;
         _rtbinitandrunstat=3;
+        uv_walk(rtbloop,_uvwalkhandles,NULL);
+        uv_run(rtbloop,UV_RUN_DEFAULT);
         uv_loop_close(rtbloop);
         rtbloop=NULL;
         _rtbinitandrunstat=0;
@@ -191,8 +201,8 @@ const char *pxprpc_rtbridge_init_and_run(void **uvloop){
 
 const char *pxprpc_rtbridge_deinit(){
     struct _rtbioreq stopreq;
+    stopreq.rs=6;
     _rtbioreqdispatch(&stopreq);
-    uv_thread_join(_newloopttid);
     return NULL;
 }
 
