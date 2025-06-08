@@ -56,8 +56,12 @@ macro(pxprpc_rtbridge_add_module entry source)
   list(APPEND PXPRPC_RTBRIDGE_MODULES_SOURCE ${abs_source})
 endmacro()
 
+macro(pxprpc_rtbridge_add_compile_definition)
+  list(APPEND pxprpc_rtbridge_compile_definitions ${ARGV})
+endmacro()
+
 macro(pxprpc_rtbridge_add_link_library)
-  list(APPEND PXPRPC_RTBRIDGE_LINK_LIBRARY ${ARGV})
+  list(APPEND pxprpc_rtbridge_link_libraries ${ARGV})
 endmacro()
 
 list(APPEND PXPRPC_RTBIRDGE_MODULES_DIRS "c-modules")
@@ -83,14 +87,16 @@ endforeach(source)
 
 list(APPEND pxprpc_rtbridge_sources src/pxprpc_rtbridge.c src/pxprpc_rtbridge_host.cpp)
 
-list(APPEND PXPRPC_RTBRIDGE_LINK_LIBRARY pxprpc pxprpc_pipe pxprpc_libuv)
+list(APPEND pxprpc_rtbridge_link_libraries pxprpc pxprpc_pipe pxprpc_libuv)
+list(REMOVE_DUPLICATES pxprpc_rtbridge_link_libraries)
 
-list(REMOVE_DUPLICATES PXPRPC_RTBRIDGE_LINK_LIBRARY)
+list(REMOVE_DUPLICATES pxprpc_rtbridge_compile_definitions)
 
 
 add_library(pxprpc_rtbridge SHARED ${pxprpc_rtbridge_sources})
 target_include_directories(pxprpc_rtbridge PUBLIC include)
-target_link_libraries(pxprpc_rtbridge PUBLIC ${PXPRPC_RTBRIDGE_LINK_LIBRARY})
+target_link_libraries(pxprpc_rtbridge PUBLIC ${pxprpc_rtbridge_link_libraries})
+target_compile_definitions(pxprpc_rtbridge PUBLIC ${pxprpc_rtbridge_compile_definitions})
 foreach(mod_dir ${PXPRPC_RTBIRDGE_MODULES_DIRS})
   target_include_directories(pxprpc_rtbridge PRIVATE ${mod_dir})
 endforeach()
@@ -99,7 +105,8 @@ endforeach()
 if(PXPRPC_RTBRIDGE_BUILD_EXE)
   add_executable(pxprpc_rtbridge_exe ${pxprpc_rtbridge_sources})
   target_include_directories(pxprpc_rtbridge_exe PUBLIC include)
-  target_link_libraries(pxprpc_rtbridge_exe PUBLIC ${PXPRPC_RTBRIDGE_LINK_LIBRARY})
+  target_link_libraries(pxprpc_rtbridge_exe PUBLIC ${pxprpc_rtbridge_link_libraries})
+  target_compile_definitions(pxprpc_rtbridge_exe PUBLIC ${pxprpc_rtbridge_compile_definitions})
   target_compile_definitions(pxprpc_rtbridge_exe PRIVATE PXPRPC_RTBRIDGE_BUILD_EXE)
   foreach(mod_dir ${PXPRPC_RTBIRDGE_MODULES_DIRS})
     target_include_directories(pxprpc_rtbridge_exe PRIVATE ${mod_dir})

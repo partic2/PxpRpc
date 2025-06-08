@@ -145,7 +145,7 @@ static uv_thread_t _newloopttid;
 static const char *_lastRtbErr=NULL;
 static volatile int _rtbinitandrunstat=0;
 
-static void _uvclosenoop(uv_handle_t *){};
+static void _uvclosenoop(uv_handle_t *arg0){};
 static void _uvwalkhandles(uv_handle_t* handle, void* arg) {
     if (!uv_is_closing(handle)) {
         uv_close(handle, _uvclosenoop);
