@@ -4,6 +4,7 @@ import java.nio.ByteBuffer;
 
 public class NativeHelper{
     public static native ByteBuffer accessMemory(long base, int length);
+    //fieldId:0-base address,1-capacity
     public static native long directBufferProperty(ByteBuffer b,int fieldId);
     public static native int pointerSize();
     //"servName" MUST end with '\0'

@@ -36,37 +36,42 @@ std::tuple<pxprpc_server_libuv,uv_tcp_t> testtcp;
 
 
 TcpPxpRpcServer::TcpPxpRpcServer(std::string host,int port){
-    uv_tcp_init(uvloop,&this->tcp);
     this->host=host;
     this->port=port;
-    running=false;
+    this->tcp=nullptr;
 }
 
 const char *TcpPxpRpcServer::start(){
+    if(tcp!=nullptr){
+        return "started";
+    }
     struct sockaddr_in saddr;
     int r=uv_ip4_addr(host.c_str(),port,&saddr);
     if(r){
         return "uv_ip4_addr failed.";
     }
-    r=uv_tcp_bind(&tcp,(const sockaddr *)&saddr,0);
+    tcp=new uv_tcp_t();
+    uv_tcp_init(uvloop,tcp);
+    r=uv_tcp_bind(tcp,(const sockaddr *)&saddr,0);
     if(r){
         return "uv_tcp_bind failed.";
     }
     server=uvapi->new_server(uvloop,(uv_stream_t *)&tcp,pxprpc::defaultFuncMap.cFuncmap());
     uvapi->serve_start(server);
-    running=true;
     return nullptr;
 }
 
 const char *TcpPxpRpcServer::stop(){
     uvapi->delete_server(server);
-    uv_close(reinterpret_cast<uv_handle_t *>(&tcp),nullptr);
-    running=false;
+    uv_close(reinterpret_cast<uv_handle_t *>(tcp),[](uv_handle_t *req)->void {
+        delete req;
+    });
+    tcp=nullptr;
     return nullptr;
 }
 
 TcpPxpRpcServer::~TcpPxpRpcServer(){
-    if(running){
+    if(tcp!=nullptr){
         stop();
     }
 }

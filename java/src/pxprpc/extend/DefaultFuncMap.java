@@ -8,6 +8,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class DefaultFuncMap implements FuncMap {
+    //recommand use synchronized (registered) to ensure thread-safe.
     public static Map<String,Object> registered=new HashMap<>();
     public static BuiltInFuncList builtIn=new BuiltInFuncList();
 

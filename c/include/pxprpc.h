@@ -145,7 +145,7 @@ typedef struct pxprpc_server_api{
     void (*context_exports_apply)(pxprpc_server_context context);
 }pxprpc_server_api;
 
-extern int pxprpc_server_query_interface(pxprpc_server_api **outapi);
+extern const char *pxprpc_server_query_interface(pxprpc_server_api **outapi);
 
 
 #endif

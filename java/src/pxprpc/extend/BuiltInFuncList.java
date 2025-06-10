@@ -37,10 +37,17 @@ public class BuiltInFuncList {
 				break;
 			}
 		}
-		if(found==null){
-			return null;
+		if(found!=null){
+			return new BoundMethodCallable(found,obj);
 		}
-		return new BoundMethodCallable(found,obj);
+		try {
+			Field field = obj.getClass().getField(methodName);
+			PxpCallable.class.isAssignableFrom(field.getType());
+			return (PxpCallable) field.get(obj);
+		} catch (NoSuchFieldException e) {
+		} catch (IllegalAccessException e) {
+		}
+		return null;
 	}
 	public String checkException(Object obj) {
 		if(obj!=null&&Exception.class.isInstance(obj)){

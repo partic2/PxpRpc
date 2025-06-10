@@ -18,10 +18,9 @@ namespace pxprpc_rtbridge_host{
     class TcpPxpRpcServer : public pxprpc::PxpObject{
         public:
         pxprpc_server_libuv server;
-        uv_tcp_t tcp;
+        uv_tcp_t *tcp;
         std::string host;
         int port;
-        bool running;
         TcpPxpRpcServer(std::string host,int port);
         const char *start();
         const char *stop();

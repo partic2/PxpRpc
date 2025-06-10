@@ -219,6 +219,7 @@ static const char *__sockAbsIo1GetError(struct pxprpc_abstract_io *self1,void *f
     }else if(fn==self1->send){
         return self->writeError;
     }
+    return NULL;
 }
 
 static void __freeLibuvSockconn2(uv_handle_t *stream);
@@ -335,8 +336,9 @@ static pxprpc_libuv_api exports={
     &pxprpc_new_libuvserver,&pxprpc_serve,&pxprpc_server_delete,&pxprpc_libuv_get_error,&pxprpc_libuv_clean_error
 };
 
-extern int pxprpc_libuv_query_interface(pxprpc_libuv_api **outapi){
+extern const char *pxprpc_libuv_query_interface(pxprpc_libuv_api **outapi){
     *outapi=&exports;
+    return NULL;
 }
 
 

@@ -13,11 +13,6 @@ extern "C" {
 }
 
 namespace pxprpc_rtbridge_base{
-    void __callArg0Function(void *cb){
-        auto cb2=reinterpret_cast<std::function<void()>*>(cb);
-        (*cb2)();
-        delete cb2;
-    }  
     void __wrap_on_connect(struct pxprpc_abstract_io *io1,void *server);
     using namespace pxprpc;
     class PxpPipeServer : public PxpObject{
@@ -51,15 +46,22 @@ namespace pxprpc_rtbridge_base{
         }
         virtual ~PxpPipeServer(){
             pxprpc_pipe_serve(s.c_str(),nullptr,nullptr);
+            newConn(nullptr);
         }
     };
     class PxpConnection:public pxprpc::PxpObject{
         public:
         pxprpc_abstract_io *io;
+        bool autoClose=true;
         PxpConnection(pxprpc_abstract_io *io_in):io(io_in){
         }
+        virtual void setAutoClose(bool autoClose){
+            this->autoClose=autoClose;
+        }
         virtual ~PxpConnection(){
-            io->close(io);
+            if(this->autoClose){
+                io->close(io);
+            }
         }
     };
     void __wrap_on_connect(struct pxprpc_abstract_io *io1,void *server){
@@ -149,7 +151,11 @@ namespace pxprpc_rtbridge_base{
             [](auto para,auto ret)->void {
                 auto serv=static_cast<PxpPipeServer *>(para->nextObject());
                 serv->accept([ret](auto io)->void {
-                    ret->resolve(new PxpConnection(io));
+                    if(io==nullptr){
+                        ret->reject("Accept aborted");
+                    }else{
+                        ret->resolve(new PxpConnection(io));
+                    }
                 });
             })).add((new pxprpc::NamedFunctionPPImpl1())->init("pxprpc_pipe_pp.connect",
             [](auto para,auto ret)->void {
@@ -179,7 +185,7 @@ namespace pxprpc_rtbridge_base{
                     }
                     delete buffer1;
                 });
-                ioaddr->send(ioaddr,buffer1,__callArg0Function,cb);
+                ioaddr->send(ioaddr,buffer1,pxprpc::callAndFreeCppFunction,cb);
             })).add((new pxprpc::NamedFunctionPPImpl1())->init("pxprpc_pp.io_receive",
             [](pxprpc::NamedFunctionPPImpl1::Parameter *para,auto ret)->void {
                 auto ioaddr=static_cast<PxpConnection *>((para->nextObject()))->io;
@@ -198,7 +204,13 @@ namespace pxprpc_rtbridge_base{
                     }
                     delete buffer1;
                 });
-                ioaddr->receive(ioaddr,buffer1,__callArg0Function,cb);
+                ioaddr->receive(ioaddr,buffer1,pxprpc::callAndFreeCppFunction,cb);
+            })).add((new pxprpc::NamedFunctionPPImpl1())->init("pxprpc_pp.io_set_auto_close",
+            [](pxprpc::NamedFunctionPPImpl1::Parameter *para,auto ret)->void {
+                auto conn=static_cast<PxpConnection *>((para->nextObject()));
+                auto autoClose=para->nextBool();
+                //connection will not be closed when connection is deleted. Take care of connection leak.
+                conn->setAutoClose(autoClose);
             })).add((new pxprpc::NamedFunctionPPImpl1())->init("pxprpc_rtbridge_host.new_tcp_rpc_server",
             [](auto para,auto ret)->void {
                 auto ser=para->asSerializer();

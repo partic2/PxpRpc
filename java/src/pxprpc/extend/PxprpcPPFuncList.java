@@ -1,6 +1,6 @@
 package pxprpc.extend;
 
-import pxprpc.base.AbstractIo;
+import pxprpc.base.*;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -24,4 +24,14 @@ public class PxprpcPPFuncList {
         }).start();
         return null;
     }
+
+    public PxpCallable io_set_auto_close=new PxpCallable() {
+        @Override
+        public void call(PxpRequest req) throws IOException {
+            Serializer2 ser = new Serializer2().prepareUnserializing(req.parameter);
+            int index = ser.getInt();
+            PxpRef ref = req.context.getRef(index);
+            ref.onFree=null;
+        }
+    };
 }

@@ -383,8 +383,9 @@ static pxprpc_server_api exports={
     &pxprpc_server_context_exports_apply
 };
 
-extern int pxprpc_server_query_interface(pxprpc_server_api **outapi){
+extern const char *pxprpc_server_query_interface(pxprpc_server_api **outapi){
     *outapi=&exports;
+    return NULL;
 }
 
 

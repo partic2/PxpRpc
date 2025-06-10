@@ -15,6 +15,6 @@ typedef struct pxprpc_libuv_api{
     void (*clear_error)();
 }pxprpc_libuv_api;
 
-extern int pxprpc_libuv_query_interface(pxprpc_libuv_api **outapi);
+extern const char *pxprpc_libuv_query_interface(pxprpc_libuv_api **outapi);
 
 #endif

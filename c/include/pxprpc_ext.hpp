@@ -454,6 +454,9 @@ class NamedFunctionPPImpl1:public NamedFunctionPP{
         PxpObject *nextObject(){
             return req->context().dereference(this->nextInt());
         }
+        bool nextBool(){
+            return this->asSerializer()->getVarint()!=0;
+        }
         std::string nextString(){
             return this->asSerializer()->getString();
         }
