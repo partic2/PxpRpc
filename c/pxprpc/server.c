@@ -217,7 +217,9 @@ static void _pxprpc__stepCall2(pxprpc_request *r){
         r->sendBuf.next_part=NULL;
     }
     r->next_step=_pxprpc__finishRequest;
-    ctx->exp.io->send(ctx->exp.io,&r->sendBuf,(void *)r->next_step,r);
+    if(!_pxprpc__ServCoIsClosed(ctx)){
+        ctx->exp.io->send(ctx->exp.io,&r->sendBuf,(void *)r->next_step,r);
+    }
 }
 static void _pxprpc__stepCall1(pxprpc_request *r){
     struct _pxprpc__ServCo * ctx=(struct _pxprpc__ServCo *)r->server_context;

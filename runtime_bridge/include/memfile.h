@@ -1,7 +1,7 @@
 
 
 /*
-   Pathed from https://github.com/COKPOWEHEU/memfile
+   Patched from https://github.com/COKPOWEHEU/memfile
 */
 
 #ifndef __MEMFILE_H__

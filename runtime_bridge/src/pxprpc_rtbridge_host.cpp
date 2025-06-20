@@ -56,7 +56,7 @@ const char *TcpPxpRpcServer::start(){
     if(r){
         return "uv_tcp_bind failed.";
     }
-    server=uvapi->new_server(uvloop,(uv_stream_t *)&tcp,pxprpc::defaultFuncMap.cFuncmap());
+    server=uvapi->new_server(uvloop,(uv_stream_t *)tcp,pxprpc::defaultFuncMap.cFuncmap());
     uvapi->serve_start(server);
     return nullptr;
 }
@@ -93,11 +93,10 @@ const char *ensureInited(){
             pxprpc_pipe_serve(pxprpc_rtbridge_rtbmanager_name,_rtbmgrconnhandler,NULL);
             pxprpc::init();
             inited=2;
-
             #ifdef PXPRPC_RTBRIDGE_ENABLE_TEST_TCPSERVER
             //let it leak?
             auto testtcp=new TcpPxpRpcServer("127.0.0.1",2048);
-            testtcp->start(); 
+            testtcp->start(); ;
             #endif
 
             inited=3;
