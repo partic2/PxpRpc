@@ -54,7 +54,10 @@ struct _rtbioreq{
     struct pxprpc_abstract_io *io;
     /* receive 1, send 2, connect 3, listen 4(Not implemented), accept 5(Not implemented), stop loop 6*/
     char rs;
-    struct pxprpc_buffer_part *buf;
+    union{
+       struct pxprpc_buffer_part *send;
+       struct pxprpc_bytes *recv;
+    } buf;
     uv_sem_t sem;
     const char *err;
     const char *servname;
@@ -63,9 +66,9 @@ struct _rtbioreq{
 
 static void _rtbiocb(struct _rtbioreq *req){
     if(req->rs==1){
-        req->err=req->io->get_error(req->io,req->io->receive);
+        req->err=req->io->receive_error;
     }else if(req->rs==2){
-        req->err=req->io->get_error(req->io,req->io->send);
+        req->err=req->io->send_error;
     }
     uv_sem_post(&req->sem);
 }
@@ -74,10 +77,10 @@ static void _rtbiohandle(struct _rtbioreq *req){
     req->err=NULL;
     switch(req->rs){
         case 1:
-        req->io->receive(req->io,req->buf,(void (*)(void *))_rtbiocb,req);
+        req->io->receive(req->io,req->buf.recv,(void (*)(void *))_rtbiocb,req);
         break;
         case 2:
-        req->io->send(req->io,req->buf,(void (*)(void *))_rtbiocb,req);
+        req->io->send(req->io,req->buf.send,(void (*)(void *))_rtbiocb,req);
         break;
         case 3:
         req->io=pxprpc_pipe_connect(req->servname);
@@ -90,27 +93,27 @@ static void _rtbiohandle(struct _rtbioreq *req){
     }
 }
 
-static char *_rtbioreqdispatch(struct _rtbioreq *req){
+static const char *_rtbioreqdispatch(struct _rtbioreq *req){
     uv_sem_init(&req->sem,0);
     pxprpc_pipe_executor((void (*)(void *))_rtbiohandle,req);
     uv_sem_wait(&req->sem);
     uv_sem_destroy(&req->sem);
-    return (char *)req->err;
+    return req->err;
 }
 
-char *pxprpc_rtbridge_brecv(struct pxprpc_abstract_io *io,struct pxprpc_buffer_part *buf){
+const char *pxprpc_rtbridge_brecv(struct pxprpc_abstract_io *io,struct pxprpc_bytes *buf){
     struct _rtbioreq req;
     req.io=io;
-    req.buf=buf;
+    req.buf.recv=buf;
     req.rs=1;
     return _rtbioreqdispatch(&req);
 }
 
 
-char *pxprpc_rtbridge_bsend(struct pxprpc_abstract_io *io,struct pxprpc_buffer_part *buf){
+const char *pxprpc_rtbridge_bsend(struct pxprpc_abstract_io *io,struct pxprpc_buffer_part *buf){
     struct _rtbioreq req;
     req.io=io;
-    req.buf=buf;
+    req.buf.send=buf;
     req.rs=2;
     return _rtbioreqdispatch(&req);
 }

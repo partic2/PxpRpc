@@ -11,10 +11,10 @@
 
 
 /* thread safe block receive wrap for pxprpc_abstract_io. for some block api. */
-char *pxprpc_rtbridge_brecv(struct pxprpc_abstract_io *io,struct pxprpc_buffer_part *buf);
+const char *pxprpc_rtbridge_brecv(struct pxprpc_abstract_io *io,struct pxprpc_bytes *buf);
 
 /* thread safe block send wrap for pxprpc_abstract_io. for some block api. */
-char *pxprpc_rtbridge_bsend(struct pxprpc_abstract_io *io,struct pxprpc_buffer_part *buf);
+const char *pxprpc_rtbridge_bsend(struct pxprpc_abstract_io *io,struct pxprpc_buffer_part *buf);
 
 /* thread safe pipe connect */
 struct pxprpc_abstract_io *pxprpc_rtbridge_pipe_connect(const char *servname);

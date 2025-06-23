@@ -24,10 +24,12 @@ struct pxprpc_buffer_part{
 
 
 struct pxprpc_abstract_io{
-    /* Receive a packet. onCompleted is called when all buffer parts are fulfilled or error occured. 
-    the last buffer part should have 0 length, and will be filled with remain data by implemention , 
-    the caller(pxprpc) will free the remain data buffer by (*io->buf_free)(buf->bytes.base) since buffer is discarded. */
-    void (*receive)(struct pxprpc_abstract_io *self,struct pxprpc_buffer_part *buf,void (*onCompleted)(void *args),void *p);
+    /* 
+        Receive a packet. onCompleted is called when buffer is fulfilled or error occured. 
+        the buffer memory(buf->base) should free by caller, using io->buf_free(buf->base);
+        IO implement should keep buf->base align to 32 bits, To avoid BUS ERROR.
+    */
+    void (*receive)(struct pxprpc_abstract_io *self,struct pxprpc_bytes *buf,void (*onCompleted)(void *args),void *p);
 
     /* Send a packet ,onCompleted is called when buffer is processed and can be free or error occured. 
     Write request should be processed in order. */
@@ -36,8 +38,9 @@ struct pxprpc_abstract_io{
     /* Depending on how implemention allocate buffer on memory. should be "free", if implemention use "malloc". SA:(*receive) */
     void (*buf_free)(void *buf_base);
     
-    /* get the last error. For example, to get the error caused by "receive", call "io->get_error(io,io->receive)". return NULL if no error */
-    const char *(*get_error)(struct pxprpc_abstract_io *self,void *fn);
+    /* get the last receive/send error. NULL if no error */
+    const char *receive_error;
+    const char *send_error;
 
     void (*close)(struct pxprpc_abstract_io *self);
 
@@ -82,7 +85,7 @@ typedef struct _pxprpc_ref_s{
 
 typedef struct _pxprpc_request_s{
     uint32_t session;
-    uint32_t callable_index;
+    int32_t callable_index;
     pxprpc_server_context server_context;
     /* parameter hold the parameter byte buffer. If callable want to own the buffer and prevent pxprpc freeing the buffer,
      set parameter.base=NULL */

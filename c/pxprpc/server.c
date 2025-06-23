@@ -26,22 +26,13 @@ struct _pxprpc__ServCo{
     uint32_t status;
     uint32_t sequenceSessionMask;
     char sequenceMaskBitsCnt;
-    #pragma pack(1)
-    union{
-        struct{
-            uint32_t session;
-            int32_t callableIndex;
-        } hdr;
-        uint8_t hdrbuf[8];
-    };
-    #pragma pack()
-    struct pxprpc_buffer_part recvBuf[2];
+    struct pxprpc_bytes recvBuf;
     /* context should only free when refCount=0. Pending request will hold the reference.*/
     int32_t refCount;
     pxprpc_request *pendingReqTail;
 };
 
-#define _pxprpc__ServCoIsClosed(self) self->status&0x1
+#define _pxprpc__ServCoIsClosed(self) (self->status&0x1)
 
 
 //Will free memory of  server_context when refCount reach 0;
@@ -173,9 +164,15 @@ static void _pxprpc__queueRequest(pxprpc_request *r){
 
 static void _pxprpc__finishRequest(pxprpc_request *r){
     struct _pxprpc__ServCo * ctx=(struct _pxprpc__ServCo *)r->server_context;
+    if(ctx->exp.io->send_error!=NULL){
+        ctx->exp.last_error=ctx->exp.io->send_error;
+        pxprpc_close(ctx);
+        return;
+        
+    }
     if(r->on_finish!=NULL)r->on_finish(r);
     if(r->parameter.base!=NULL){
-        ctx->exp.io->buf_free(r->parameter.base);
+        ctx->exp.io->buf_free((uint8_t *)(r->parameter.base)-8);
     }
     if(r->inSequence){
         if(r->lastReq!=NULL){
@@ -294,19 +291,23 @@ static void _pxprpc__stepSequence1(pxprpc_request *r){
 
 
 static void _pxprpc__step2(struct _pxprpc__ServCo *self){
-    self->exp.last_error=self->exp.io->get_error(self->exp.io,(void *)self->exp.io->receive);
+    if(_pxprpc__ServCoIsClosed(self)){
+        return;
+    }
+    self->exp.last_error=self->exp.io->receive_error;
     if(self->exp.last_error!=NULL){
         pxprpc_close(self);
         return;
     }
-    pxprpc_request *req=_pxprpc__newRequest(self,self->hdr.session);
-    req->callable_index=self->hdr.callableIndex;
-    req->parameter=self->recvBuf[1].bytes;
+    pxprpc_request *req=_pxprpc__newRequest(self,*((uint32_t *)(self->recvBuf.base)));
+    req->callable_index=*((uint32_t *)(self->recvBuf.base)+1);
+    req->parameter.base=(void *)((uint8_t *)(self->recvBuf.base)+8);
+    req->parameter.length=self->recvBuf.length-8;
     
-    if(self->hdr.callableIndex>=0){
+    if(req->callable_index>=0){
         req->next_step=_pxprpc__stepCall1;
     }else{
-        switch(-self->hdr.callableIndex){
+        switch(-req->callable_index){
             case 1:
             req->next_step=_pxprpc__stepGetFunc1;
             break;
@@ -335,12 +336,7 @@ static void _pxprpc__step1(struct _pxprpc__ServCo *self){
     if(_pxprpc__ServCoIsClosed(self)){
         return;
     }
-    self->recvBuf[0].bytes.length=8;
-    self->recvBuf[0].bytes.base=self->hdrbuf;
-    self->recvBuf[0].next_part=&self->recvBuf[1];
-    self->recvBuf[1].bytes.base=NULL;
-    self->recvBuf[1].bytes.length=0;
-    self->exp.io->receive(self->exp.io,&self->recvBuf[0],(void *)_pxprpc__step2,self);
+    self->exp.io->receive(self->exp.io,&self->recvBuf,(void *)_pxprpc__step2,self);
 }
 
 

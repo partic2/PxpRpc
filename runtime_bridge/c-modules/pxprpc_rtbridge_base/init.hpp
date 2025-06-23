@@ -177,7 +177,7 @@ namespace pxprpc_rtbridge_base{
                 buffer1->bytes.base=std::get<1>(p2);
                 buffer1->next_part=nullptr;
                 auto cb=new std::function<void()>([ret,buffer1,ioaddr]()->void {
-                    auto err=ioaddr->get_error(ioaddr,reinterpret_cast<void *>(ioaddr->send));
+                    auto err=ioaddr->send_error;
                     if(err!=nullptr){
                         ret->reject(err);
                     }else{
@@ -187,14 +187,12 @@ namespace pxprpc_rtbridge_base{
                 });
                 ioaddr->send(ioaddr,buffer1,pxprpc::callAndFreeCppFunction,cb);
             })).add((new pxprpc::NamedFunctionPPImpl1())->init("pxprpc_pp.io_receive",
-            [](pxprpc::NamedFunctionPPImpl1::Parameter *para,auto ret)->void {
+            [](pxprpc::NamedFunctionPPImpl1::Parameter *para,pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret)->void {
                 auto ioaddr=static_cast<PxpConnection *>((para->nextObject()))->io;
                 auto buffer1=new pxprpc_buffer_part();
-                buffer1->bytes.base=nullptr;
-                buffer1->bytes.length=0;
-                buffer1->next_part=nullptr;
+                buffer1->next_part=NULL;
                 auto cb=new std::function<void()>([ret,buffer1,ioaddr]()->void {
-                    auto err=ioaddr->get_error(ioaddr,reinterpret_cast<void *>(ioaddr->receive));
+                    auto err=ioaddr->receive_error;
                     if(err!=nullptr){
                         ret->reject(err);
                     }else{
@@ -204,7 +202,7 @@ namespace pxprpc_rtbridge_base{
                     }
                     delete buffer1;
                 });
-                ioaddr->receive(ioaddr,buffer1,pxprpc::callAndFreeCppFunction,cb);
+                ioaddr->receive(ioaddr,&buffer1->bytes,pxprpc::callAndFreeCppFunction,cb);
             })).add((new pxprpc::NamedFunctionPPImpl1())->init("pxprpc_pp.io_set_auto_close",
             [](pxprpc::NamedFunctionPPImpl1::Parameter *para,auto ret)->void {
                 auto conn=static_cast<PxpConnection *>((para->nextObject()));

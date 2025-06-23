@@ -8,8 +8,6 @@ In makefile, add make config script by "include", like below
 
 `include $(PXPRPC_SOURCE_DIR)/c/pxprpc_libuv/make-config.mk`
 
-`include $(PXPRPC_SOURCE_DIR)/c/pxprpc_tbox/make-config.mk`
-
 depend on which backend you choose.
 
 or just
@@ -34,7 +32,4 @@ See also pxprpc_libuv/make-config.mk, which contains a build example.
 
 
 You may need set `$(LIBUV_CFLAGS)` and `$(LIBUV_LDFLAGS)` variable if use pxprpc_libuv backend. 
-
-
-Similarly set `$(TBOX_CFLAGS)` and `$(TBOX_LDFLAGS)` variable if use pxprpc_tbox backend. 
 

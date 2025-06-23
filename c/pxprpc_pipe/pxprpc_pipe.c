@@ -14,7 +14,10 @@ static _pxprpcPipeServer *_pxprpcServerList=NULL;
 
 typedef struct _s_pxpIoReq{
     struct pxprpc_abstract_io *self;
-    struct pxprpc_buffer_part *buf;
+    union{
+        struct pxprpc_buffer_part *send;
+        struct pxprpc_bytes *recv;
+    }buf;
     void (*onCompleted)(void *args);
     void *p;
     struct _s_pxpIoReq *next;
@@ -31,49 +34,19 @@ typedef struct _s_pxprpcPipeConnection{
     _pxpIoReq *serverSend;
     _pxpIoReq serverRecv;
     char closing;
-    const char *serverSendError;
-    const char *serverRecvError;
-    const char *clientSendError;
-    const char *clientRecvError;
 } _pxprpcPipeConnection;
 
-static void _pxpTransferBuffer(struct pxprpc_buffer_part *providerBuffer,struct pxprpc_buffer_part *consumerBuffer){
+static void _pxpTransferBuffer(struct pxprpc_buffer_part *providerBuffer,struct pxprpc_bytes *consumerBuffer){
     struct pxprpc_buffer_part *tBuff=NULL;
-    int providerOffset=0;
-    int consumerOffset=0;
-    while(providerBuffer!=NULL&&consumerBuffer!=NULL&&consumerBuffer->bytes.length>0){
-        int providerRemain=providerBuffer->bytes.length-providerOffset;
-        int consumerRemain=consumerBuffer->bytes.length-consumerOffset;
-        int moveSize=providerRemain>consumerRemain?consumerRemain:providerRemain;
-        memmove(consumerBuffer->bytes.base+consumerOffset,providerBuffer->bytes.base+providerOffset,moveSize);
-        providerOffset+=moveSize;
-        if(providerOffset==providerBuffer->bytes.length){
-            providerBuffer=providerBuffer->next_part;
-            providerOffset=0;
-        }
-        consumerOffset+=moveSize;
-        if(consumerOffset==consumerBuffer->bytes.length){
-            consumerBuffer=consumerBuffer->next_part;
-            consumerOffset=0;
-        }
+    consumerBuffer->length=0;
+    uint32_t consumeOffset=0;
+    for(tBuff=providerBuffer;tBuff!=NULL;tBuff=tBuff->next_part){
+        consumerBuffer->length+=tBuff->bytes.length;
     }
-    if(consumerBuffer->bytes.length==0 && providerBuffer!=NULL){
-        int remain=providerBuffer->bytes.length-providerOffset;
-        tBuff=providerBuffer->next_part;
-        while(tBuff!=NULL){
-            remain+=tBuff->bytes.length;
-            tBuff=tBuff->next_part;
-        };
-        consumerBuffer->bytes.base=pxprpc__malloc(remain);
-        consumerBuffer->bytes.length=remain;
-        consumerOffset=0;
-        while(providerBuffer!=NULL){
-            int moveSize=providerBuffer->bytes.length-providerOffset;
-            memmove(consumerBuffer->bytes.base+consumerOffset,providerBuffer->bytes.base+providerOffset,moveSize);
-            providerBuffer=providerBuffer->next_part;
-            consumerOffset+=moveSize;
-            providerOffset=0;
-        }
+    consumerBuffer->base=pxprpc__malloc(consumerBuffer->length);
+    for(tBuff=providerBuffer;tBuff!=NULL;tBuff=tBuff->next_part){
+        memmove((uint8_t *)consumerBuffer->base+consumeOffset,tBuff->bytes.base,tBuff->bytes.length);
+        consumeOffset+=tBuff->bytes.length;
     }
 }
 
@@ -81,7 +54,7 @@ static void _pxprpcPipePump(_pxprpcPipeConnection *conn){
     void (* onCompleted)(void *args);
     if(conn->clientRecv.onCompleted!=NULL&&conn->serverSend!=NULL){
         _pxpIoReq *req=conn->serverSend;
-        _pxpTransferBuffer(req->buf,conn->clientRecv.buf);
+        _pxpTransferBuffer(req->buf.send,conn->clientRecv.buf.recv);
         conn->serverSend=req->next;
         onCompleted=conn->clientRecv.onCompleted;
         conn->clientRecv.onCompleted=NULL;
@@ -91,7 +64,7 @@ static void _pxprpcPipePump(_pxprpcPipeConnection *conn){
     }
     if(conn->serverRecv.onCompleted!=NULL&&conn->clientSend!=NULL){
         _pxpIoReq *req=conn->clientSend;
-        _pxpTransferBuffer(req->buf,conn->serverRecv.buf);
+        _pxpTransferBuffer(req->buf.send,conn->serverRecv.buf.recv);
         conn->clientSend=req->next;
         onCompleted=conn->serverRecv.onCompleted;
         conn->serverRecv.onCompleted=NULL;
@@ -103,15 +76,15 @@ static void _pxprpcPipePump(_pxprpcPipeConnection *conn){
 
 static void _pxprpcPipeConnectionClientSend(struct pxprpc_abstract_io *self,struct pxprpc_buffer_part *buf,void (*onCompleted)(void *args),void *p){
     _pxprpcPipeConnection *conn=(void *)self-(offsetof(_pxprpcPipeConnection,clientSide));
-    conn->clientSendError=NULL;
+    conn->clientSide.send_error=NULL;
     if(conn->closing){
-        conn->clientSendError=pxprpc_pipe_error_connection_closed;
+        conn->clientSide.send_error=pxprpc_pipe_error_connection_closed;
         onCompleted(p);
         return;
     }
     _pxpIoReq *newSendReq=pxprpc__malloc(sizeof(_pxpIoReq));
     newSendReq->self=self;
-    newSendReq->buf=buf;
+    newSendReq->buf.send=buf;
     newSendReq->p=p;
     newSendReq->onCompleted=onCompleted;
     newSendReq->next=NULL;
@@ -127,21 +100,21 @@ static void _pxprpcPipeConnectionClientSend(struct pxprpc_abstract_io *self,stru
     _pxprpcPipePump(conn);
 }
 
-static void _pxprpcPipeConnectionClientReceive(struct pxprpc_abstract_io *self,struct pxprpc_buffer_part *buf,void (*onCompleted)(void *args),void *p){
+static void _pxprpcPipeConnectionClientReceive(struct pxprpc_abstract_io *self,struct pxprpc_bytes *buf,void (*onCompleted)(void *args),void *p){
     _pxprpcPipeConnection *conn=(void *)self-(offsetof(_pxprpcPipeConnection,clientSide));
-    conn->clientRecvError=NULL;
+    conn->clientSide.receive_error=NULL;
     if(conn->clientRecv.onCompleted!=NULL){
-        conn->clientRecvError=_pxpErrorOverlapedReceive;
+        conn->clientSide.receive_error=_pxpErrorOverlapedReceive;
         onCompleted(p);
         return;
     }
     if(conn->closing){
-        conn->clientRecvError=pxprpc_pipe_error_connection_closed;
+        conn->clientSide.receive_error=pxprpc_pipe_error_connection_closed;
         onCompleted(p);
         return;
     }
     conn->clientRecv.self=self;
-    conn->clientRecv.buf=buf;
+    conn->clientRecv.buf.recv=buf;
     conn->clientRecv.onCompleted=onCompleted;
     conn->clientRecv.p=p;
     _pxprpcPipePump(conn);
@@ -150,15 +123,15 @@ static void _pxprpcPipeConnectionClientReceive(struct pxprpc_abstract_io *self,s
 
 static void _pxprpcPipeConnectionServerSend(struct pxprpc_abstract_io *self,struct pxprpc_buffer_part *buf,void (*onCompleted)(void *args),void *p){
     _pxprpcPipeConnection *conn=(void *)self-(offsetof(_pxprpcPipeConnection,serverSide));
-    conn->serverSendError=NULL;
+    conn->serverSide.send_error=NULL;
     if(conn->closing){
-        conn->serverSendError=pxprpc_pipe_error_connection_closed;
+        conn->serverSide.send_error=pxprpc_pipe_error_connection_closed;
         onCompleted(p);
         return;
     }
     _pxpIoReq *newSendReq=pxprpc__malloc(sizeof(_pxpIoReq));
     newSendReq->self=self;
-    newSendReq->buf=buf;
+    newSendReq->buf.send=buf;
     newSendReq->p=p;
     newSendReq->onCompleted=onCompleted;
     newSendReq->next=NULL;
@@ -174,21 +147,21 @@ static void _pxprpcPipeConnectionServerSend(struct pxprpc_abstract_io *self,stru
     _pxprpcPipePump(conn);
 }
 
-static void _pxprpcPipeConnectionServerRecv(struct pxprpc_abstract_io *self,struct pxprpc_buffer_part *buf,void (*onCompleted)(void *args),void *p){
+static void _pxprpcPipeConnectionServerRecv(struct pxprpc_abstract_io *self,struct pxprpc_bytes *buf,void (*onCompleted)(void *args),void *p){
     _pxprpcPipeConnection *conn=(void *)self-(offsetof(_pxprpcPipeConnection,serverSide));
-    conn->serverRecvError=NULL;
+    conn->serverSide.receive_error=NULL;
     if(conn->serverRecv.onCompleted!=NULL){
-        conn->serverRecvError=_pxpErrorOverlapedReceive;
+        conn->serverSide.receive_error=_pxpErrorOverlapedReceive;
         onCompleted(p);
         return;
     }
     if(conn->closing){
-        conn->serverRecvError=pxprpc_pipe_error_connection_closed;
+        conn->serverSide.receive_error=pxprpc_pipe_error_connection_closed;
         onCompleted(p);
         return;
     }
     conn->serverRecv.self=self;
-    conn->serverRecv.buf=buf;
+    conn->serverRecv.buf.recv=buf;
     conn->serverRecv.onCompleted=onCompleted;
     conn->serverRecv.p=p;
     _pxprpcPipePump(conn);
@@ -198,10 +171,10 @@ static void _pxprpcPipeConnectionClosing(_pxprpcPipeConnection *conn){
     void (*onCompleted)(void *p);
     if(conn->closing)return;
     conn->closing=1;
-    conn->serverRecvError=pxprpc_pipe_error_connection_closed;
-    conn->serverSendError=pxprpc_pipe_error_connection_closed;
-    conn->clientRecvError=pxprpc_pipe_error_connection_closed;
-    conn->clientSendError=pxprpc_pipe_error_connection_closed;
+    conn->serverSide.receive_error=pxprpc_pipe_error_connection_closed;
+    conn->serverSide.send_error=pxprpc_pipe_error_connection_closed;
+    conn->clientSide.receive_error=pxprpc_pipe_error_connection_closed;
+    conn->clientSide.send_error=pxprpc_pipe_error_connection_closed;
     if(conn->serverRecv.onCompleted!=NULL){
         onCompleted=conn->serverRecv.onCompleted;
         conn->serverRecv.onCompleted=NULL;
@@ -235,30 +208,6 @@ static void _pxprpcPipeConnectionServerClose(struct pxprpc_abstract_io *self){
 static void _pxprpcPipeConnectionClientClose(struct pxprpc_abstract_io *self){
     _pxprpcPipeConnection *conn=(void *)self-(offsetof(_pxprpcPipeConnection,clientSide));
     _pxprpcPipeConnectionClosing(conn);
-}
-
-
-static const char *_pxprpcPipeConnectionClientGetError(struct pxprpc_abstract_io *self,void *fn){
-    _pxprpcPipeConnection *conn=(void *)self-(offsetof(_pxprpcPipeConnection,clientSide));
-    if(fn==self->send){
-        return conn->clientSendError;
-    }else if(fn==self->receive){
-        return conn->clientRecvError;
-    }else{
-        return NULL;
-    }
-}
-
-
-static const char *_pxprpcPipeConnectionServerGetError(struct pxprpc_abstract_io *self,void *fn){
-    _pxprpcPipeConnection *conn=(void *)self-(offsetof(_pxprpcPipeConnection,serverSide));
-    if(fn==self->send){
-        return conn->serverSendError;
-    }else if(fn==self->receive){
-        return conn->serverRecvError;
-    }else{
-        return NULL;
-    }
 }
 
 
@@ -307,25 +256,23 @@ struct pxprpc_abstract_io *pxprpc_pipe_connect(const char *name){
     _pxprpcPipeConnection *conn=pxprpc__malloc(sizeof(_pxprpcPipeConnection));
     conn->clientRecv.onCompleted=NULL;
     conn->closing=0;
-    conn->clientSendError=NULL;
-    conn->clientRecvError=NULL;
+    conn->clientSide.send_error=NULL;
+    conn->clientSide.receive_error=NULL;
     conn->clientSend=NULL;
     conn->clientSide.buf_free=&pxprpc__free;
     conn->clientSide.send=&_pxprpcPipeConnectionClientSend;
     conn->clientSide.receive=&_pxprpcPipeConnectionClientReceive;
     conn->clientSide.close=&_pxprpcPipeConnectionClientClose;
-    conn->clientSide.get_error=&_pxprpcPipeConnectionClientGetError;
 
     conn->serverRecv.onCompleted=NULL;
     conn->closing=0;
-    conn->serverSendError=NULL;
-    conn->serverRecvError=NULL;
+    conn->serverSide.send_error=NULL;
+    conn->serverSide.receive_error=NULL;
     conn->serverSend=NULL;
     conn->serverSide.buf_free=&pxprpc__free;
     conn->serverSide.send=&_pxprpcPipeConnectionServerSend;
     conn->serverSide.receive=&_pxprpcPipeConnectionServerRecv;
     conn->serverSide.close=&_pxprpcPipeConnectionServerClose;
-    conn->serverSide.get_error=&_pxprpcPipeConnectionServerGetError;
     serv->on_connect(&conn->serverSide,serv->p);
     return &conn->clientSide;
 }

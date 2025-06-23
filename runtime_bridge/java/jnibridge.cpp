@@ -126,7 +126,7 @@ JNIEXPORT void JNICALL Java_pxprpc_runtimebridge_NativeHelper_ioSend
     part0.bytes.base=env->GetDirectBufferAddress(nativeBuffer);
     part0.bytes.length=env->GetDirectBufferCapacity(nativeBuffer);
     part0.next_part=NULL;
-    char *err=pxprpc_rtbridge_bsend(tio,&part0);
+    const char *err=pxprpc_rtbridge_bsend(tio,&part0);
     if(err!=NULL){
         strncpy(static_cast<char *>(env->GetDirectBufferAddress(errorString)),err,env->GetDirectBufferCapacity(errorString));
     }
@@ -137,16 +137,13 @@ JNIEXPORT void JNICALL Java_pxprpc_runtimebridge_NativeHelper_ioSend
 JNIEXPORT jobject JNICALL Java_pxprpc_runtimebridge_NativeHelper_ioReceive
 (JNIEnv *env,jclass clazz,jlong io,jobject errorString){
     struct pxprpc_abstract_io *tio=reinterpret_cast<struct pxprpc_abstract_io *>(io);
-    pxprpc_buffer_part part0;
-    part0.bytes.base=0;
-    part0.bytes.length=0;
-    part0.next_part=NULL;
-    char *err=pxprpc_rtbridge_brecv(tio,&part0);
+    pxprpc_bytes part0;
+    const char *err=pxprpc_rtbridge_brecv(tio,&part0);
     if(err!=NULL){
         strncpy(static_cast<char *>(env->GetDirectBufferAddress(errorString)),err,env->GetDirectBufferCapacity(errorString));
         return NULL;
     }else{
-        return env->NewDirectByteBuffer(part0.bytes.base,part0.bytes.length);
+        return env->NewDirectByteBuffer(part0.base,part0.length);
     }
 }
 
