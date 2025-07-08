@@ -45,7 +45,6 @@ public class TCPBackend implements Closeable{
 				}else{
 					sc.init(new ChannelIo2(s,s), attached.funcMap);
 				}
-				s.configureBlocking(true);
 				sc.serve();
 			} catch (Exception e) {
 				//catch all exception to avoid breaking Application unexpectedly.
@@ -66,13 +65,20 @@ public class TCPBackend implements Closeable{
 		t.setDaemon(true);
 		t.start();
 	}
+	//Configure accepted socket.
+	protected void configureAcceptedSocket(SocketChannel sock) throws IOException {
+		sock.configureBlocking(true);
+		sock.socket().setTcpNoDelay(true);
+		return;
+	}
 	public void listenAndServe() throws IOException {
 		try {
 			ss=ServerSocketChannel.open();
-			//chan.bind since 1.7, so we choose socket.bind.
+			//chan.bind since 1.7, so we use socket.bind.
 			ss.socket().bind(bindAddr);
 			while(ss.isOpen()) {
 				SocketChannel soc = ss.accept();
+				configureAcceptedSocket(soc);
 				ServerContext sc = new ServerContext();
 				WorkThread wt = new WorkThread(soc, sc);
 				wt.attached=this;
