@@ -916,6 +916,34 @@ void init() {
 
   pxprpc::defaultFuncMap.add(
     (new pxprpc::NamedFunctionPPImpl1())
+        ->init("pxprpc_libuv.tcp_setoption", [](pxprpc::NamedFunctionPPImpl1::Parameter *para, pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret) -> void {
+          auto tcp=reinterpret_cast<UvTcpWrap *>(para->nextObject());
+          auto opt=para->nextString();
+          if(opt=="nodelay"){
+            auto enable=para->nextBool();
+            auto err=uv_tcp_nodelay(tcp->tcp(), enable);
+            if(err<0){
+              ret->reject(uv_err_name(err));
+              return;
+            }
+          }else if(opt=="keepalive"){
+            auto enable=para->nextBool();
+            auto delay=para->nextInt();
+            auto err=uv_tcp_keepalive(tcp->tcp(),enable,delay);
+            if(err<0){
+              ret->reject(uv_err_name(err));
+              return;
+            }
+          }else{
+            ret->reject("supported option:nodelay,keepalive");
+            return;
+          }
+          ret->resolve();
+        })
+  );
+
+  pxprpc::defaultFuncMap.add(
+    (new pxprpc::NamedFunctionPPImpl1())
         ->init("pxprpc_libuv.interface_address", [](pxprpc::NamedFunctionPPImpl1::Parameter *para, pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret) -> void {
           uv_interface_address_t *addrs;
           int count=0;
