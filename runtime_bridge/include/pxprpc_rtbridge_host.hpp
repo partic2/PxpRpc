@@ -88,7 +88,7 @@ namespace pxprpc_rtbridge_host{
     //uv_thread_t DON'T free all resource before uv_thread_join is called. So pxprpc modules should use this function instead.
     void runInNewThread(std::function<void()> runnable){
         uv_thread_t *thread=new uv_thread_t();
-        uv_thread_create(thread,__runCppFunction,new std::function([runnable,thread]() -> void {
+        uv_thread_create(thread,__runCppFunction,new std::function<void()>([runnable,thread]() -> void {
             runnable();
             threadPoolRun([thread]()-> void {
                 uv_thread_join(thread);
