@@ -94,24 +94,6 @@ s  string(bytes will be decode to string)
     }
 }
 
-let UidGenerator={
-    idnum:[0],
-    generate:function(){
-        let i=0;
-        for(i=0;i<this.idnum.length;i++){
-            if(this.idnum[i]<0x7fffffff){
-                this.idnum[i]++;
-                break;
-            }else{
-                this.idnum[i]=0;
-            }
-        }
-        if(i==this.idnum.length){
-            this.idnum.push(1);
-        }
-        return this.idnum.map(v=>v.toString(16)).join('-')
-    }
-}
 export class RpcExtendClient1 {
     private __usedSid: { [index: number]: boolean | undefined } = {};
     private __nextSid: number;
@@ -119,8 +101,6 @@ export class RpcExtendClient1 {
     private __sidStart: number = 1;
     private __sidEnd: number = 0xffff;
 
-    //To identify different instance, and make it hashable.
-    public id:string=UidGenerator.generate();
     public constructor(public conn: Client) {
         this.__nextSid = this.__sidStart;
     }
