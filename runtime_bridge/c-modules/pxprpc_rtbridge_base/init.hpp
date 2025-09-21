@@ -12,6 +12,23 @@ extern "C" {
     #include <memfile.h>
 }
 
+static void *simpleffi_call4(void *fn,void **argv){
+    return ((void *(*)(void *,void *,void *,void *))fn)(argv[0],argv[1],argv[2],argv[3]);
+}
+
+static void *simpleffi_call16(void *fn,void **argv){
+    return ((void *(*)(void *,void *,void *,void *,void *,void *,void *,void *,void *,void *,void *,void *,void *,void *,void *,void *))
+        fn)(argv[0],argv[1],argv[2],argv[3],argv[4],argv[5],argv[6],argv[7],argv[8],argv[9],argv[10],argv[11],argv[12],argv[13],argv[14],argv[15]);
+}
+/* Only support argc<16 */
+static void *simpleffi_call(void *fn,int argc,void **argv){
+    if(argc<=4){
+        return simpleffi_call4(fn, argv);
+    }else{
+        return simpleffi_call16(fn, argv);
+    }
+}
+
 namespace pxprpc_rtbridge_base{
     void __wrap_on_connect(struct pxprpc_abstract_io *io1,void *server);
     using namespace pxprpc;
@@ -266,7 +283,17 @@ namespace pxprpc_rtbridge_base{
                 }else{
                     ret->resolve(fm);
                 }
+            })).add((new pxprpc::NamedFunctionPPImpl1())->init("pxprpc_rtbridge.simpleffi_call",
+            [](pxprpc::NamedFunctionPPImpl1::Parameter *para, pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret)->void {
+                auto fn=para->nextLong();
+                auto argv=static_cast<MemoryChunk *>(para->nextObject());
+                auto r=simpleffi_call(reinterpret_cast<void *>(fn),argv->size/((int32_t)sizeof(void *)),reinterpret_cast<void **>(argv->base));
+                ret->resolve(reinterpret_cast<int64_t>(r));
+            })).add((new pxprpc::NamedFunctionPPImpl1())->init("pxprpc_rtbridge.sizeof_pointer",
+            [](pxprpc::NamedFunctionPPImpl1::Parameter *para, pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret)->void {
+                ret->resolve((int32_t)sizeof(void *));
             }));
+            inited=true;
         }
     }
 }
