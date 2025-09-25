@@ -11,7 +11,7 @@ export async function testAsClient(client2?:RpcExtendClient1){
         client2=await new RpcExtendClient1(new Client(
             await new WebSocketIo().connect('ws://127.0.0.1:1345/pxprpc'))).init();
     }
-    console.log(await client2.conn.getInfo());
+    console.log(await client2.baseClient.getInfo());
     console.log('server name:'+client2.serverName)
     let get1234=(await client2.getFunc('test1.get1234'))!
     get1234.typedecl('->o');

@@ -4,6 +4,8 @@ import { Client, Io, PxpCallable, PxpRequest, Serializer, Server } from './base'
 export class RpcExtendError extends Error {
 }
 
+
+//Client side
 export class RpcExtendClientObject {
     public constructor(public client: RpcExtendClient1, public value: number | undefined) {
     }
@@ -11,7 +13,7 @@ export class RpcExtendClientObject {
         if (this.value != undefined) {
             let sid=this.client.allocSid();
             try{
-                await this.client.conn.freeRef([this.value],sid)
+                await this.client.baseClient.freeRef([this.value],sid)
             }finally{
                 await this.client.freeSid(this.value);
             }
@@ -72,7 +74,8 @@ s  string(bytes will be decode to string)
         }
         let sid=this.client.allocSid();
         try{
-            let resp=await this.client.conn.call(this.value!,buf,sid);
+            this.client.throwIfNotRunning();
+            let resp=await this.client.baseClient.call(this.value!,buf,sid);
             if(this.tResult==='b'){
                 return resp;
             }else{
@@ -101,13 +104,13 @@ export class RpcExtendClient1 {
     private __sidStart: number = 1;
     private __sidEnd: number = 0xffff;
 
-    public constructor(public conn: Client) {
+    public constructor(public baseClient: Client) {
         this.__nextSid = this.__sidStart;
     }
     public serverName?:string
     public async init():Promise<this>{
-        this.conn.run();
-        for(let item of (await this.conn.getInfo()).split('\n')){
+        this.baseClient.run();
+        for(let item of (await this.baseClient.getInfo()).split('\n')){
             if(item.indexOf(':')>=0){
                 let [key,val]=item.split(':')
                 if(key==='server name'){
@@ -143,10 +146,16 @@ export class RpcExtendClient1 {
     public freeSid(index: number) {
         delete this.__usedSid[index]
     }
+    public throwIfNotRunning(){
+        if(!this.baseClient.isRunning()){
+            throw new RpcExtendError('baseClient is not running.');
+        }
+    }
     public async getFunc(name: string) {
+        this.throwIfNotRunning()
         let sid=this.allocSid();
         try{
-            let index=await this.conn.getFunc(name,sid);
+            let index=await this.baseClient.getFunc(name,sid);
             if(index===-1)return null;
             return new RpcExtendClientCallable(this, index)
         }finally{
@@ -154,11 +163,13 @@ export class RpcExtendClient1 {
         }
     }
     public async close(){
-        await this.conn.close()
+        await this.baseClient.close()
     }
 
 }
 
+
+//Server side
 export function allocRefFor(serv:Server,obj:any){
     let ref=serv.allocRef();
     ref.object=obj;
@@ -217,7 +228,7 @@ export class RpcExtendServerCallable implements PxpCallable{
     }
 }
 
-export var defaultFuncMap={} as {[k:string]:RpcExtendServerCallable};
+export var defaultFuncMap={} as {[k:string]:PxpCallable};
 
 defaultFuncMap['builtin.anyToString']=new RpcExtendServerCallable(async (obj:any)=>String(obj)).typedecl('o->s');
 defaultFuncMap['builtin.jsExec']=new RpcExtendServerCallable(async (code:string,arg:any)=>{
@@ -338,7 +349,7 @@ export class TableSerializer {
                     }
                     break;
                 default:
-                    throw new Error("Unknown Type");
+                    throw new RpcExtendError("Unknown Type");
             }
         }
         return rows;
@@ -418,7 +429,7 @@ export class TableSerializer {
                     }
                     break;
                 default:
-                    throw new Error("Unknown Type");
+                    throw new RpcExtendError("Unknown Type");
             }
         }
     }
