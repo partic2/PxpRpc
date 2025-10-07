@@ -48,37 +48,11 @@ public class ChannelIo2 implements AbstractIo {
     }
 
     @Override
-    public void receive(ByteBuffer[] buffs) throws IOException {
-        ByteBuffer[] readBuff=new ByteBuffer[buffs.length];
-        readBuff[0]=ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN);
-        for(int i=1;i<readBuff.length;i++){
-            readBuff[i]=buffs[i-1].duplicate();
-        }
-        while(true){
-            if(r.read(readBuff)<0){
-                throw new EOFException();
-            };
-            if(readBuff[readBuff.length-1].remaining()==0){
-                break;
-            }
-        }
-        Utils.setPos(readBuff[0],0);
-        int remain=readBuff[0].getInt();
-        for(int i=0;i<buffs.length-1;i++){
-            remain-=buffs[i].remaining();
-        }
-        ByteBuffer rbuf = ByteBuffer.allocate(remain);
-        buffs[buffs.length-1]=rbuf.duplicate();
-        if(remain>0){
-            while(true){
-                if(r.read(rbuf)<0){
-                    throw new EOFException();
-                };
-                if(rbuf.remaining()==0){
-                    break;
-                }
-            }
-        }
+    public ByteBuffer receive() throws IOException {
+        int length=Utils.readInt32(r);
+        ByteBuffer buf=ByteBuffer.allocate(length);
+        Utils.readf(r,buf);
+        return buf;
     }
 
     @Override

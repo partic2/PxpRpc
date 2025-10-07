@@ -13,10 +13,8 @@ public class PxprpcPPFuncList {
         new Thread(new Runnable() {
             @Override
             public void run() {
-                ByteBuffer[] r=new ByteBuffer[1];
                 try {
-                    io.receive(r);
-                    ret.resolve(r[0]);
+                    ret.resolve(io.receive());
                 } catch (IOException e) {
                     ret.reject(e);
                 }

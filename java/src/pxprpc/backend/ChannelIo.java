@@ -45,32 +45,11 @@ public class ChannelIo implements AbstractIo {
     }
 
     @Override
-    public void receive(ByteBuffer[] buffs) throws IOException {
-        int fixedSize=0;
-        for(int i=0;i<buffs.length-1;i++){
-            fixedSize+=buffs[i].remaining();
-        }
-        int remain=0;
-        if(fixedSize<1400){
-            //small packet, concat it
-            ByteBuffer buff=ByteBuffer.allocate(fixedSize+4);
-            buff.order(ByteOrder.LITTLE_ENDIAN);
-            Utils.readf(chan,buff);
-            remain=buff.getInt();
-            for(int i=0;i<buffs.length-1;i++){
-                remain-=buffs[i].remaining();
-                buffs[i].duplicate().put(buff);
-            }
-        }else{
-            remain=Utils.readInt32(chan);
-            for(int i=0;i<buffs.length-1;i++){
-                remain-=buffs[i].remaining();
-                Utils.readf(chan,buffs[i]);
-            }
-        }
-        ByteBuffer rbuf = ByteBuffer.allocate(remain);
-        buffs[buffs.length-1]=rbuf;
-        Utils.readf(chan,rbuf);
+    public ByteBuffer receive() throws IOException {
+        int length=Utils.readInt32(chan);
+        ByteBuffer buf=ByteBuffer.allocate(length);
+        Utils.readf(chan,buf);
+        return buf;
     }
 
     @Override

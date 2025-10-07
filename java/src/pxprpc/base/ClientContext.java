@@ -22,31 +22,28 @@ public class ClientContext {
     public void run(){
         if(this.running)return;
         this.running=true;
-        final ByteBuffer header=ByteBuffer.allocate(4);
-        header.order(ByteOrder.LITTLE_ENDIAN);
-        final ByteBuffer[] recv=new ByteBuffer[]{header,null};
+        final ByteBuffer[] msgBody=new ByteBuffer[]{null};
         final ClientContext that=this;
         new Thread(new Runnable() {
             @Override
             public void run() {
                 try {
                     while(that.running){
-                        Utils.setPos(header,0);
-                        Utils.setLimit(header,4);
-                        recv[1]=null;
-                        that.io.receive(recv);
-                        int sid = header.getInt();
+                        ByteBuffer allBuf = that.io.receive();
+                        allBuf.order(ByteOrder.LITTLE_ENDIAN);
+                        int sid = allBuf.getInt();
+                        msgBody[0]=allBuf;
                         boolean isErr=(sid&0x80000000)!=0;
                         Ret r = that.waitingSession.get(sid&0x7fffffff);
                         if(r==null)
                             continue;
                         if(isErr){
-                            byte[] errMsg=new byte[recv[1].remaining()];
-                            recv[1].get(errMsg);
+                            byte[] errMsg=new byte[msgBody[0].remaining()];
+                            msgBody[0].get(errMsg);
                             r.cb(null,new RemoteError(new String(errMsg,ServerContext.charset)));
                             that.waitingSession.remove(sid);
                         }else{
-                            r.cb(recv[1],null);
+                            r.cb(msgBody[0],null);
                             that.waitingSession.remove(sid);
                         }
                     }

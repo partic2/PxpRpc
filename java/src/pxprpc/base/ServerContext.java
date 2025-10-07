@@ -75,12 +75,11 @@ public class ServerContext implements Closeable {
         while (running) {
             PxpRequest r = new PxpRequest();
             r.context = this;
-            ByteBuffer[] buffs = new ByteBuffer[]{ByteBuffer.allocate(8),null};
-            this.io2.receive(buffs);
-            buffs[0].order(ByteOrder.LITTLE_ENDIAN);
-            r.session=buffs[0].getInt();
-            r.callableIndex=buffs[0].getInt();
-            r.parameter=buffs[1];
+            ByteBuffer buf = this.io2.receive();
+            buf.order(ByteOrder.LITTLE_ENDIAN);
+            r.session=buf.getInt();
+            r.callableIndex=buf.getInt();
+            r.parameter=buf;
             queueRequest(r);
         }
         running = false;

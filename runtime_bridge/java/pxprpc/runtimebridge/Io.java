@@ -54,25 +54,16 @@ public class Io implements AbstractIo {
     }
 
     @Override
-    public void receive(ByteBuffer[] buffs) throws IOException {
+    public ByteBuffer receive() throws IOException {
         synchronized (receiveError){
             clearErrorString(receiveError);
             ByteBuffer recv=NativeHelper.ioReceive(nativeId,receiveError);
             checkErrorString(receiveError);
-            int limit=recv.limit();
-            for(int i=0;i<buffs.length-1;i++){
-                int len=buffs[i].remaining();
-                if(len>limit-recv.position()){
-                    len=limit-recv.position();
-                }
-                Utils.setLimit(recv,recv.position()+len);
-                buffs[i].duplicate().put(recv);
-            }
-            ByteBuffer rest=ByteBuffer.allocate(limit-recv.position());
-            Utils.setLimit(recv,limit);
-            rest.duplicate().put(recv);
-            buffs[buffs.length-1]=rest;
+            ByteBuffer copy=ByteBuffer.allocate(recv.remaining());
+            copy.put(recv);
+            Utils.setPos(copy,0);
             NativeHelper.ioBufFree(nativeId,recv);
+            return copy;
         }
     }
 
