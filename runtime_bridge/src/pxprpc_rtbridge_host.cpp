@@ -12,26 +12,24 @@ const char *pxprpc_rtbridge_rtbmanager_name="/pxprpc/runtime_bridge/0";
 
 namespace pxprpc_rtbridge_host{
 
-pxprpc_server_api *servapi;
 
 
 void _rtbmgrconnclosed(void *context){
-    servapi->context_delete(&context);
+    pxprpc_server_delete(&context);
 }
 void _rtbmgrconnhandler(struct pxprpc_abstract_io *io,void *p){
     pxprpc_server_context context;
-    servapi->context_new(&context,io);
-    struct pxprpc_server_context_exports *ctxexp=servapi->context_exports(context);
+    pxprpc_server_new(&context,io);
+    struct pxprpc_server_context_exports *ctxexp=pxprpc_server_get_exports(context);
     ctxexp->on_closed=_rtbmgrconnclosed;
     ctxexp->cb_data=context;
     ctxexp->funcmap=pxprpc::defaultFuncMap.cFuncmap();
-    servapi->context_start(context);
+    pxprpc_server_start(context);
 }
 
 
 int inited=0;
 
-pxprpc_libuv_api *uvapi;
 std::tuple<pxprpc_server_libuv,uv_tcp_t> testtcp;
 
 
@@ -56,13 +54,13 @@ const char *TcpPxpRpcServer::start(){
     if(r){
         return "uv_tcp_bind failed.";
     }
-    server=uvapi->new_server(uvloop,(uv_stream_t *)tcp,pxprpc::defaultFuncMap.cFuncmap());
-    uvapi->serve_start(server);
+    server=pxprpc_libuv_server_new(uvloop,(uv_stream_t *)tcp,pxprpc::defaultFuncMap.cFuncmap());
+    pxprpc_libuv_server_start(server);
     return nullptr;
 }
 
 const char *TcpPxpRpcServer::stop(){
-    uvapi->delete_server(server);
+    pxprpc_libuv_server_delete(server);
     uv_close(reinterpret_cast<uv_handle_t *>(tcp),[](uv_handle_t *req)->void {
         delete req;
     });
@@ -88,8 +86,6 @@ const char *ensureInited(){
             pxprpc_rtbridge_mod_init[i]();
         }
         postRunnable([]()-> void {
-            pxprpc_libuv_query_interface(&uvapi);
-            pxprpc_server_query_interface(&servapi);
             pxprpc_pipe_serve(pxprpc_rtbridge_rtbmanager_name,_rtbmgrconnhandler,NULL);
             pxprpc::init();
             inited=2;

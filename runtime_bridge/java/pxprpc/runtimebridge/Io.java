@@ -10,7 +10,7 @@ import java.nio.ByteBuffer;
 
 public class Io implements AbstractIo {
     public long nativeId;
-
+    public boolean closed=false;
     public static String readByteBufferString(ByteBuffer b){
         b.mark();
         byte[] r = new byte[b.remaining()];
@@ -38,6 +38,7 @@ public class Io implements AbstractIo {
     public ByteBuffer receiveError=ByteBuffer.allocateDirect(256);
     @Override
     public void send(ByteBuffer[] buffs) throws IOException {
+        if(closed)throw new IOException("closed.");
         synchronized (sendError){
             int size=0;
             for(int i=0;i<buffs.length;i++){
@@ -55,6 +56,7 @@ public class Io implements AbstractIo {
 
     @Override
     public ByteBuffer receive() throws IOException {
+        if(closed)throw new IOException("closed.");
         synchronized (receiveError){
             clearErrorString(receiveError);
             ByteBuffer recv=NativeHelper.ioReceive(nativeId,receiveError);
@@ -69,6 +71,9 @@ public class Io implements AbstractIo {
 
     @Override
     public void close() {
+        if(this.closed)return;
+        //Only close once, to avoid UAF crash
+        this.closed=true;
         NativeHelper.ioClose(nativeId);
     }
 }

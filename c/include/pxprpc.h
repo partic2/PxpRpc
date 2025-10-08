@@ -124,6 +124,7 @@ struct pxprpc_server_context_exports{
     pxprpc_ref *ref_pool;
     pxprpc_ref *free_ref_entry;
     uint16_t ref_pool_size;
+    char closed;
     const char *last_error;
     /* io is READONLY, Modify it may cause unexpected behaviour */
     struct pxprpc_abstract_io *io;
@@ -133,22 +134,16 @@ struct pxprpc_server_context_exports{
     void (*on_closed)(void *cb_data);
 };
 
-
-typedef struct pxprpc_server_api{
-    int (*context_new)(pxprpc_server_context *server_context,struct pxprpc_abstract_io *io1);
-    int (*context_start)(pxprpc_server_context);
-    int (*context_closed)(pxprpc_server_context);
-    int (*context_close)(pxprpc_server_context);
-    int (*context_delete)(pxprpc_server_context *);
-    pxprpc_ref *(*alloc_ref)(pxprpc_server_context context,uint32_t *index);
-    void (*free_ref)(pxprpc_server_context context,pxprpc_ref *ref);
-    pxprpc_ref *(*get_ref)(pxprpc_server_context context,uint32_t index);
-    struct pxprpc_server_context_exports *(*context_exports)(pxprpc_server_context context);
-    /* Change in exports may don't take effect immediately, use context_exports_apply to make it.*/
-    void (*context_exports_apply)(pxprpc_server_context context);
-}pxprpc_server_api;
-
-extern const char *pxprpc_server_query_interface(pxprpc_server_api **outapi);
+const char *pxprpc_server_new(pxprpc_server_context *server_context,struct pxprpc_abstract_io *io1);
+const char *pxprpc_server_start(pxprpc_server_context server_context);
+const char *pxprpc_server_close(pxprpc_server_context server_context);
+const char *pxprpc_server_delete(pxprpc_server_context *server_context);
+pxprpc_ref *pxprpc_server_alloc_ref(pxprpc_server_context context,uint32_t *index);
+void pxprpc_server_free_ref(pxprpc_server_context context,pxprpc_ref *ref);
+pxprpc_ref *pxprpc_server_get_ref(pxprpc_server_context context,uint32_t index);
+struct pxprpc_server_context_exports *pxprpc_server_get_exports(pxprpc_server_context context);
+/* Change in exports may don't take effect immediately, use context_exports_apply to make it.*/
+const char *pxprpc_server_exports_apply(pxprpc_server_context context);
 
 
 #endif

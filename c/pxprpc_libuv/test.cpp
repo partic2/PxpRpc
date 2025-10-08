@@ -15,8 +15,6 @@ extern "C"{
 #include <algorithm>
 
 
-
-pxprpc_libuv_api *pxpuv;
 uv_tcp_t servTcp;
 uv_loop_t *loop;
 
@@ -37,11 +35,11 @@ int vectorIndexOf(std::vector<E> vec,E elem){
 #include <pxprpc_ext.hpp>
 void defFunc(){
     defaultFuncMap.add((new NamedFunctionPPImpl1())->init("printString",
-    [](auto *para,auto *ret)->void{
+    [](auto *para,auto *ret)->void {
         std::cout<<para->nextString()<<std::endl;
         ret->resolve("server:hello client");
     })).add((new NamedFunctionPPImpl1())->init("printSerilizedArgs",
-    [](auto *para,auto *ret)->void{
+    [](auto *para,auto *ret)->void {
         auto i=para->nextInt();
         auto l=para->nextLong();
         auto f=para->nextFloat();
@@ -51,7 +49,7 @@ void defFunc(){
         std::cout<<i<<","<<l<<","<<f<<","<<d<<","<<s<<","<<b<<std::endl;
         ret->resolve();
     })).add((new NamedFunctionPPImpl1())->init("printSerilizedTable",
-    [](auto para,auto ret)->void{
+    [](auto para,auto ret)->void {
         TableSerializer *tabser=new TableSerializer();
         tabser->bindSerializer(para->asSerializer())->load();
         auto colName=tabser->getColumnsName();
@@ -89,7 +87,6 @@ void defFunc(){
 
 int main(int argc,char *argv[]){
     pxprpc::init();
-    pxprpc_libuv_query_interface(&pxpuv);
     loop=uv_default_loop();
     
     memset(&servTcp,0,sizeof(uv_tcp_t));
@@ -104,8 +101,8 @@ int main(int argc,char *argv[]){
         printf("uv_tcp_bind failed.");
     }
     defFunc();
-    auto rpc=pxpuv->new_server(loop,(uv_stream_t *)&servTcp,defaultFuncMap.cFuncmap());
-    pxpuv->serve_start(rpc);
+    auto rpc=pxprpc_libuv_server_new(loop,(uv_stream_t *)&servTcp,defaultFuncMap.cFuncmap());
+    pxprpc_libuv_server_start(rpc);
     uv_run(loop,UV_RUN_DEFAULT);
     printf("libuv finish.");
     return 0;

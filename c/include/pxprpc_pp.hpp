@@ -178,10 +178,7 @@ class Serializer{
 
 static void __wrap_call(pxprpc_callable *self,pxprpc_request *r);
 
-pxprpc_server_api *servapi;
-
 void init(){
-    pxprpc_server_query_interface(&servapi);
 }
 
 class PxpServContext;
@@ -207,16 +204,16 @@ class PxpServContextWrap{
     }
     uint32_t allocRef(PxpObject *obj){
         uint32_t index;
-        auto cref=servapi->alloc_ref(this->ctx,&index);
+        auto cref=pxprpc_server_alloc_ref(this->ctx,&index);
         cref->object=obj;
         cref->on_free=__wrap_ref_on_free;
         return index;
     }
     void freeRef(uint32_t index){
-        servapi->free_ref(this->ctx,&servapi->context_exports(ctx)->ref_pool[index]);
+        pxprpc_server_free_ref(this->ctx,pxprpc_server_get_ref(this->ctx,index));
     }
     PxpObject *dereference(uint32_t index){
-        return static_cast<PxpObject *>(servapi->context_exports(ctx)->ref_pool[index].object);
+        return static_cast<PxpObject *>(pxprpc_server_get_ref(this->ctx,index)->object);
     }
 };
 

@@ -1,6 +1,7 @@
 
 
 
+#include "pxprpc.h"
 #include <pxprpc_libuv.h>
 
 struct _pxprpc_libuv{
@@ -13,17 +14,10 @@ struct _pxprpc_libuv{
 #define status_SUSPEND 1
 #define status_RUNNING 2
 
-struct pxprpc_server_api *servapi;
-
-static int __uvApiInited=0;
 
 static const char *errormsg=NULL;
 
-static pxprpc_server_libuv pxprpc_new_libuvserver(uv_loop_t *loop,uv_stream_t *listener,pxprpc_funcmap *funcmap){
-    if(__uvApiInited==0){
-        __uvApiInited=1;
-        pxprpc_server_query_interface(&servapi);
-    }
+pxprpc_server_libuv pxprpc_libuv_server_new(uv_loop_t *loop,uv_stream_t *listener,pxprpc_funcmap *funcmap){
     struct _pxprpc_libuv *self=(struct _pxprpc_libuv *)pxprpc__malloc(sizeof(struct _pxprpc_libuv));
     if(loop==NULL){
         loop=listener->loop;
@@ -66,7 +60,7 @@ static void __sockUvReadCb(uv_stream_t* stream,ssize_t nread,const uv_buf_t* buf
     if(nread>0){
         if(self->recvBuf->base==NULL){
             self->recvBuf->base=pxprpc__malloc(self->recvBuf->length);
-            self->nextBuf.base=self->recvBuf->base;
+            self->nextBuf.base=(char *)self->recvBuf->base;
             self->nextBuf.len=self->recvBuf->length;
         }else{
             self->nextBuf.base+=nread;
@@ -97,7 +91,7 @@ static void __sockUvReadCb(uv_stream_t* stream,ssize_t nread,const uv_buf_t* buf
 }
 
 static void __sockAbsIo1Receive(struct pxprpc_abstract_io *self1,struct pxprpc_bytes *buf,void (*onCompleted)(void *p),void *p){
-    struct _pxprpc_libuv_sockconn *self=(void *)self1-offsetof(struct _pxprpc_libuv_sockconn,io1);
+    struct _pxprpc_libuv_sockconn *self=(struct _pxprpc_libuv_sockconn *)((char *)self1-offsetof(struct _pxprpc_libuv_sockconn,io1));
     if(self->recvBuf!=NULL){
         self->io1.receive_error="overlap read is not allowed";
         onCompleted(p);
@@ -124,7 +118,7 @@ struct __sockUvWriteReq{
     /* following with uv_buf_t array */
 };
 void __sockUvWriteCb(uv_write_t *req, int status){
-    struct __sockUvWriteReq *writeReq=uv_req_get_data((uv_req_t *)req);
+    struct __sockUvWriteReq *writeReq=(struct __sockUvWriteReq *)uv_req_get_data((uv_req_t *)req);
     if(status<0){
         writeReq->sockconn->io1.send_error=uv_strerror(status);
     }
@@ -136,7 +130,7 @@ void __sockUvWriteCb(uv_write_t *req, int status){
     onCompleted(cbArgs);
 }
 static void __sockAbsIo1Send(struct pxprpc_abstract_io *self1,struct pxprpc_buffer_part *buf,void (*onCompleted)(void *args),void *p){
-    struct _pxprpc_libuv_sockconn *self=(void *)self1-offsetof(struct _pxprpc_libuv_sockconn,io1);
+    struct _pxprpc_libuv_sockconn *self=(struct _pxprpc_libuv_sockconn *)((char *)self1-offsetof(struct _pxprpc_libuv_sockconn,io1));
     int bufCnt=0;
     int packetSize=0;
     struct pxprpc_buffer_part *curbuf=buf;
@@ -150,12 +144,12 @@ static void __sockAbsIo1Send(struct pxprpc_abstract_io *self1,struct pxprpc_buff
     struct __sockUvWriteReq *writeReq=(struct __sockUvWriteReq *)pxprpc__malloc(sizeof(struct __sockUvWriteReq)+sizeof(uv_buf_t)*bufCnt);
     memset(writeReq,0,sizeof(struct __sockUvWriteReq)+sizeof(uv_buf_t)*bufCnt);
     writeReq->packetSize=packetSize;
-    uv_buf_t *bufsbase=(void *)writeReq+sizeof(struct __sockUvWriteReq);
+    uv_buf_t *bufsbase=(uv_buf_t *)((char *)writeReq+sizeof(struct __sockUvWriteReq));
     bufsbase[0].base=(char *)&writeReq->packetSize;
     bufsbase[0].len=4;
     curbuf=buf;
     for(int i=1;i<bufCnt;i++){
-        bufsbase[i].base=curbuf->bytes.base;
+        bufsbase[i].base=(char *)curbuf->bytes.base;
         bufsbase[i].len=curbuf->bytes.length;
         curbuf=curbuf->next_part;
     }
@@ -168,7 +162,7 @@ static void __sockAbsIo1Send(struct pxprpc_abstract_io *self1,struct pxprpc_buff
 
 static void __freeLibuvSockconn2(uv_handle_t *stream);
 static void __sockAbsIo1Close(struct pxprpc_abstract_io *self1){
-    struct _pxprpc_libuv_sockconn *self=(void *)self1-offsetof(struct _pxprpc_libuv_sockconn,io1);
+    struct _pxprpc_libuv_sockconn *self=(struct _pxprpc_libuv_sockconn *)((char *)self1-offsetof(struct _pxprpc_libuv_sockconn,io1));
     if(!(self->status&__sockconn_status_streamClosed)){
         self->status|=__sockconn_status_streamClosed;
         uv_close((uv_handle_t *)&self->stream,&__freeLibuvSockconn2);
@@ -176,7 +170,7 @@ static void __sockAbsIo1Close(struct pxprpc_abstract_io *self1){
 }
 static void __freeLibuvSockconn(struct _pxprpc_libuv_sockconn *sc);
 static struct _pxprpc_libuv_sockconn * __buildLibuvSockconn(struct _pxprpc_libuv *sCtx){
-    struct _pxprpc_libuv_sockconn *sockconn=pxprpc__malloc(sizeof(struct _pxprpc_libuv_sockconn));
+    struct _pxprpc_libuv_sockconn *sockconn=(struct _pxprpc_libuv_sockconn *)pxprpc__malloc(sizeof(struct _pxprpc_libuv_sockconn));
     memset(sockconn,0,sizeof(struct _pxprpc_libuv_sockconn));
     sockconn->io1.send=&__sockAbsIo1Send;
     sockconn->io1.receive=&__sockAbsIo1Receive;
@@ -185,11 +179,11 @@ static struct _pxprpc_libuv_sockconn * __buildLibuvSockconn(struct _pxprpc_libuv
     memset(&sockconn->stream,0,sizeof(uv_stream_t));
     sockconn->io1.send_error=NULL;
     sockconn->io1.receive_error=NULL;
-    servapi->context_new(&sockconn->rpcCtx,&sockconn->io1);
-    struct pxprpc_server_context_exports *ctxexp=servapi->context_exports(sockconn->rpcCtx);
+    pxprpc_server_new(&sockconn->rpcCtx,&sockconn->io1);
+    struct pxprpc_server_context_exports *ctxexp=pxprpc_server_get_exports(sockconn->rpcCtx);
     ctxexp->funcmap=sCtx->funcmap;
     ctxexp->cb_data=sockconn;
-    servapi->context_exports_apply(sockconn->rpcCtx);
+    pxprpc_server_get_exports(sockconn->rpcCtx);
     if(sCtx->acceptedConn==NULL){
         sCtx->acceptedConn=sockconn;
         sockconn->prev=NULL;
@@ -216,12 +210,12 @@ static void __freeLibuvSockconn(struct _pxprpc_libuv_sockconn *sc){
     if(sc->serv!=NULL && sc->serv->acceptedConn==sc){
         sc->serv->acceptedConn=sc->next;
     }
-    servapi->context_delete(&sc->rpcCtx);
+    pxprpc_server_delete(&sc->rpcCtx);
     /* sc->stream is closed by io->close() before pxprpc__free */
     pxprpc__free(sc);
 }
 static void __freeLibuvSockconn2(uv_handle_t *stream){
-    struct _pxprpc_libuv_sockconn *sc=uv_handle_get_data(stream);
+    struct _pxprpc_libuv_sockconn *sc=(struct _pxprpc_libuv_sockconn *)uv_handle_get_data(stream);
     __freeLibuvSockconn(sc);
 }
 
@@ -242,18 +236,19 @@ static void __uvListenConnectionCb(uv_stream_t *server, int status){
         return;
     }
     uv_handle_set_data((uv_handle_t *)&sockconn->stream,sockconn);
-    servapi->context_start(sockconn->rpcCtx);
+    pxprpc_server_start(sockconn->rpcCtx);
     
 }
-static void pxprpc_serve(pxprpc_server_libuv serv){
+const char *pxprpc_libuv_server_start(pxprpc_server_libuv serv){
     struct _pxprpc_libuv *self=(struct _pxprpc_libuv *)serv;
     self->status|=status_RUNNING;
     /*XXX:Can we use user data of listener?*/
     uv_handle_set_data((uv_handle_t *)self->listener,self);
     uv_listen(self->listener,8,__uvListenConnectionCb);
+    return NULL;
 }
 
-static int pxprpc_server_delete(pxprpc_server_libuv serv){
+const char *pxprpc_libuv_server_delete(pxprpc_server_libuv serv){
     struct _pxprpc_libuv *self=(struct _pxprpc_libuv *)serv;
     struct _pxprpc_libuv_sockconn *conn2=NULL;
     //Detach and closing connection.
@@ -266,23 +261,6 @@ static int pxprpc_server_delete(pxprpc_server_libuv serv){
     return 0;
 }
 
-
-static const char *pxprpc_libuv_get_error(){
-    return errormsg;
-}
-
-static void pxprpc_libuv_clean_error(){
-    errormsg=NULL;
-}
-
-static pxprpc_libuv_api exports={
-    &pxprpc_new_libuvserver,&pxprpc_serve,&pxprpc_server_delete,&pxprpc_libuv_get_error,&pxprpc_libuv_clean_error
-};
-
-extern const char *pxprpc_libuv_query_interface(pxprpc_libuv_api **outapi){
-    *outapi=&exports;
-    return NULL;
-}
 
 
 

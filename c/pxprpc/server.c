@@ -23,7 +23,6 @@ static struct pxprpc_server_context_exports *pxprpc_server_context_exports(pxprp
 
 struct _pxprpc__ServCo{
     struct pxprpc_server_context_exports exp;
-    uint32_t status;
     uint32_t sequenceSessionMask;
     char sequenceMaskBitsCnt;
     struct pxprpc_bytes recvBuf;
@@ -32,27 +31,19 @@ struct _pxprpc__ServCo{
     pxprpc_request *pendingReqTail;
 };
 
-#define _pxprpc__ServCoIsClosed(self) (self->status&0x1)
 
-
-//Will free memory of  server_context when refCount reach 0;
+//Will free memory of "server_context" when refCount reach 0;
 static void pxprpc_refCount_add(pxprpc_server_context server_context,int32_t addend){
-    struct _pxprpc__ServCo *self=server_context;
+    struct _pxprpc__ServCo *self=(struct _pxprpc__ServCo *)server_context;
     self->refCount+=addend;
     if(self->refCount==0){
         pxprpc__free(server_context);
     }
 }
 
-static int pxprpc_closed(void *server_context){
-    return _pxprpc__ServCoIsClosed(((struct _pxprpc__ServCo*)server_context));
-}
-
-static int pxprpc_close(pxprpc_server_context server_context){
-    if(pxprpc_closed(server_context)){
-        return 0;
-    }
-    struct _pxprpc__ServCo *self=server_context;
+const char* pxprpc_server_close(pxprpc_server_context server_context){
+    struct _pxprpc__ServCo *self=(struct _pxprpc__ServCo *)server_context;
+    if(self->exp.closed)return 0;
     for(int i=0;i<self->exp.ref_pool_size;i++){
         pxprpc_ref *ref=&self->exp.ref_pool[i];
         if(ref->on_free!=NULL){
@@ -61,12 +52,12 @@ static int pxprpc_close(pxprpc_server_context server_context){
         }
         ref->object=NULL;
     }
-    self->status|=0x1;
+    self->exp.closed=1;
     self->exp.io->close(self->exp.io);
     if(self->exp.on_closed!=NULL){
         self->exp.on_closed(self->exp.cb_data);
     }
-    return 0;
+    return NULL;
 }
 
 
@@ -76,9 +67,9 @@ static void _pxprpc__ExpandRefPool(struct _pxprpc__ServCo *self){
     int start=self->exp.ref_pool_size;
     int end=self->exp.ref_pool_size+REF_POOL_EXPAND_COUNT-1;
     if(self->exp.ref_pool==NULL){
-        self->exp.ref_pool=pxprpc__malloc(sizeof(pxprpc_ref)*(end+1));
+        self->exp.ref_pool=(pxprpc_ref *)pxprpc__malloc(sizeof(pxprpc_ref)*(end+1));
     }else{
-        self->exp.ref_pool=pxprpc__realloc(self->exp.ref_pool,sizeof(pxprpc_ref)*(end+1));
+        self->exp.ref_pool=(pxprpc_ref *)pxprpc__realloc(self->exp.ref_pool,sizeof(pxprpc_ref)*(end+1));
     }
     self->exp.ref_pool_size=end+1;
     pxprpc_ref *refPool=self->exp.ref_pool;
@@ -94,8 +85,8 @@ static void _pxprpc__ExpandRefPool(struct _pxprpc__ServCo *self){
     self->exp.free_ref_entry=&refPool[start];
 }
 
-static pxprpc_ref *pxprpc_alloc_ref(pxprpc_server_context server_context,uint32_t *index){
-    struct _pxprpc__ServCo *self=server_context;
+pxprpc_ref *pxprpc_server_alloc_ref(pxprpc_server_context server_context,uint32_t *index){
+    struct _pxprpc__ServCo *self=(struct _pxprpc__ServCo *)server_context;
     pxprpc_ref *freeref=self->exp.free_ref_entry;
     if(freeref==NULL){
         _pxprpc__ExpandRefPool(self);
@@ -106,8 +97,8 @@ static pxprpc_ref *pxprpc_alloc_ref(pxprpc_server_context server_context,uint32_
     return freeref;
 }
 
-static void pxprpc_free_ref(pxprpc_server_context server_context,pxprpc_ref *ref2){
-    struct _pxprpc__ServCo *self=server_context;
+void pxprpc_server_free_ref(pxprpc_server_context server_context,pxprpc_ref *ref2){
+    struct _pxprpc__ServCo *self=(struct _pxprpc__ServCo *)server_context;
     if(ref2->on_free!=NULL){
         ref2->on_free(ref2);
         ref2->on_free=NULL;
@@ -117,8 +108,8 @@ static void pxprpc_free_ref(pxprpc_server_context server_context,pxprpc_ref *ref
     self->exp.free_ref_entry=ref2;
 }
 
-static pxprpc_ref *pxprpc_get_ref(pxprpc_server_context server_context,uint32_t index){
-    struct _pxprpc__ServCo *self=server_context;
+pxprpc_ref *pxprpc_server_get_ref(pxprpc_server_context server_context,uint32_t index){
+    struct _pxprpc__ServCo *self=(struct _pxprpc__ServCo *)server_context;
     return &self->exp.ref_pool[index];
 }
 
@@ -127,13 +118,13 @@ static void _pxprpc__ServCoStart(struct _pxprpc__ServCo *self){
     self->exp.ref_pool=NULL;
     self->pendingReqTail=NULL;
     self->sequenceSessionMask=0xffffffff;
-    self->status=0;
+    self->exp.closed=0;
     _pxprpc__step1(self);
 }
 
 
 static void _pxprpc__queueRequest(pxprpc_request *r){
-    struct _pxprpc__ServCo *self=r->server_context;
+    struct _pxprpc__ServCo *self=(struct _pxprpc__ServCo *)r->server_context;
     if(self->sequenceSessionMask==0xffffffff || self->sequenceSessionMask!=(r->session>>(32-self->sequenceMaskBitsCnt)) ){
         r->inSequence=0;
         r->next_step(r);
@@ -166,9 +157,8 @@ static void _pxprpc__finishRequest(pxprpc_request *r){
     struct _pxprpc__ServCo * ctx=(struct _pxprpc__ServCo *)r->server_context;
     if(ctx->exp.io->send_error!=NULL){
         ctx->exp.last_error=ctx->exp.io->send_error;
-        pxprpc_close(ctx);
+        pxprpc_server_close(ctx);
         return;
-        
     }
     if(r->on_finish!=NULL)r->on_finish(r);
     if(r->parameter.base!=NULL){
@@ -190,7 +180,7 @@ static void _pxprpc__finishRequest(pxprpc_request *r){
 }
 
 static pxprpc_request *_pxprpc__newRequest(pxprpc_server_context context,uint32_t session){
-    pxprpc_request *r=pxprpc__malloc(sizeof(pxprpc_request));
+    pxprpc_request *r=(pxprpc_request *)pxprpc__malloc(sizeof(pxprpc_request));
     memset(r,0,sizeof(pxprpc_request));
     r->session=session;
     r->server_context=context;
@@ -214,20 +204,20 @@ static void _pxprpc__stepCall2(pxprpc_request *r){
         r->sendBuf.next_part=NULL;
     }
     r->next_step=_pxprpc__finishRequest;
-    if(!_pxprpc__ServCoIsClosed(ctx)){
-        ctx->exp.io->send(ctx->exp.io,&r->sendBuf,(void *)r->next_step,r);
+    if(!ctx->exp.closed){
+        ctx->exp.io->send(ctx->exp.io,&r->sendBuf,(void (*)(void *))r->next_step,r);
     }
 }
 static void _pxprpc__stepCall1(pxprpc_request *r){
     struct _pxprpc__ServCo * ctx=(struct _pxprpc__ServCo *)r->server_context;
-    pxprpc_callable *callable=ctx->exp.ref_pool[r->callable_index].object;
+    pxprpc_callable *callable=(pxprpc_callable *)ctx->exp.ref_pool[r->callable_index].object;
     r->next_step=_pxprpc__stepCall2;
     callable->call(callable,r);
 }
 
 static void _pxprpc__stepFreeRef1(pxprpc_request *r){
     for(int i=0;i<r->parameter.length;i+=4){
-        pxprpc_free_ref(r->server_context,pxprpc_get_ref(r->server_context,*(uint32_t *)(r->parameter.base+i)));
+        pxprpc_server_free_ref(r->server_context,pxprpc_server_get_ref(r->server_context,*(uint32_t *)((char *)r->parameter.base+i)));
     }
     _pxprpc__stepCall2(r);
 }
@@ -238,9 +228,9 @@ static void _pxprpc__stepGetFunc1(pxprpc_request *r){
     r->temp1=-1;
     int lenOut=-1;
     if(self->exp.funcmap!=NULL){
-        pxprpc_callable *func=self->exp.funcmap->get(self->exp.funcmap,r->parameter.base,r->parameter.length);
+        pxprpc_callable *func=self->exp.funcmap->get(self->exp.funcmap,(char *)r->parameter.base,r->parameter.length);
         if(func!=NULL){
-            pxprpc_ref *ref2=pxprpc_alloc_ref(self,(uint32_t *)&r->temp1);
+            pxprpc_ref *ref2=pxprpc_server_alloc_ref(self,(uint32_t *)&r->temp1);
             ref2->object=func;
         }
     }
@@ -251,7 +241,7 @@ static void _pxprpc__stepGetFunc1(pxprpc_request *r){
 
 
 static void _pxprpc__stepClose1(pxprpc_request *r){
-    pxprpc_close(r->server_context);
+    pxprpc_server_close(r->server_context);
 }
 
 
@@ -291,12 +281,10 @@ static void _pxprpc__stepSequence1(pxprpc_request *r){
 
 
 static void _pxprpc__step2(struct _pxprpc__ServCo *self){
-    if(_pxprpc__ServCoIsClosed(self)){
-        return;
-    }
+    if(self->exp.closed)return;
     self->exp.last_error=self->exp.io->receive_error;
     if(self->exp.last_error!=NULL){
-        pxprpc_close(self);
+        pxprpc_server_close(self);
         return;
     }
     pxprpc_request *req=_pxprpc__newRequest(self,*((uint32_t *)(self->recvBuf.base)));
@@ -333,58 +321,46 @@ static void _pxprpc__step2(struct _pxprpc__ServCo *self){
 }
 
 static void _pxprpc__step1(struct _pxprpc__ServCo *self){
-    if(_pxprpc__ServCoIsClosed(self)){
-        return;
-    }
-    self->exp.io->receive(self->exp.io,&self->recvBuf,(void *)_pxprpc__step2,self);
+    if(self->exp.closed)return;
+    self->exp.io->receive(self->exp.io,&self->recvBuf,(void (*)(void *))_pxprpc__step2,self);
 }
 
 
 
-static int pxprpc_new_server_context(pxprpc_server_context *server_context,struct pxprpc_abstract_io *io1){
+const char *pxprpc_server_new(pxprpc_server_context *server_context,struct pxprpc_abstract_io *io1){
     struct _pxprpc__ServCo *ctx=(struct _pxprpc__ServCo *)pxprpc__malloc(sizeof(struct _pxprpc__ServCo));
     memset(ctx,0,sizeof(struct _pxprpc__ServCo));
     ctx->exp.io=io1;
     *server_context=ctx;
     ctx->refCount=1;
-    return 0;
+    return NULL;
 }
 
-static int pxprpc_start_serve(pxprpc_server_context server_context){
+const char* pxprpc_server_start(pxprpc_server_context server_context){
     struct _pxprpc__ServCo *ctx=(struct _pxprpc__ServCo *)server_context;
     _pxprpc__ServCoStart(ctx);
     return 0;
 }
 
-static int pxprpc_free_context(pxprpc_server_context *server_context){
+const char* pxprpc_server_delete(pxprpc_server_context *server_context){
     if(*server_context==NULL)return 0;
     struct _pxprpc__ServCo *ctx=(struct _pxprpc__ServCo *)*server_context;
-    pxprpc_close(ctx);
+    pxprpc_server_close(ctx);
     pxprpc_refCount_add(*server_context,-1);
     *server_context=NULL;
     return 0;
 }
 
-static struct pxprpc_server_context_exports *pxprpc_server_context_exports(pxprpc_server_context context){
-    struct _pxprpc__ServCo *self=context;
+struct pxprpc_server_context_exports *pxprpc_server_get_exports(pxprpc_server_context context){
+    struct _pxprpc__ServCo *self=(struct _pxprpc__ServCo *)context;
     return &self->exp;
 }
 
 
-static void pxprpc_server_context_exports_apply(pxprpc_server_context context){
-}
-
-
-static pxprpc_server_api exports={
-    &pxprpc_new_server_context,&pxprpc_start_serve,&pxprpc_closed,&pxprpc_close,&pxprpc_free_context,
-    &pxprpc_alloc_ref,&pxprpc_free_ref,&pxprpc_get_ref,&pxprpc_server_context_exports,
-    &pxprpc_server_context_exports_apply
-};
-
-extern const char *pxprpc_server_query_interface(pxprpc_server_api **outapi){
-    *outapi=&exports;
+const char *pxprpc_server_exports_apply(pxprpc_server_context context){
     return NULL;
 }
+
 
 
 #endif
