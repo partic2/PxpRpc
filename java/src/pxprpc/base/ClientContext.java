@@ -3,12 +3,15 @@ package pxprpc.base;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 
 
 public class ClientContext {
-    public static interface Ret{
-        void cb(ByteBuffer result, RemoteError exc);
+    public static abstract class Ret{
+        public abstract void cb(ByteBuffer result, RemoteError exc);
+        //internal Use
+        public boolean pollCall=false;
     }
     public boolean running=false;
     protected ConcurrentHashMap<Integer,Ret> waitingSession=new ConcurrentHashMap<Integer,Ret>();
@@ -40,11 +43,13 @@ public class ClientContext {
                         if(isErr){
                             byte[] errMsg=new byte[msgBody[0].remaining()];
                             msgBody[0].get(errMsg);
+                            that.waitingSession.remove(sid);
                             r.cb(null,new RemoteError(new String(errMsg,ServerContext.charset)));
-                            that.waitingSession.remove(sid);
                         }else{
+                            if(!r.pollCall){
+                                that.waitingSession.remove(sid);
+                            }
                             r.cb(msgBody[0],null);
-                            that.waitingSession.remove(sid);
                         }
                     }
                 } catch (IOException e) {
@@ -55,6 +60,7 @@ public class ClientContext {
     }
 
     public void call(int callableIndex,ByteBuffer parameter,int sid,Ret asyncResult) throws IOException {
+        asyncResult.pollCall=false;
         ByteBuffer header=ByteBuffer.allocate(8);
         header.order(ByteOrder.LITTLE_ENDIAN);
         header.putInt(sid).putInt(callableIndex);
@@ -114,12 +120,14 @@ public class ClientContext {
         r.get(servInfo);
         return new String(servInfo,ServerContext.charset);
     }
-
-    public void sequence(int mask,int maskCnt,int sid) throws IOException, InterruptedException {
-        ByteBuffer p = ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN);
-        p.putInt(maskCnt);
-        Utils.flip(p);
-        this.callBlock(-5,p,sid);
+    public void poll(int callableIndex,ByteBuffer parameter,int sid,Ret asyncResult) throws IOException {
+        ByteBuffer header=ByteBuffer.allocate(12);
+        header.order(ByteOrder.LITTLE_ENDIAN);
+        header.putInt(sid).putInt(-5).putInt(callableIndex);
+        Utils.flip(header);
+        asyncResult.pollCall=true;
+        this.waitingSession.put(sid,asyncResult);
+        this.io.send(new ByteBuffer[]{header,parameter});
     }
 
 }

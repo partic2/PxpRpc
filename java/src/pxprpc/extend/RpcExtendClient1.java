@@ -3,7 +3,6 @@ package pxprpc.extend;
 import pxprpc.base.ClientContext;
 
 import java.io.IOException;
-import java.util.HashSet;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class RpcExtendClient1 {
@@ -12,15 +11,15 @@ public class RpcExtendClient1 {
     protected int __sidStart = 1;
     protected int __sidEnd = 0xffff;
     protected int __nextSid=__sidStart;
-    public ClientContext conn;
+    public ClientContext baseClient;
 
     public RpcExtendClient1(ClientContext conn) {
-        this.conn=conn;
+        this.baseClient =conn;
     }
     public String serverName;
     public RpcExtendClient1 init() throws IOException, InterruptedException {
-        this.conn.run();
-        for(String item :this.conn.getInfo(0x100).split("\n")){
+        this.baseClient.run();
+        for(String item :this.baseClient.getInfo(0x100).split("\n")){
             if(item.indexOf(':')>=0){
                 String[] kv=item.split(":");
                 if(kv[0].equals("server name")){
@@ -59,7 +58,7 @@ public class RpcExtendClient1 {
     public RpcExtendClientCallable getFunc(String name) throws IOException, InterruptedException {
         int sid=this.allocSid();
         try{
-            int index=this.conn.getFunc(name,sid);
+            int index=this.baseClient.getFunc(name,sid);
             if(index==-1)return null;
             return new RpcExtendClientCallable(this, index);
         }finally{
@@ -67,6 +66,6 @@ public class RpcExtendClient1 {
         }
     }
     public void close() throws IOException {
-        this.conn.close(100);
+        this.baseClient.close(100);
     }
 }

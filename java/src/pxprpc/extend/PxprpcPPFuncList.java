@@ -25,7 +25,7 @@ public class PxprpcPPFuncList {
 
     public PxpCallable io_set_auto_close=new PxpCallable() {
         @Override
-        public void call(PxpRequest req) throws IOException {
+        public void call(PxpRequest req) {
             Serializer2 ser = new Serializer2().prepareUnserializing(req.parameter);
             int index = ser.getInt();
             PxpRef ref = req.context.getRef(index);

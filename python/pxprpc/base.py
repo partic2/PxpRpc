@@ -167,9 +167,20 @@ class ClientContext(object):
     async def getInfo(self,sid:int=0x100):
         result=await self.call(-4,bytes(),sid)
         return result.decode('utf-8')
-
-    async def sequence(self,mask:int,maskCnt:int=24,sid:int=0x100):
-        await self.call(-5,(mask|maskCnt).to_bytes(4,'little',signed=False),sid)
+    
+    async def poll(self,callableIndex:int,parameter:bytes,sid:int=0x100):
+        respFut=asyncio.Future()
+        self.__waitingSession[sid]=respFut
+        await self.io1.send(struct.pack('Iii',sid,-5,callableIndex)+parameter)
+        while self.running:
+            sid2,result=await respFut
+            if sid==sid2:
+                respFut=asyncio.Future()
+                self.__waitingSession[sid]=respFut
+                yield result
+            else:
+                raise RpcRemoteError(result.decode('utf-8'))
+    
 
 
 
@@ -182,8 +193,6 @@ class PxpRequest(object):
     result:bytes=bytes()
     callableIndex:int=-1
     rejected:Optional[Exception]=None
-    nextPending:Optional['PxpRequest']=None
-    inSequence:bool=False
     
 class PxpCallable():
     async def call(self,req:PxpRequest):
@@ -213,9 +222,6 @@ class ServerContext(object):
         self.freeRefEntry:Optional[PxpRef]=None
         self.funcMap=DefaultFuncMap
         self.running=False
-        self.pendingRequests:Dict[int,PxpRequest]
-        self.sequenceSession:int=0xffffffff
-        self.sequenceMaskBitsCnt:int=0
 
 
     def expandRefPools(self):
@@ -251,32 +257,6 @@ class ServerContext(object):
 
     def backend1(self,io1:AbstractIo):
         self.io1=io1
-
-    def queueRequest(self,r:PxpRequest):
-        if self.sequenceSession==0xffffffff or (r.session>>(32-self.sequenceMaskBitsCnt)!=self.sequenceSession):
-            asyncio.create_task(self.processRequest(r))
-            return
-        
-        r.inSequence=True
-        r2=self.pendingRequests.get(r.session,None)
-        if r2==None:
-            self.pendingRequests[r.session]=r
-            asyncio.create_task(self.processRequest(r))
-        else:
-            while r2.nextPending!=None:
-                r2=r2.nextPending
-            r2.nextPending=r
-        
-    def finishRequest(self,r:PxpRequest):
-        if r.inSequence:
-            if r.nextPending!=None:
-                self.pendingRequests[r.session]=r.nextPending
-                return r.nextPending
-            else:
-                del self.pendingRequests[r.session]
-                return None
-        else:
-            return None
         
 
     async def getFunc(self,req:PxpRequest):
@@ -307,16 +287,6 @@ class ServerContext(object):
         req.result=('server name:pxprpc for python3\n'+
                                 'version:2.0\n').encode('utf-8')
 
-    async def sequence(self,req:PxpRequest):
-        self.sequenceSession=int.from_bytes(req.parameter,'little')
-        if self.sequenceSession==0xffffffff:
-            for r2 in self.pendingRequests.values():
-                r2.nextPending=None
-            self.pendingRequests.clear()
-        else:
-            self.sequenceMaskBitsCnt=self.sequenceSession&0xff
-            self.sequenceSession=self.sequenceSession>>(32-self.sequenceMaskBitsCnt)
-        
 
     async def freeRefHandler(self,req:PxpRequest):
         bytesCnt=len(req.parameter)>>2
@@ -325,24 +295,23 @@ class ServerContext(object):
 
     async def processRequest(self,req:PxpRequest):
         try:
-            handler=[None,self.getFunc,self.freeRefHandler,self.closeHandler,self.getInfo,self.sequence]
+            handler=[None,self.getFunc,self.freeRefHandler,self.closeHandler,self.getInfo]
             r2:Optional[PxpRequest]=req
-            while r2!=None:
-                log1.debug('processing:%s,%s',req.session,req.callableIndex)
-                if r2.callableIndex>=0:
-                    await cast(PxpCallable,self.getRef(req.callableIndex).object).call(req)
-                else:
-                    await handler[-r2.callableIndex](r2)
-                #abort on close
-                if r2.callableIndex==-3:
-                    return
-                if req.rejected!=None:
-                    await self.io1.send((req.session^0x80000000).to_bytes(4,'little')+str(req.rejected).encode('utf-8'))
-                else:
-                    await self.io1.send(req.session.to_bytes(4,'little')+req.result)
-                r2=self.finishRequest(r2)
+            log1.debug('processing:%s,%s',req.session,req.callableIndex)
+            if r2.callableIndex>=0:
+                await cast(PxpCallable,self.getRef(req.callableIndex).object).call(req)
+            else:
+                await handler[-r2.callableIndex](r2)
+            #abort on close
+            if r2.callableIndex==-3:
+                return
+            if req.rejected!=None:
+                await self.io1.send((req.session^0x80000000).to_bytes(4,'little')+str(req.rejected).encode('utf-8'))
+            else:
+                await self.io1.send(req.session.to_bytes(4,'little')+req.result)
+            r2=None
         except Exception:
-            pass
+            self.close()
         
 
     async def serve(self):
@@ -356,7 +325,18 @@ class ServerContext(object):
                 req.session,req.callableIndex=struct.unpack('<Ii',buf[:8])
                 log1.debug('get session:%s',hex(req.session))
                 req.parameter=buf[8:]
-                self.queueRequest(req)
+                asyncio.create_task(self.processRequest(req))
         finally:
             self.close()
             
+    async def poll(self,r:PxpRequest):
+        r.callableIndex=struct.unpack('<i',r.parameter[:4])[0]
+        r.parameter=r.parameter[4:]
+        while self.running:
+            r.rejected=None;
+            r.result=b'';
+            await self.processRequest(r);
+            if r.rejected!=None:
+               break;
+        
+    

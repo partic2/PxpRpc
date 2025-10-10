@@ -88,9 +88,9 @@ typedef struct _pxprpc_request_s{
     int32_t callable_index;
     pxprpc_server_context server_context;
     /* parameter hold the parameter byte buffer. If callable want to own the buffer and prevent pxprpc freeing the buffer,
-     set parameter.base=NULL */
+       set parameter.base=NULL */
     struct pxprpc_bytes parameter;
-    /* callable can set the value to free resource(like .result member etc.) on request finishing */
+    /* callable can set this value to free resource(like .result member etc.) on request finishing */
     void (*on_finish)(struct _pxprpc_request_s *self);
     struct pxprpc_buffer_part result;
     /* if error occured */
@@ -100,11 +100,8 @@ typedef struct _pxprpc_request_s{
     /* "next_step"  should be called by callable when task finished. */
     void (*next_step)(struct _pxprpc_request_s *r);
     /* internal memeber for pxprpc */
-    struct _pxprpc_request_s *nextReq;
-    struct _pxprpc_request_s *lastReq;
     struct pxprpc_buffer_part sendBuf;
-    int32_t temp1;
-    char inSequence;
+    int32_t getFuncRes;
 } pxprpc_request;
 
 

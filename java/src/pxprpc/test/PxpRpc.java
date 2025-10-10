@@ -84,7 +84,8 @@ public class PxpRpc {
 			};
 		}
 	}
-	public static class TickEvent extends EventDispatcher {
+	public static class TickEvent extends EventDispatcher implements Closeable {
+		boolean closed=false;
 		public TickEvent() {
 			setEventType(String.class);
 		}
@@ -178,15 +179,26 @@ public class PxpRpc {
 			RpcExtendClientCallable wait1Sec=client1.getFunc("test1.wait1Sec");
 			wait1Sec.typedecl("->s");
 			System.out.println("print tick after 1 seconds");
-			System.out.println(wait1Sec.callBlock()[0]);
+			System.out.println("wait done"+wait1Sec.callBlock()[0]);
 			RpcExtendClientCallable getOnTick=client1.getFunc("test1.onTick");
 			getOnTick.typedecl("->o");
 			RpcExtendClientCallable onTick = ((RpcExtendClientObject) getOnTick.callBlock()[0]).asCallable();
 			onTick.typedecl("->s");
 			System.out.println("tick 3 times");
-			for(int i=0;i<3;i++){
-				System.out.println(onTick.callBlock()[0]);
-			}
+			onTick.poll(new RpcExtendClientCallable.Ret() {
+				@Override
+				public void cb(Object[] r, RemoteError err) {
+					if(err!=null){
+						err.printStackTrace();
+						System.out.println("poll stoped.");
+					}else {
+						System.out.println(r[0]);
+					}
+				}
+			});
+			Thread.sleep(3500);
+			onTick.free();
+			Thread.sleep(3000);
 
 			try{
 				RpcExtendClientCallable raiseError1 = client1.getFunc("test1.raiseError1").typedecl("->");
@@ -194,7 +206,6 @@ public class PxpRpc {
 			}catch(RemoteError e){
 				e.printStackTrace();
 			}
-
 		} catch (IOException e) {
 			e.printStackTrace();
 		} catch (InterruptedException e) {

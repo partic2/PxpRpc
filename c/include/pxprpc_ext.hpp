@@ -407,8 +407,12 @@ class NamedFunctionPPImpl1:public NamedFunctionPP{
             resolve(ser);
         }
         void resolve(PxpObject *obj){
-            int32_t refid=this->req->context().allocRef(obj);
-            resolve(refid);
+            if(obj==nullptr){
+                resolve((int32_t)-1);
+            }else{
+                int32_t refid=this->req->context().allocRef(obj);
+                resolve(refid);
+            }
         }
         void reject(const std::string &errorMessage){
             auto len=errorMessage.length();

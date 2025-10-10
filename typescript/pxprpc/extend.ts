@@ -58,8 +58,7 @@ s  string(bytes will be decode to string)
         [this.tParam,this.tResult]=decl.split('->');
         return this;
     }
-
-    public async call(...args:any[]) {
+    protected serArgs(args:any[]){
         let buf:Uint8Array[]=[]
         if(this.tParam==='b'){
             let abuf=args[0] as Uint8Array
@@ -72,28 +71,45 @@ s  string(bytes will be decode to string)
             let serbuf=ser.build()
             buf=[serbuf];
         }
+        return buf;
+    }
+    protected unserRet(resp:Uint8Array){
+        if(this.tResult==='b'){
+            return resp;
+        }else{
+            let ser=new Serializer().prepareUnserializing(resp);
+            let rets=new TableSerializer().
+                bindContext(null,this.client).bindSerializer(ser).setColumnInfo(this.tResult,null).
+                getRowsData(1)[0]
+            if(this.tResult.length===1){
+                return rets[0];
+            }else if(this.tResult.length===0){
+                return null;
+            }else{
+                return rets;
+            }
+        }
+    }
+    public async call(...args:any[]) {
+        let buf=this.serArgs(args);
         let sid=this.client.allocSid();
         try{
             this.client.throwIfNotRunning();
             let resp=await this.client.baseClient.call(this.value!,buf,sid);
-            if(this.tResult==='b'){
-                return resp;
-            }else{
-                let ser=new Serializer().prepareUnserializing(resp);
-                let rets=new TableSerializer().
-                    bindContext(null,this.client).bindSerializer(ser).setColumnInfo(this.tResult,null).
-                    getRowsData(1)[0]
-                if(this.tResult.length===1){
-                    return rets[0];
-                }else if(this.tResult.length===0){
-                    return null;
-                }else{
-                    return rets;
-                }
-            }
+            return this.unserRet(resp);
         }finally{
             this.client.freeSid(sid);
         }
+    }
+
+    public async poll(onResult:(result:any)=>void,...args:any[]){
+        let buf=this.serArgs(args);
+        let sid=this.client.allocSid();
+        this.client.throwIfNotRunning();
+        this.client.baseClient.poll(this.value!,buf,sid,(err,result)=>{
+            if(err!==null)this.client.freeSid(sid);
+            onResult(this.unserRet(result!))
+        });
     }
 }
 
@@ -193,7 +209,7 @@ export class RpcExtendServerCallable implements PxpCallable{
     }
     public readParameter (req: PxpRequest){
         let buf=req.parameter!
-        let param=[];
+        let param:Array<Uint8Array>=[];
         if(this.tParam==='b'){
             param=[new Uint8Array(buf.buffer,buf.byteOffset,buf.byteLength)];
         }else{
@@ -506,7 +522,7 @@ export class TableSerializer {
         let rowCount=val.length;
         let colCount=this.columnName!.length;
         for(let t1=0;t1<rowCount;t1++){
-            let row=[];
+            let row:Array<string>=[];
             for(let t2=0;t2<colCount;t2++){
                 row.push(val[t1][this.columnName![t2]]);
             }

@@ -33,9 +33,12 @@ int vectorIndexOf(std::vector<E> vec,E elem){
     return std::distance(vec.begin(),found);
 }
 #include <pxprpc_ext.hpp>
+
+int testPollCount=0;
+
 void defFunc(){
     defaultFuncMap.add((new NamedFunctionPPImpl1())->init("printString",
-    [](auto *para,auto *ret)->void {
+    [](NamedFunctionPPImpl1::Parameter* para,NamedFunctionPPImpl1::AsyncReturn* ret)->void {
         std::cout<<para->nextString()<<std::endl;
         ret->resolve("server:hello client");
     })).add((new NamedFunctionPPImpl1())->init("printSerilizedArgs",
@@ -49,7 +52,7 @@ void defFunc(){
         std::cout<<i<<","<<l<<","<<f<<","<<d<<","<<s<<","<<b<<std::endl;
         ret->resolve();
     })).add((new NamedFunctionPPImpl1())->init("printSerilizedTable",
-    [](auto para,auto ret)->void {
+    [](NamedFunctionPPImpl1::Parameter *para,NamedFunctionPPImpl1::AsyncReturn* ret)->void {
         TableSerializer *tabser=new TableSerializer();
         tabser->bindSerializer(para->asSerializer())->load();
         auto colName=tabser->getColumnsName();
@@ -62,24 +65,22 @@ void defFunc(){
         }
         delete tabser;
         
-        
         tabser=new TableSerializer();
         tabser->setColumnInfo("slc",std::vector<std::string>({"name","filesize","isdir"}));
-        std::string names[2]={"myfile.txt","mydir"};
-        int64_t sizes[2]={123,0};
-        uint8_t isdirs[2]={0,1};
-        {
-            void *row[3]={&names[0],&sizes[0],&isdirs[0]};
-            tabser->addRow(row);
-        }{
-            void *row[3]={&names[0],&sizes[1],&isdirs[1]};
-            tabser->addRow(row);
-        }
+        tabser->addValue("myfile.txt")->addValue(123)->addValue("myfile.txt");
+        tabser->addValue("mydir")->addValue(0)->addValue(1);
         ret->resolve(tabser->buildSer());
         delete tabser;
     })).add((new NamedFunctionPPImpl1())->init("testDummyError",
-    [](auto para,auto ret)->void{
+    [](NamedFunctionPPImpl1::Parameter* para,NamedFunctionPPImpl1::AsyncReturn* ret)->void{
         ret->reject("dummy error");
+    })).add((new NamedFunctionPPImpl1())->init("testPoll",
+    [](NamedFunctionPPImpl1::Parameter* para,NamedFunctionPPImpl1::AsyncReturn* ret)->void {
+        if(testPollCount<4){
+            testPollCount++;
+        }else{
+            ret->reject("dummy error");
+        }
     }));
 
 }

@@ -1,7 +1,5 @@
 package pxprpc.extend;
 
-import java.io.IOException;
-
 public class RpcExtendClientObject {
     public RpcExtendClient1 client;
     public int value;
@@ -14,7 +12,7 @@ public class RpcExtendClientObject {
             int sid=this.client.allocSid();
             try{
                 try {
-                    this.client.conn.freeRef(new int[]{this.value},sid);
+                    this.client.baseClient.freeRef(new int[]{this.value},sid);
                 } catch (Exception e) {
                 }
             }finally{

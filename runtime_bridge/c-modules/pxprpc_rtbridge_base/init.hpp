@@ -177,7 +177,12 @@ namespace pxprpc_rtbridge_base{
             })).add((new pxprpc::NamedFunctionPPImpl1())->init("pxprpc_pipe_pp.connect",
             [](auto para,auto ret)->void {
                 auto servName=para->nextString();
-                ret->resolve(new PxpConnection(pxprpc_pipe_connect(servName.c_str())));
+                auto conn=pxprpc_pipe_connect(servName.c_str());
+                if(conn==nullptr){
+                    ret->resolve(static_cast<PxpObject *>(nullptr));
+                }else{
+                    ret->resolve(new PxpConnection(conn));
+                }
             })).add((new pxprpc::NamedFunctionPPImpl1())->init("pxprpc_pp.io_to_raw_addr",
             [](auto para,auto ret)->void {
                 auto ioaddr=reinterpret_cast<int64_t>(static_cast<PxpConnection *>((para->nextObject()))->io);

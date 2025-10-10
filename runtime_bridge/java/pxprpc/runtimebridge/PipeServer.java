@@ -2,13 +2,16 @@ package pxprpc.runtimebridge;
 
 import pxprpc.base.AbstractIo;
 import pxprpc.base.ClientContext;
+import pxprpc.base.RemoteError;
 import pxprpc.extend.RpcExtendClient1;
 import pxprpc.extend.RpcExtendClientCallable;
 import pxprpc.extend.RpcExtendClientObject;
+import xplatj.javaplat.partic2.util.OneArgRunnable;
 
+import java.io.Closeable;
 import java.io.IOException;
 
-public class PipeServer {
+public class PipeServer implements Closeable {
     public static RpcExtendClient1 client;
     public static RpcExtendClientCallable fServe;
     public static RpcExtendClientCallable fAccept;
@@ -64,6 +67,34 @@ public class PipeServer {
             this.conn.free();
         }
     }
+    //Poll mode, can only call once.
+    public void accept(final OneArgRunnable<AbstractIo> onNewConnection){
+        try {
+            fAccept.poll(new RpcExtendClientCallable.Ret() {
+                @Override
+                public void cb(final Object[] r, final RemoteError err) {
+                    if(err!=null){
+                        return;
+                    }
+                    new Thread(new Runnable() {
+                        @Override
+                        public void run() {
+                            IoA io1 = new IoA();
+                            io1.conn=(RpcExtendClientObject)r[0];
+                            io1.prepare();
+                            if(io1.nativeId==0){
+                                return;
+                            }
+                            onNewConnection.run(io1);
+                        }
+                    }).start();
+                }
+            },rserv);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+    //once call mode
     public AbstractIo acceptBlock() {
         ensureInit();
         try {
@@ -81,7 +112,7 @@ public class PipeServer {
             throw new RuntimeException(e);
         }
     }
-    public void stop(){
+    public void close(){
         ensureInit();
         rserv.free();
     }

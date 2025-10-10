@@ -157,7 +157,7 @@ export class Client{
         hdr2.setInt32(4,callableIndex,true)
         let respFut=new Promise<[number,Uint8Array]>((resolve,reject)=>{
             this.waitingSessionCb[sid]=(err,resp)=>{
-                if(err==null){resolve(resp!);}else{reject(err)};
+                if(err===null){resolve(resp!);}else{reject(err)};
             }
         });
         await this.io1.send([hdr,...parameter])
@@ -191,10 +191,24 @@ export class Client{
         let result=await this.call(-4,[],sid);
         return new TextDecoder().decode(result);
     }
-    public async sequence(mask:number,maskCnt:number=24,sid:number=0x100){
-        let hdr=new Uint8Array(4);
-        new DataView(hdr.buffer).setUint32(0,mask|maskCnt,true);
-        return await this.call(-5,[hdr],sid);
+    public poll(callableIndex:number,parameter:Uint8Array[],sid:number=0x100,
+            onResult:(err:Error|null,result?:Uint8Array)=>void){
+        let hdr=new Uint8Array(12);
+        let hdr2=new DataView(hdr.buffer);
+        hdr2.setUint32(0,sid,true);
+        hdr2.setInt32(4,-5,true);
+        hdr2.setInt32(8,callableIndex,true);
+        let cb=(err: Error | null, result?: [number, Uint8Array])=>{
+            if(err===null){
+                if(sid!=result![0]){
+                    onResult(new PxprpcRemoteError(new TextDecoder().decode(result![1])))
+                }else{
+                    this.waitingSessionCb[sid]=cb;
+                    onResult(null,result![1]);
+                }
+            }else{onResult(err)};
+        }
+        this.io1.send([hdr,...parameter]).catch((err)=>onResult(err));
     }
 }
 
@@ -203,8 +217,6 @@ export class PxpRequest{
     public parameter?:Uint8Array;
     public result:Uint8Array[]=[];
     public rejected:Error|null=null;
-    public nextPending:PxpRequest|null=null;
-    public inSequence=false;
     public constructor(public context:Server,public session:number){}
 }
 
@@ -223,45 +235,11 @@ let RefPoolExpandCount=256;
 
 export class Server{
     public refPool=new Array<PxpRef>();
-    public sequenceSession=0xffffffff;
-    public sequenceMaskBitsCnt=0;
     public freeRefEntry:PxpRef|null=null;
     public constructor(public io1:Io){
     }
     public running=false;
-    
-    pendingRequests:{[sid:number]:PxpRequest}={};
-    public queueRequest(r:PxpRequest){
-        if(this.sequenceSession===0xffffffff || (r.session>>>(32-this.sequenceMaskBitsCnt)!=this.sequenceSession)){
-            this.processRequest(r);
-            return;
-        }
-        r.inSequence=true;
-        let r2=this.pendingRequests[r.session];
-        if(r2==undefined){
-            this.pendingRequests[r.session]=r;
-            this.processRequest(r);
-        }else{
-            while(r2.nextPending!=null){
-                r2=r2.nextPending;
-            }
-            r2.nextPending=r;
-        }
-    }
-    //return next request to process
-    public finishRequest(r:PxpRequest){
-        if(r.inSequence){
-            if(r.nextPending!=null){
-                this.pendingRequests[r.session]=r.nextPending;
-                return r.nextPending;
-            }else{
-                delete this.pendingRequests[r.session];
-                return null;
-            }
-        }else{
-            return null;
-        }
-    }
+
     public expandRefPools(){
         let start=this.refPool.length;
         let end=this.refPool.length+RefPoolExpandCount-1;
@@ -303,28 +281,26 @@ export class Server{
     public async closeHandler(r:PxpRequest){
         this.close();
     }
-    protected builtInCallable=[null,this.getFunc,this.freeRefHandler,this.closeHandler,this.getInfo,this.sequence]
-    public async processRequest(r:PxpRequest|null) {
+    protected builtInCallable=[null,this.getFunc,this.freeRefHandler,this.closeHandler,this.getInfo]
+    public async processRequest(r:PxpRequest) {
         try{
-            while(r!=null){
-                if(r.callableIndex>=0){
-                    await (this.getRef(r.callableIndex).object as PxpCallable).call(r);
-                }else{
-                    await this.builtInCallable[-r.callableIndex]!.call(this,r);
-                }
-                //abort if closed
-                if(r.callableIndex===-3)return;
-                let sid=new DataView(new ArrayBuffer(4));
-                if(r.rejected===null){
-                    sid.setUint32(0,r.session,true);
-                    await this.io1.send([new Uint8Array(sid.buffer),...r.result])
-                }else{
-                    sid.setUint32(0,r.session^0x80000000,true);
-                    await this.io1.send([new Uint8Array(sid.buffer),new TextEncoder().encode(String(r.rejected))])
-                }
-                r=this.finishRequest(r);
+            if(r.callableIndex>=0){
+                await (this.getRef(r.callableIndex).object as PxpCallable).call(r);
+            }else{
+                await this.builtInCallable[-r.callableIndex]!.call(this,r);
+            }
+            //abort if closed
+            if(r.callableIndex===-3)return;
+            let sid=new DataView(new ArrayBuffer(4));
+            if(r.rejected===null){
+                sid.setUint32(0,r.session,true);
+                await this.io1.send([new Uint8Array(sid.buffer),...r.result])
+            }else{
+                sid.setUint32(0,r.session^0x80000000,true);
+                await this.io1.send([new Uint8Array(sid.buffer),new TextEncoder().encode(String(r.rejected))])
             }
         }catch(e){
+            this.close();
             // mute all error here.
         }
     }
@@ -338,7 +314,7 @@ export class Server{
                 let r=new PxpRequest(this,packet.getUint32(0,true));
                 r.callableIndex=packet.getInt32(4,true);
                 r.parameter=new Uint8Array(buf.buffer,buf.byteOffset+8,buf.byteLength-8);
-                this.queueRequest(r);
+                this.processRequest(r);
             }
         }finally{
             this.close()
@@ -364,18 +340,15 @@ export class Server{
             "server name:pxprpc for typescript\n"+
         "version:2.0\n")]
 	}
-    public async sequence(r:PxpRequest){
-        this.sequenceSession=new DataView(r.parameter!.buffer,r.parameter!.byteOffset,r.parameter!.byteLength).getUint32(0,true);
-        if(this.sequenceSession===0xffffffff){
-            //discard pending request. execute immdiately mode, default value
-            for(let i2 in this.pendingRequests){
-                let r2=this.pendingRequests[i2];
-                r2.nextPending=null;
-            }
-            this.pendingRequests=this.pendingRequests;
-        }else{
-            this.sequenceMaskBitsCnt=this.sequenceSession&0xff;
-            this.sequenceSession=this.sequenceSession>>>(32-this.sequenceMaskBitsCnt);
+    public async poll(r:PxpRequest){
+        let view=new DataView(r.parameter!.buffer,r.parameter!.byteOffset,r.parameter!.byteLength);
+        r.callableIndex=view.getInt32(0,true);
+        r.parameter=new Uint8Array(r.parameter!.buffer,r.parameter!.byteOffset+4,r.parameter!.byteLength-4);
+        while(this.running){
+            r.rejected=null;
+            r.result=[];
+            await this.processRequest(r);
+            if(r.rejected!==null)break;
         }
     }
     public close(){

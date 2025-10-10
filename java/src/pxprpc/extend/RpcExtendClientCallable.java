@@ -35,7 +35,7 @@ public class RpcExtendClientCallable extends RpcExtendClientObject {
             buf = ser.build();
         }
         final int sid=this.client.allocSid();
-        this.client.conn.call(this.value, buf, sid, new ClientContext.Ret() {
+        this.client.baseClient.call(this.value, buf, sid, new ClientContext.Ret() {
             @Override
             public void cb(ByteBuffer result2, RemoteError err) {
                 RpcExtendClientCallable.this.client.freeSid(sid);
@@ -67,7 +67,7 @@ public class RpcExtendClientCallable extends RpcExtendClientObject {
         }
         int sid=this.client.allocSid();
         try{
-            ByteBuffer result2 = this.client.conn.callBlock(this.value,buf,sid);
+            ByteBuffer result2 = this.client.baseClient.callBlock(this.value,buf,sid);
             if(tResult.length==1 && tResult[0]=='b'){
                 return new Object[]{result2};
             }
@@ -79,5 +79,36 @@ public class RpcExtendClientCallable extends RpcExtendClientObject {
         }finally {
             this.client.freeSid(sid);
         }
+    }
+    public void poll(final Ret result,Object ...parameters) throws IOException {
+        ByteBuffer buf;
+        if(tParam.length==1 && tParam[0]=='b'){
+            buf=(ByteBuffer)parameters[0];
+        }else{
+            Serializer2 ser = new Serializer2().prepareSerializing(32);
+            new TableSerializer().bindSerializer(ser)
+                    .bindContext(null,this.client).setColumnInfo2(tParam,null)
+                    .putRowsData(Arrays.asList(new Object[][]{parameters}));
+            buf = ser.build();
+        }
+        final int sid=this.client.allocSid();
+        this.client.baseClient.poll(this.value, buf, sid, new ClientContext.Ret() {
+            @Override
+            public void cb(ByteBuffer result2, RemoteError err) {
+                if(err!=null){
+                    RpcExtendClientCallable.this.client.freeSid(sid);
+                    result.cb(null,err);
+                    return;
+                }
+                if(tResult.length==1 && tResult[0]=='b'){
+                    result.cb(new Object[]{result2},null);
+                }
+                Serializer2 ser = new Serializer2().prepareUnserializing(result2);
+                Object[] result3 = new TableSerializer().bindSerializer(ser)
+                        .bindContext(null, RpcExtendClientCallable.this.client).setColumnInfo2(tResult, null)
+                        .getRowsData(1).get(0);
+                result.cb(result3,null);
+            }
+        });
     }
 }

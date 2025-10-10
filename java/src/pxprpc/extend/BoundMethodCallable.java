@@ -37,7 +37,7 @@ public class BoundMethodCallable extends MethodCallable{
 		}
 	}
 
-	public void call(final PxpRequest req) throws IOException {
+	public void call(final PxpRequest req) {
 		ServerContext ctx = req.context;
 		try {
 			Object[] args=readParameter(req);
