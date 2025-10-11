@@ -43,6 +43,19 @@ export async function testAsClient(client2?:RpcExtendClient1){
     }catch(e){
         console.log(e)
     }
+    let testPollCall=await client2.getFunc('test1.testPollCall');
+    if(testPollCall!=null){
+        console.info('poll test,tick 5 times');
+        testPollCall.typedecl('->o');
+        let tickEmitter=await ((await testPollCall.call()) as RpcExtendClientObject).asCallable();
+        tickEmitter.typedecl('s->s');
+        tickEmitter.poll((err,msg:string)=>{
+            console.info('poll call message ',msg,err);
+        },'pxprpc-msg');
+        await new Promise((resolve)=>setTimeout(()=>{resolve('tick')},5000))
+    }else{
+        console.info('test1.testPollCall not found, skipped.');
+    }
     let autoCloseable=(await client2.getFunc('test1.autoCloseable'))!.typedecl('->o');
     await autoCloseable.call();
     await client2.close()
@@ -54,7 +67,7 @@ export async function testAsClient(client2?:RpcExtendClient1){
 export async function testAsServer(server2?:RpcExtendServer1){
     try{
     if(server2==undefined){
-        server2=await new RpcExtendServer1(new Server(
+        server2=new RpcExtendServer1(new Server(
             await new WebSocketIo().connect('ws://127.0.0.1:1345/pxprpcClient')));
     }
     defaultFuncMap['test1.get1234']=new RpcExtendServerCallable(async()=>'1234').typedecl('->o')
@@ -81,6 +94,17 @@ export async function testAsServer(server2?:RpcExtendServer1){
     defaultFuncMap['test1.autoCloseable']=new RpcExtendServerCallable(
         async ()=>{return {close:()=>{console.log('auto closeable closed')}}}
         ).typedecl('->o');
+    defaultFuncMap['test1.testPollCall']=new RpcExtendServerCallable(
+        async()=>{
+            let count=0;
+            return new RpcExtendServerCallable(async (s:string)=>{
+                count++;
+                if(count>3)throw new Error('Stopped');
+                await new Promise((resolve)=>setTimeout(()=>{resolve('tick')},1000));
+                return s+count;
+            }).typedecl('s->s');
+        }
+    ).typedecl('->o')
     await server2.serve();
     }catch(e){
         console.error(e)
@@ -91,7 +115,7 @@ export async function testAsServer(server2?:RpcExtendServer1){
 //Test code for WebMessage(Worker) backend, require test environent.
 import { CreateWorkerThread } from 'partic2/jsutils1/webutils';
 import {WebMessage} from './backend'
-var __name__='./tests'
+var __name__='pxprpc/tests'
 
 ;(async ()=>{
     if(globalThis.window!=undefined){
@@ -99,7 +123,7 @@ var __name__='./tests'
         await workerThread.start();
         WebMessage.bind(workerThread.port!);
         let serv=new WebMessage.Server(async (conn)=>{
-            let server2=await new RpcExtendServer1(new Server(conn));
+            let server2=new RpcExtendServer1(new Server(conn));
             await testAsServer(server2);
         });
         serv.listen('pxprpc test 1');
@@ -111,7 +135,7 @@ var __name__='./tests'
             await new WebMessage.Connection().connect('pxprpc test 1'))).init();
         await testAsClient(client2);
     }
-    await testAsClient();
-    await testAsServer();
+    //await testAsClient();
+    //await testAsServer();
 })();
 

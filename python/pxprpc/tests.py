@@ -6,7 +6,7 @@ import pxprpc.backend
 import pxprpc.extend
 import pxprpc.base
 from pxprpc.base import Serializer
-from pxprpc.extend import TableSerializer
+from pxprpc.extend import PyCallableWrap, RpcExtendClientObject, TableSerializer
 
 import asyncio
 
@@ -106,6 +106,17 @@ async def testClient(rpcconn:pxprpc.extend.ClientContext,name:str='default'):
         toJson.typedecl('o->s')
         print(await toJson(r))
 
+    testPollCall=await client2.getFunc('test1.testPollCall')
+    if testPollCall!=None:
+        testPollCall.typedecl('->o')
+        print('testPollCall test')
+        tickEmitter=await typing.cast(RpcExtendClientObject,await testPollCall()).asCallable()
+        tickEmitter.typedecl('s->s')
+        map(lambda x:x+1,[1,2,3])
+        await tickEmitter.poll(lambda exc,result:print('poll call message ',result,exc),'pxprpc-msg')
+        
+    else:
+        print('testPollCall not found,skipped')
 
     t1=await client2.getFunc('test1.autoCloseable')
     assert t1!=None
@@ -152,9 +163,18 @@ async def amain():
                 def close(self):
                     print('auto closable closed')
             return Cls()
+        
+        async def testPollCall(self)->typing.Any:
+            count=0
+            async def fn(s:str):
+                nonlocal count
+                count+=1
+                if count>3:
+                    raise Exception('Stopped')
+                return s+str(count)
+            return PyCallableWrap(fn).typedecl('s->s')
+        
 
-                
-    
     pxprpc.extend.RegisteredFuncMap['test1']=test1()
     
     async def fn()->str:

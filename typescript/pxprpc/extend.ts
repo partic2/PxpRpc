@@ -102,14 +102,18 @@ s  string(bytes will be decode to string)
         }
     }
 
-    public async poll(onResult:(result:any)=>void,...args:any[]){
+    public async poll(onResult:(err:Error|null,result?:any)=>void,...args:any[]){
         let buf=this.serArgs(args);
         let sid=this.client.allocSid();
         this.client.throwIfNotRunning();
-        this.client.baseClient.poll(this.value!,buf,sid,(err,result)=>{
-            if(err!==null)this.client.freeSid(sid);
-            onResult(this.unserRet(result!))
-        });
+        this.client.baseClient.poll(this.value!,buf,(err,result)=>{
+            if(err!==null){
+                this.client.freeSid(sid);
+                onResult(err);
+            }else{
+                onResult(null,this.unserRet(result!))
+            }
+        },sid);
     }
 }
 
@@ -223,7 +227,7 @@ export class RpcExtendServerCallable implements PxpCallable{
     public async call(req: PxpRequest) : Promise<any>{
         try{
             let r=await this.wrapped.apply(this,this.readParameter(req));
-            req.result=await this.writeResult(req,r);
+            req.result=this.writeResult(req,r);
         }catch(e){
             return req.rejected=e as Error;
         }

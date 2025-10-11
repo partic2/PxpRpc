@@ -135,7 +135,6 @@ export class Client{
                 let packet=new DataView(buf.buffer,buf.byteOffset,buf.byteLength);
                 let sid=packet.getUint32(0,true);
                 let cb=this.waitingSessionCb[sid&0x7fffffff];
-                delete this.waitingSessionCb[sid&0x7fffffff];
                 cb(null,[sid,new Uint8Array(buf.buffer,buf.byteOffset+4,buf.byteLength-4)]);
             }
         }catch(e){
@@ -162,6 +161,7 @@ export class Client{
         });
         await this.io1.send([hdr,...parameter])
         let [sid2,result]=await respFut;
+        delete this.waitingSessionCb[sid&0x7fffffff];
         if(sid!=sid2){
             throw new PxprpcRemoteError(new TextDecoder().decode(result));
         }
@@ -191,8 +191,7 @@ export class Client{
         let result=await this.call(-4,[],sid);
         return new TextDecoder().decode(result);
     }
-    public poll(callableIndex:number,parameter:Uint8Array[],sid:number=0x100,
-            onResult:(err:Error|null,result?:Uint8Array)=>void){
+    public poll(callableIndex:number,parameter:Uint8Array[],onResult:(err:Error|null,result?:Uint8Array)=>void,sid:number=0x100){
         let hdr=new Uint8Array(12);
         let hdr2=new DataView(hdr.buffer);
         hdr2.setUint32(0,sid,true);
@@ -201,13 +200,14 @@ export class Client{
         let cb=(err: Error | null, result?: [number, Uint8Array])=>{
             if(err===null){
                 if(sid!=result![0]){
+                    delete this.waitingSessionCb[sid&0x7fffffff];
                     onResult(new PxprpcRemoteError(new TextDecoder().decode(result![1])))
                 }else{
-                    this.waitingSessionCb[sid]=cb;
                     onResult(null,result![1]);
                 }
             }else{onResult(err)};
         }
+        this.waitingSessionCb[sid]=cb;
         this.io1.send([hdr,...parameter]).catch((err)=>onResult(err));
     }
 }
@@ -281,7 +281,7 @@ export class Server{
     public async closeHandler(r:PxpRequest){
         this.close();
     }
-    protected builtInCallable=[null,this.getFunc,this.freeRefHandler,this.closeHandler,this.getInfo]
+    protected builtInCallable=[null,this.getFunc,this.freeRefHandler,this.closeHandler,this.getInfo,this.poll]
     public async processRequest(r:PxpRequest) {
         try{
             if(r.callableIndex>=0){
@@ -289,7 +289,7 @@ export class Server{
             }else{
                 await this.builtInCallable[-r.callableIndex]!.call(this,r);
             }
-            //abort if closed
+            //-3 close, don't response.Also -5 poll will set the callableIndex to -3 to avoid response.
             if(r.callableIndex===-3)return;
             let sid=new DataView(new ArrayBuffer(4));
             if(r.rejected===null){
@@ -350,6 +350,7 @@ export class Server{
             await this.processRequest(r);
             if(r.rejected!==null)break;
         }
+        r.callableIndex=-3;
     }
     public close(){
         if(!this.running)return;

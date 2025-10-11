@@ -230,7 +230,6 @@ class RpcExtendClientObject():
             finally:
                 self.client.freeSid(sid)
             
-
     async def asCallable(self):
         '''this object will be invalid after this function. use return value instead.'''
         c1=RpcExtendClientCallable(self.client,self.value)
@@ -271,10 +270,8 @@ available type typedecl characters:
         '''
         self.tParam,self.tResult=decl.split('->')
         return self
-
-
-    async def __call__(self,*args)->Any:
-        assert self.value is not None
+    
+    def serArgs(self,args:Any)->bytes:
         if self.tParam=='b':
             packed=args[0]
         else:
@@ -284,27 +281,47 @@ available type typedecl characters:
                 .putRowsData([list(args)])
 
             packed=ser.build()
+        return packed
+        
+    def unserRet(self,result:bytes):
+        if self.tResult=='b':
+            return result
+        else:
+            ser=Serializer().prepareUnserializing(result)
+            results=TableSerializer()\
+                .bindContext(None,self.client).bindSerializer(ser).setColumnInfo(self.tResult,None)\
+                .getRowsData(1)[0]
+
+            if len(self.tResult)==0:
+                return None
+            elif len(self.tResult)==1:
+                return results[0]
+            else:
+                return results
+
+    async def __call__(self,*args)->Any:
+        assert self.value is not None
+        self.client.throwIfNotRunning()
         sid=self.client.allocSid()
+        packed=self.serArgs(args)
         try:
             result=await self.client.conn.call(self.value,packed,sid)
-            if self.tResult=='b':
-                return result
-            else:
-                ser=Serializer().prepareUnserializing(result)
-                results=TableSerializer()\
-                    .bindContext(None,self.client).bindSerializer(ser).setColumnInfo(self.tResult,None)\
-                    .getRowsData(1)[0]
-
-                if len(self.tResult)==0:
-                    return None
-                elif len(self.tResult)==1:
-                    return results[0]
-                else:
-                    return results
+            return self.unserRet(result)
         finally:
             self.client.freeSid(sid)
 
-
+    async def poll(self,onResult:Callable[[Optional[Exception],Any],None],*args):
+        assert self.value is not None
+        self.client.throwIfNotRunning()
+        sid=self.client.allocSid()
+        packed=self.serArgs(args)
+        def fn(err,result):
+            if err!=None:
+                self.client.freeSid(sid)
+                onResult(err,None)
+            else:
+                onResult(None,self.unserRet(result)) # type: ignore
+        await self.client.conn.poll(self.value,packed,fn,sid)
 
 
 class RpcExtendError(Exception):
@@ -363,6 +380,10 @@ class RpcExtendClient1:
         finally:
             self.freeSid(sid)
 
+    def throwIfNotRunning(self):
+        if not self.conn.running:
+            raise RpcExtendError('baseClient is not running.');
+
 
 def allocRefFor(context:ServerContext,obj:Any)->PxpRef:
     ref=context.allocRef()
@@ -381,10 +402,10 @@ class decorator:
             return fn
          return fn2
 
-
+# server side callable
 class PyCallableWrap(PxpCallable):
     
-    def __init__(self,c:Callable,classMethod:bool):
+    def __init__(self,c:Callable,classMethod:bool=False):
         self.tParam=''
         self.tResult=''
         self.callable=c

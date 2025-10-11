@@ -1,6 +1,6 @@
 
 
-from typing import Optional,Any,Callable,List,cast,TypeVar,Dict,Tuple
+from typing import Optional,Any,Callable,List,cast,TypeVar,Dict,Tuple,Union
 import logging
 log1=logging.getLogger(__name__)
 import asyncio
@@ -115,7 +115,7 @@ class RpcRemoteError(Exception):
 class ClientContext(object):
     
     def __init__(self):
-        self.__waitingSession:Dict[int,asyncio.Future[Tuple[int,bytes]]]=dict()
+        self.__waitingSession:Dict[int,Union[asyncio.Future[Tuple[int,bytes]],Callable]]=dict()
         self.running=False
     
     def backend1(self,io1:AbstractIo):
@@ -129,11 +129,14 @@ class ClientContext(object):
             while self.running:
                 pack=await self.io1.receive()
                 sid=struct.unpack('<I',pack[:4])[0]
-                log1.debug('client get sid:%s',hex(sid))
+                log1.debug('client get sid:%s',sid)
                 fut=self.__waitingSession[sid&0x7fffffff]
                 del self.__waitingSession[sid&0x7fffffff]
-                if not fut.done():
-                    fut.set_result((sid,pack[4:]))
+                if isinstance(fut,asyncio.Future):
+                    if not fut.done():
+                        fut.set_result((sid,pack[4:]))
+                else:
+                    fut(sid,pack[4:])
         except Exception as exc:
             for waiting in self.__waitingSession.values():
                 waiting.set_exception(exc)
@@ -168,18 +171,16 @@ class ClientContext(object):
         result=await self.call(-4,bytes(),sid)
         return result.decode('utf-8')
     
-    async def poll(self,callableIndex:int,parameter:bytes,sid:int=0x100):
-        respFut=asyncio.Future()
-        self.__waitingSession[sid]=respFut
-        await self.io1.send(struct.pack('Iii',sid,-5,callableIndex)+parameter)
-        while self.running:
-            sid2,result=await respFut
+    async def poll(self,callableIndex:int,parameter:bytes,onResult:Callable[[Optional[Exception],Optional[bytes]],None],sid:int=0x100):
+        def respCb(sid2,result):
             if sid==sid2:
-                respFut=asyncio.Future()
-                self.__waitingSession[sid]=respFut
-                yield result
+                self.__waitingSession[sid]=respCb
+                onResult(None,result)
             else:
-                raise RpcRemoteError(result.decode('utf-8'))
+                onResult(RpcRemoteError(result.decode('utf-8')),None)
+        self.__waitingSession[sid]=respCb
+        await self.io1.send(struct.pack('Iii',sid,-5,callableIndex)+parameter)
+            
     
 
 
@@ -193,7 +194,8 @@ class PxpRequest(object):
     result:bytes=bytes()
     callableIndex:int=-1
     rejected:Optional[Exception]=None
-    
+
+#server side callable
 class PxpCallable():
     async def call(self,req:PxpRequest):
         'abstract'
@@ -295,14 +297,13 @@ class ServerContext(object):
 
     async def processRequest(self,req:PxpRequest):
         try:
-            handler=[None,self.getFunc,self.freeRefHandler,self.closeHandler,self.getInfo]
+            handler=[None,self.getFunc,self.freeRefHandler,self.closeHandler,self.getInfo,self.poll]
             r2:Optional[PxpRequest]=req
             log1.debug('processing:%s,%s',req.session,req.callableIndex)
             if r2.callableIndex>=0:
                 await cast(PxpCallable,self.getRef(req.callableIndex).object).call(req)
             else:
                 await handler[-r2.callableIndex](r2)
-            #abort on close
             if r2.callableIndex==-3:
                 return
             if req.rejected!=None:
@@ -338,5 +339,6 @@ class ServerContext(object):
             await self.processRequest(r);
             if r.rejected!=None:
                break;
+        r.callableIndex=-3
         
     
