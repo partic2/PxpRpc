@@ -34,7 +34,7 @@ export async function testAsClient(client2?:RpcExtendClient1){
     await testUnser.call(serdata);
     let testTableUnser=(await client2.getFunc('test1.testTableUnser'))!;
     testTableUnser.typedecl('b->')
-    serdata=new TableSerializer().setColumnInfo('iscl',null).fromMapArray([{id:1554,name:'1.txt',isdir:false,filesize:BigInt('12345')},{id:1555,name:'docs',isdir:true,filesize:BigInt('0')}]).build();
+    serdata=new TableSerializer().setColumnsInfo('iscl',null).fromMapArray([{id:1554,name:'1.txt',isdir:false,filesize:BigInt('12345')},{id:1555,name:'docs',isdir:true,filesize:BigInt('0')}]).build();
     await testTableUnser.call(serdata);
     let raiseError1=(await client2.getFunc('test1.raiseError1'))!
     try{

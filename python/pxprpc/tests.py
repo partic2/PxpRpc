@@ -76,7 +76,7 @@ async def testClient(rpcconn:pxprpc.extend.ClientContext,name:str='default'):
         print('testTableUnser:',testTableUnser.value)
         testTableUnser.typedecl('b->')
         print('expect a table')
-        await testTableUnser(TableSerializer().setColumnInfo('iscl',None).fromMapArray(\
+        await testTableUnser(TableSerializer().setColumnsInfo('iscl',None).fromMapArray(\
             [dict(id=1554,name='1.txt',isdir=False,filesize=12345),dict(id=1555,name='docs',isdir=True,filesize=0)])\
                 .build())
 
@@ -270,7 +270,7 @@ async def ctestmain():
     assert t1!=None
     print('printSerilizedTable:',t1.value)
     t1.typedecl('b->b')
-    t2=await t1(TableSerializer().setColumnInfo('iscl',None).fromMapArray(\
+    t2=await t1(TableSerializer().setColumnsInfo('iscl',None).fromMapArray(\
             [dict(id=1554,name='1.txt',isdir=False,filesize=12345),dict(id=1555,name='docs',isdir=True,filesize=0)])\
                 .build())
     print(TableSerializer().load(t2).toMapArray())

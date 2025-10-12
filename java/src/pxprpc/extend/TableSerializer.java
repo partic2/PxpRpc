@@ -14,8 +14,8 @@ import java.util.Map;
 
 public class TableSerializer {
     public static final int FLAG_NO_COLUMN_NAME =1;
-    public String[] columnName =null;
-    public char[] columnType =null;
+    public String[] columnsName =null;
+    public char[] columnsType =null;
     public ServerContext boundServContext;
     public RpcExtendClient1 boundClieContext;
     protected List<Object[]> cols=new ArrayList<Object[]>();
@@ -27,16 +27,16 @@ public class TableSerializer {
     }
     //types: type string, or null to guess
     //names: columns name, or null for FLAG_NO_COLUMN_NAME packet.
-    public TableSerializer setColumnInfo(String types, String[] names){
+    public TableSerializer setColumnsInfo(String types, String[] names){
         if(types!=null){
-            return setColumnInfo2(TypeDeclParser.parseDeclText(types),names);
+            return setColumnsInfo2(TypeDeclParser.parseDeclText(types),names);
         }else{
-            return setColumnInfo2(null,names);
+            return setColumnsInfo2(null,names);
         }
     }
-    public TableSerializer setColumnInfo2(char[] types, String[] names){
-        this.columnType =types;
-        this.columnName =names;
+    public TableSerializer setColumnsInfo2(char[] types, String[] names){
+        this.columnsType =types;
+        this.columnsName =names;
         return this;
     }
     //Optional, for reference (un)serialize only.
@@ -49,8 +49,8 @@ public class TableSerializer {
         return this.rows.get(index);
     }
     public int getColIndex(String name){
-        for(int i = 0; i< columnName.length; i++){
-            if(columnName[i].equals(name)){
+        for(int i = 0; i< columnsName.length; i++){
+            if(columnsName[i].equals(name)){
                 return i;
             }
         }
@@ -72,7 +72,7 @@ public class TableSerializer {
         return ref;
     }
     public void putRowsData(List<Object[]> rows){
-        char[] types = this.columnType;
+        char[] types = this.columnsType;
         int colsCnt = types.length;
         int rowCnt=rows.size();
         for(int i1=0;i1<colsCnt;i1++){
@@ -143,7 +143,7 @@ public class TableSerializer {
         }
     }
     public List<Object[]> getRowsData(int rowCnt){
-        char[] types = columnType;
+        char[] types = columnsType;
         ArrayList<Object[]> rows=new ArrayList<Object[]>();
         int colCnt=types.length;
         for(int i1=0;i1<rowCnt;i1++){
@@ -213,14 +213,14 @@ public class TableSerializer {
         }
         int flag=ser.getVarint();
         int rowCnt=ser.getVarint();
-        columnType = TypeDeclParser.parseDeclText(ser.getString());
-        int colCnt= columnType.length;
+        columnsType = TypeDeclParser.parseDeclText(ser.getString());
+        int colCnt= columnsType.length;
         if((flag & FLAG_NO_COLUMN_NAME)==0){
             ArrayList<String> colName2 = new ArrayList<String>();
             for(int i1=0;i1<colCnt;i1++){
                 colName2.add(ser.getString());
             }
-            columnName =colName2.toArray(new String[0]);
+            columnsName =colName2.toArray(new String[0]);
         }
         this.rows=getRowsData(rowCnt);
         return this;
@@ -230,7 +230,7 @@ public class TableSerializer {
             ser=new Serializer2().prepareSerializing(64);
         }
         int i1=0;
-        if(columnType ==null){
+        if(columnsType ==null){
             //guess type
             if(rows.size()>0){
                 Object[] firstRow = rows.get(0);
@@ -238,22 +238,22 @@ public class TableSerializer {
                 for(int i=0;i<types.length;i++){
                     types[i]= TypeDeclParser.jtypeToValueInfo(firstRow[i].getClass());
                 }
-                columnType =types;
+                columnsType =types;
             }else{
-                columnType =new char[0];
+                columnsType =new char[0];
             }
         }
-        int colsCnt= columnType.length;
+        int colsCnt= columnsType.length;
         int flag=0;
-        if(columnName ==null){
+        if(columnsName ==null){
             flag|= FLAG_NO_COLUMN_NAME;
         }
         ser.putVarint(flag);
         int rowCnt=rows.size();
         ser.putVarint(rowCnt);
-        ser.putString(TypeDeclParser.formatDeclText(columnType));
-        if(columnName !=null){
-            for(String e: columnName){
+        ser.putString(TypeDeclParser.formatDeclText(columnsType));
+        if(columnsName !=null){
+            for(String e: columnsName){
                 ser.putString(e);
             }
         }
@@ -263,27 +263,27 @@ public class TableSerializer {
     public List<Map<String,Object>> toMapArray(){
         ArrayList<Map<String,Object>> r=new ArrayList<Map<String,Object>>();
         int rowCount=this.getRowCount();
-        int colCount=this.columnName.length;
+        int colCount=this.columnsName.length;
         for(int t1=0;t1<rowCount;t1++){
             Map<String,Object> r0=new HashMap<String,Object>();
             Object[] row=this.getRow(t1);
             for(int t2=0;t2<colCount;t2++){
-                r0.put(this.columnName[t2],row[t2]);
+                r0.put(this.columnsName[t2],row[t2]);
             }
             r.add(r0);
         }
         return r;
     }
     public TableSerializer fromMapArray(List<Map<String,Object>> val){
-        if(val.size()>0 && this.columnName ==null){
-            this.columnName =val.get(0).keySet().toArray(new String[0]);
+        if(val.size()>0 && this.columnsName ==null){
+            this.columnsName =val.get(0).keySet().toArray(new String[0]);
         }
         int rowCount=val.size();
-        int colCount=this.columnName.length;
+        int colCount=this.columnsName.length;
         for(int t1=0;t1<rowCount;t1++){
             Object[] row=new Object[colCount];
             for(int t2=0;t2<colCount;t2++){
-                row[t2]=val.get(t1).get(this.columnName[t2]);
+                row[t2]=val.get(t1).get(this.columnsName[t2]);
             }
             this.addRow(row);
         }
@@ -337,7 +337,7 @@ public class TableSerializer {
                 colNames.add(fields[i].getName());
                 validField.add(fields[i]);
             }
-            this.setColumnInfo(colTypes.toString(),colNames.toArray(new String[0]));
+            this.setColumnsInfo(colTypes.toString(),colNames.toArray(new String[0]));
             for(Object e:objs){
                 Object[] row = new Object[validField.size()];
                 for(int i=0;i<row.length;i++){

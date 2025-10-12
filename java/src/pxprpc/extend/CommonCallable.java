@@ -19,7 +19,7 @@ public abstract class CommonCallable implements PxpCallable {
         }else{
             Serializer2 ser = new Serializer2().prepareUnserializing(buf);
             args=new TableSerializer().bindSerializer(ser)
-                    .bindContext(req.context,null).setColumnInfo2(tParam,null)
+                    .bindContext(req.context,null).setColumnsInfo2(tParam,null)
                     .getRowsData(1).get(0);
         }
         return args;
@@ -41,7 +41,7 @@ public abstract class CommonCallable implements PxpCallable {
                 rs=(Object[]) result;
             }
             new TableSerializer().bindSerializer(ser)
-                    .bindContext(req.context,null).setColumnInfo2(tResult,null)
+                    .bindContext(req.context,null).setColumnsInfo2(tResult,null)
                     .putRowsData(Arrays.asList(new Object[][]{rs}));
             buf = ser.build();
         }

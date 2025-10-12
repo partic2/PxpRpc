@@ -30,7 +30,7 @@ public class RpcExtendClientCallable extends RpcExtendClientObject {
         }else{
             Serializer2 ser = new Serializer2().prepareSerializing(32);
             new TableSerializer().bindSerializer(ser)
-                    .bindContext(null,this.client).setColumnInfo2(tParam,null)
+                    .bindContext(null,this.client).setColumnsInfo2(tParam,null)
                     .putRowsData(Arrays.asList(new Object[][]{parameters}));
             buf = ser.build();
         }
@@ -48,7 +48,7 @@ public class RpcExtendClientCallable extends RpcExtendClientObject {
                 }
                 Serializer2 ser = new Serializer2().prepareUnserializing(result2);
                 Object[] result3 = new TableSerializer().bindSerializer(ser)
-                        .bindContext(null, RpcExtendClientCallable.this.client).setColumnInfo2(tResult, null)
+                        .bindContext(null, RpcExtendClientCallable.this.client).setColumnsInfo2(tResult, null)
                         .getRowsData(1).get(0);
                 result.cb(result3,null);
             }
@@ -61,7 +61,7 @@ public class RpcExtendClientCallable extends RpcExtendClientObject {
         }else{
             Serializer2 ser = new Serializer2().prepareSerializing(32);
             new TableSerializer().bindSerializer(ser)
-                    .bindContext(null,this.client).setColumnInfo2(tParam,null)
+                    .bindContext(null,this.client).setColumnsInfo2(tParam,null)
                     .putRowsData(Arrays.asList(new Object[][]{parameters}));
             buf = ser.build();
         }
@@ -73,7 +73,7 @@ public class RpcExtendClientCallable extends RpcExtendClientObject {
             }
             Serializer2 ser = new Serializer2().prepareUnserializing(result2);
             Object[] result3 = new TableSerializer().bindSerializer(ser)
-                    .bindContext(null, RpcExtendClientCallable.this.client).setColumnInfo2(tResult, null)
+                    .bindContext(null, RpcExtendClientCallable.this.client).setColumnsInfo2(tResult, null)
                     .getRowsData(1).get(0);
             return result3;
         }finally {
@@ -87,7 +87,7 @@ public class RpcExtendClientCallable extends RpcExtendClientObject {
         }else{
             Serializer2 ser = new Serializer2().prepareSerializing(32);
             new TableSerializer().bindSerializer(ser)
-                    .bindContext(null,this.client).setColumnInfo2(tParam,null)
+                    .bindContext(null,this.client).setColumnsInfo2(tParam,null)
                     .putRowsData(Arrays.asList(new Object[][]{parameters}));
             buf = ser.build();
         }
@@ -105,7 +105,7 @@ public class RpcExtendClientCallable extends RpcExtendClientObject {
                 }
                 Serializer2 ser = new Serializer2().prepareUnserializing(result2);
                 Object[] result3 = new TableSerializer().bindSerializer(ser)
-                        .bindContext(null, RpcExtendClientCallable.this.client).setColumnInfo2(tResult, null)
+                        .bindContext(null, RpcExtendClientCallable.this.client).setColumnsInfo2(tResult, null)
                         .getRowsData(1).get(0);
                 result.cb(result3,null);
             }

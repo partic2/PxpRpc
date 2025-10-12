@@ -19,15 +19,15 @@ class TableSerializer:
     FLAG_NO_COLUMN_NAME=1
     def __init__(self):
         self.rows:List[List[Any]]=[]
-        self.columnType=None
-        self.columnName=None
+        self.columnsType=None
+        self.columnsName=None
         self.ser=None
         self.boundServContext=None
         self.boundClieContext=None
 
-    def setColumnInfo(self,types:Optional[str],names:Optional[List[str]]):
-        self.columnName=names
-        self.columnType=types
+    def setColumnsInfo(self,types:Optional[str],names:Optional[List[str]]):
+        self.columnsName=names
+        self.columnsType=types
         return self
     
     def getRow(self,index:int):
@@ -50,14 +50,14 @@ class TableSerializer:
         return self
     
     def getRowsData(self,rowCnt:int)->List[List[Any]]:
-        columnType=NotNone(self.columnType)
-        colCnt=len(columnType)
+        columnsType=NotNone(self.columnsType)
+        colCnt=len(columnsType)
         ser=NotNone(self.ser)
         rows=[]
         for i1 in range(rowCnt):
             rows.append([None]*colCnt)
         for i1 in range(colCnt):
-            typ=columnType[i1]
+            typ=columnsType[i1]
             if typ=='i':
                 for i2 in range(rowCnt):
                     rows[i2][i1]=ser.getInt()
@@ -94,12 +94,12 @@ class TableSerializer:
         return rows
 
     def putRowsData(self,rows:List[List[Any]]):
-        columnType=NotNone(self.columnType)
-        colsCnt=len(columnType)
+        columnsType=NotNone(self.columnsType)
+        colsCnt=len(columnsType)
         rowCnt=len(rows)
         ser=NotNone(self.ser)
         for i1 in range(colsCnt):
-            typ=columnType[i1]
+            typ=columnsType[i1]
             if typ=='i':
                 for i2 in range(rowCnt):
                     ser.putInt(rows[i2][i1])
@@ -141,73 +141,73 @@ class TableSerializer:
         ser=NotNone(self.ser)
         flag=ser.getVarint()
         rowCnt=ser.getVarint()
-        columnType=ser.getString()
-        self.columnType=columnType
-        colCnt=len(columnType)
+        columnsType=ser.getString()
+        self.columnsType=columnsType
+        colCnt=len(columnsType)
         if (flag & TableSerializer.FLAG_NO_COLUMN_NAME)==0:
             colName2 = []
             for i1 in range(colCnt):
                 colName2.append(ser.getString())
-            self.columnName=colName2
+            self.columnsName=colName2
         self.rows=self.getRowsData(rowCnt)
         return self
 
     def build(self):
         if self.ser==None:
             self.ser=Serializer().prepareSerializing()
-        if self.columnType==None:
+        if self.columnsType==None:
             if len(self.rows)>=1:
-                self.columnType=''
+                self.columnsType=''
                 for t1 in self.rows[0]:
-                    self.columnType+=pytypeToDeclChar(type(t1))
+                    self.columnsType+=pytypeToDeclChar(type(t1))
             else:
-                self.columnType=''
-        colsCnt=len(self.columnType)
+                self.columnsType=''
+        colsCnt=len(self.columnsType)
         flag=0
-        if self.columnName==None:
+        if self.columnsName==None:
             flag|=TableSerializer.FLAG_NO_COLUMN_NAME
         
         self.ser.putVarint(flag)
         rowCnt=len(self.rows)
         self.ser.putVarint(rowCnt)
-        self.ser.putString(self.columnType)
-        if self.columnName!=None:
-            for e in self.columnName:
+        self.ser.putString(self.columnsType)
+        if self.columnsName!=None:
+            for e in self.columnsName:
                 self.ser.putString(e)
         self.putRowsData(self.rows)
         return self.ser.build()
     
     def toMapArray(self)->List[Dict[str,Any]]:
         r=[]
-        assert self.columnName!=None
+        assert self.columnsName!=None
         for t1 in range(self.getRowCount()):
             r0={}
             row=self.getRow(t1)
-            for t2,t3 in enumerate(self.columnName):
+            for t2,t3 in enumerate(self.columnsName):
                 r0[t3]=row[t2]
             r.append(r0)
         return r
 
     def fromMapArray(self,val:List[Dict[str,Any]]):
-        if len(val)>=1 and self.columnName==None:
-            self.columnName=list(val[0].keys())
+        if len(val)>=1 and self.columnsName==None:
+            self.columnsName=list(val[0].keys())
         for t1 in val:
             row=[]
-            for t2 in NotNone(self.columnName):
+            for t2 in NotNone(self.columnsName):
                 row.append(t1[t2])
             self.addRow(row)
         return self
     
     def toArray(self)->List[Dict[str,Any]]:
         r=[]
-        assert self.columnName!=None
+        assert self.columnsName!=None
         for t1 in range(self.getRowCount()):
             r.append(self.getRow(t1)[0])
         return r
 
     def fromArray(self,val:List[Dict[str,Any]]):
-        if len(val)>=1 and self.columnName==None:
-            self.columnName=list(val[0].keys())
+        if len(val)>=1 and self.columnsName==None:
+            self.columnsName=list(val[0].keys())
         for t1 in val:
             self.addRow([t1])
         return self
@@ -277,7 +277,7 @@ available type typedecl characters:
         else:
             ser=Serializer().prepareSerializing()
             TableSerializer()\
-                .bindContext(None,self.client).bindSerializer(ser).setColumnInfo(self.tParam,None)\
+                .bindContext(None,self.client).bindSerializer(ser).setColumnsInfo(self.tParam,None)\
                 .putRowsData([list(args)])
 
             packed=ser.build()
@@ -289,7 +289,7 @@ available type typedecl characters:
         else:
             ser=Serializer().prepareUnserializing(result)
             results=TableSerializer()\
-                .bindContext(None,self.client).bindSerializer(ser).setColumnInfo(self.tResult,None)\
+                .bindContext(None,self.client).bindSerializer(ser).setColumnsInfo(self.tResult,None)\
                 .getRowsData(1)[0]
 
             if len(self.tResult)==0:
@@ -434,7 +434,7 @@ class PyCallableWrap(PxpCallable):
         else:
             ser=Serializer().prepareUnserializing(req.parameter)
             para=TableSerializer()\
-                .bindContext(req.context,None).bindSerializer(ser).setColumnInfo(self.tParam,None)\
+                .bindContext(req.context,None).bindSerializer(ser).setColumnsInfo(self.tParam,None)\
                 .getRowsData(1)[0]
         return para
     
@@ -454,7 +454,7 @@ class PyCallableWrap(PxpCallable):
             ser=Serializer().prepareSerializing()
             result2=[result] if len(self.tResult)<=1 else result
             TableSerializer()\
-                .bindContext(req.context,None).bindSerializer(ser).setColumnInfo(self.tResult,None)\
+                .bindContext(req.context,None).bindSerializer(ser).setColumnsInfo(self.tResult,None)\
                 .putRowsData([result2])
             b=ser.build()
             return b

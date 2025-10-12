@@ -1,12 +1,7 @@
 package pxprpc.extend;
 
 import pxprpc.base.PxpCallable;
-import pxprpc.base.PxpRequest;
-import pxprpc.base.Serializer2;
-import pxprpc.base.Utils;
 
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -106,7 +101,7 @@ public class BuiltInFuncList {
 				}
 			}
 		}
-		return new TableSerializer().setColumnInfo(null,hdrs.toArray(new String[0]))
+		return new TableSerializer().setColumnsInfo(null,hdrs.toArray(new String[0]))
 				.addRow(row.toArray(new Object[0])).build();
 	}
 
