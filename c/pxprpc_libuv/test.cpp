@@ -42,10 +42,13 @@ using AsyncReturn=NamedFunctionPPImpl1::AsyncReturn;
 void defFunc(){
     defaultFuncMap.add((new NamedFunctionPPImpl1())->init("printString",
     [](Parameter* para,AsyncReturn* ret)->void {
+        std::cout<<"enter function printString"<<std::endl;
         std::cout<<para->nextString()<<std::endl;
         ret->resolve("server:hello client");
+        std::cout<<"exit function printString"<<std::endl;
     })).add((new NamedFunctionPPImpl1())->init("printSerilizedArgs",
     [](Parameter *para,AsyncReturn *ret)->void {
+        std::cout<<"enter function printSerilizedArgs"<<std::endl;
         auto i=para->nextInt();
         auto l=para->nextLong();
         auto f=para->nextFloat();
@@ -54,36 +57,42 @@ void defFunc(){
         auto b=para->nextString();
         std::cout<<i<<","<<l<<","<<f<<","<<d<<","<<s<<","<<b<<std::endl;
         ret->resolve();
+        std::cout<<"exit function printSerilizedArgs"<<std::endl;
     })).add((new NamedFunctionPPImpl1())->init("printSerilizedTable",
     [](Parameter *para,AsyncReturn* ret)->void {
+        std::cout<<"enter function printSerilizedTable"<<std::endl;
         TableSerializer *tabser=new TableSerializer();
         tabser->bindSerializer(para->asSerializer())->load();
         auto colName=tabser->getColumnsName();
-        auto nameCol=tabser->getStringColumn(vectorIndexOf(colName,std::string("name")));
-        auto sizeCol=tabser->getInt64Column(vectorIndexOf(colName,std::string("filesize")));
-        auto isDirCol=tabser->getBoolColumn(vectorIndexOf(colName,std::string("isdir")));
-        std::cout<<"name\tfilesize\tisdir\t"<<std::endl;
+        std::cout<<"id\tname\tisdir\tfilesize\t"<<std::endl;
         for(int i1=0;i1<tabser->getRowCount();i1++){
-            std::cout<<colName[i1]<<"\t"<<sizeCol[i1]<<"\t"<<(isDirCol[i1]!=0)<<std::endl;
+            auto row=tabser->getRow(i1);
+            std::cout<<row[0].i32<<"\t"<<row[1].str<<"\t"<<row[2].bool2<<"\t"<<row[3].i64<<std::endl;
         }
         delete tabser;
         
         tabser=new TableSerializer();
         tabser->setColumnsInfo("slc",std::vector<std::string>({"name","filesize","isdir"}));
-        tabser->addValue("myfile.txt")->addValue(123)->addValue("myfile.txt");
+        tabser->addRow({{"myfile.txt"},{123},{"myfile.txt"}});
         tabser->addValue("mydir")->addValue(0)->addValue(1);
         ret->resolve(tabser->buildSer());
         delete tabser;
+        std::cout<<"exit function printSerilizedTable"<<std::endl;
     })).add((new NamedFunctionPPImpl1())->init("testDummyError",
-    [](Parameter* para,AsyncReturn* ret)->void{
+    [](Parameter* para,AsyncReturn* ret)->void {
+        std::cout<<"enter function testDummyError"<<std::endl;
         ret->reject("dummy error");
+        std::cout<<"exit function testDummyError"<<std::endl;
     })).add((new NamedFunctionPPImpl1())->init("testPoll",
     [](Parameter* para,AsyncReturn* ret)->void {
+        std::cout<<"enter function testPoll"<<std::endl;
         if(testPollCount<4){
             testPollCount++;
+            ret->resolve(testPollCount);
         }else{
-            ret->reject("dummy error");
+            ret->reject("poll stop error");
         }
+        std::cout<<"exit function testPoll"<<std::endl;
     }));
 
 }

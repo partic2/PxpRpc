@@ -8,6 +8,26 @@
 
 namespace pxprpc{
 
+class TableCellValue{
+    public:
+    union{
+        bool bool2;
+        int32_t i32;
+        int64_t i64;
+        float f32;
+        double f64;
+        pxprpc_bytes bytes;
+    };
+    std::string str;
+    TableCellValue(){}
+    TableCellValue(int32_t v){i32=v;}
+    TableCellValue(int64_t v){i64=v;}
+    TableCellValue(float v){f32=v;}
+    TableCellValue(double v){f64=v;}
+    TableCellValue(std::string v){str=v;}
+    TableCellValue(void* base,int32_t length){bytes.base=base;bytes.length=length;}
+};
+
 class TableSerializer{
     protected:
     Serializer *ser=nullptr;
@@ -15,7 +35,7 @@ class TableSerializer{
     int32_t rowCnt=0;
     std::string columnsType;
     std::vector<std::string> columnsName;
-    std::vector<void *> cols;
+    std::vector<std::vector<TableCellValue>> cols;
     public:
     static const int FLAG_NO_COLUMN_NAME=1;
     TableSerializer *bindSerializer(Serializer *ser){
@@ -25,11 +45,15 @@ class TableSerializer{
     TableSerializer *load(pxprpc_bytes *data){
         this->ser=(new Serializer())->prepareUnserializing((uint8_t *)data->base, data->length);
         this->load();
+        delete this->ser;
+        this->ser=nullptr;
         return this;
     }
     TableSerializer *load(std::tuple<int,uint8_t *> data){
         this->ser=(new Serializer())->prepareUnserializing(std::get<1>(data),std::get<0>(data));
         this->load();
+        delete this->ser;
+        this->ser=nullptr;
         return this;
     }
     TableSerializer *load(){
@@ -45,55 +69,64 @@ class TableSerializer{
         for(auto typ=this->columnsType.begin();typ!=this->columnsType.end();typ++){
             switch(*typ){
                 case 'i':{
-                    auto col=new std::vector<int32_t>();
+                    std::vector<TableCellValue> col;
                     auto col2=this->ser->getIntVec(this->rowCnt);
-                    col->swap(col2);
-                    this->cols.push_back(col);
+                    for(auto it=col2.begin();it!=col2.end();it++){
+                        col.push_back({*it});
+                    }
+                    this->cols.push_back(std::move(col));
                 }
                 break;
                 case 'l':{
-                    auto col=new std::vector<int64_t>();
+                    std::vector<TableCellValue> col;
                     auto col2=this->ser->getLongVec(this->rowCnt);
-                    col->swap(col2);
-                    this->cols.push_back(col);
+                    for(auto it=col2.begin();it!=col2.end();it++){
+                        col.push_back({*it});
+                    }
+                    this->cols.push_back(std::move(col));
                 }
                 break;
                 case 'f':{
-                    auto col=new std::vector<float>();
+                    std::vector<TableCellValue> col;
                     auto col2=this->ser->getFloatVec(this->rowCnt);
-                    col->swap(col2);
-                    this->cols.push_back(col);
+                    for(auto it=col2.begin();it!=col2.end();it++){
+                        col.push_back({*it});
+                    }
+                    this->cols.push_back(std::move(col));
                 }
                 break;
                 case 'd':{
-                    auto col=new std::vector<double>();
+                    std::vector<TableCellValue> col;
                     auto col2=this->ser->getDoubleVec(this->rowCnt);
-                    col->swap(col2);
-                    this->cols.push_back(col);
+                    for(auto it=col2.begin();it!=col2.end();it++){
+                        col.push_back({*it});
+                    }
+                    this->cols.push_back(std::move(col));
                 }
                 break;
                 case 'b':{
-                    auto col=new std::vector<std::tuple<int,uint8_t *>>(rowCnt);
+                    std::vector<TableCellValue> col;
                     for(int i1=0;i1<rowCnt;i1++){
-                        (*col)[i1]=this->ser->getBytes();
+                        auto t1=this->ser->getBytes();
+                        col.push_back({std::get<1>(t1),std::get<0>(t1)});
                     }
-                    this->cols.push_back(col);
+                    this->cols.push_back(std::move(col));
                 }
                 break;
                 case 's':{
-                    auto col=new std::vector<std::string>(rowCnt);
+                    std::vector<TableCellValue> col;
                     for(int i1=0;i1<rowCnt;i1++){
-                        (*col)[i1]=this->ser->getString();
+                        col.push_back({this->ser->getString()});
                     }
-                    this->cols.push_back(col);
+                    this->cols.push_back(std::move(col));
                 }
                 break;
                 case 'c':{
-                    auto col=new std::vector<uint8_t>(rowCnt);
+                    std::vector<TableCellValue> col;
                     for(int i1=0;i1<rowCnt;i1++){
-                        (*col)[i1]=this->ser->getVarint();
+                        col.push_back({this->ser->getVarint()!=0});
                     }
-                    this->cols.push_back(col);
+                    this->cols.push_back(std::move(col));
                 }
                 break;
             }
@@ -117,55 +150,54 @@ class TableSerializer{
                 this->ser->putString(*name);
             }
         }
-        
         for(int i1=0;i1<this->columnsType.length();i1++){
             switch(this->columnsType.at(i1)){
                 case 'i':{
-                    auto col=reinterpret_cast<std::vector<int32_t>*>(this->cols[i1]);
-                    for(auto it=col->begin();it!=col->end();it++){
-                        this->ser->putInt(*it);
+                    auto col=this->cols[i1];
+                    for(auto it=col.begin();it!=col.end();it++){
+                        this->ser->putInt(it->i32);
                     }
                 }
                 break;
                 case 'l':{
-                    auto col=reinterpret_cast<std::vector<int64_t>*>(this->cols[i1]);
-                    for(auto it=col->begin();it!=col->end();it++){
-                        this->ser->putLong(*it);
+                    auto col=this->cols[i1];
+                    for(auto it=col.begin();it!=col.end();it++){
+                        this->ser->putLong(it->i64);
                     }
                 }
                 break;
                 case 'f':{
-                    auto col=reinterpret_cast<std::vector<float>*>(this->cols[i1]);
-                    for(auto it=col->begin();it!=col->end();it++){
-                        this->ser->putFloat(*it);
+                    auto col=this->cols[i1];
+                    for(auto it=col.begin();it!=col.end();it++){
+                        this->ser->putFloat(it->f32);
                     }
                 }
                 break;
                 case 'd':{
-                    auto col=reinterpret_cast<std::vector<double>*>(this->cols[i1]);
-                    for(auto it=col->begin();it!=col->end();it++){
-                        this->ser->putDouble(*it);
+                    auto col=this->cols[i1];
+                    for(auto it=col.begin();it!=col.end();it++){
+                        this->ser->putDouble(it->f64);
                     }
                 }
                 break;
                 case 'b':{
-                    auto col=reinterpret_cast<std::vector<std::tuple<int,uint8_t*>>*>(this->cols[i1]);
-                    for(auto it=col->begin();it!=col->end();it++){
-                        this->ser->putBytes(std::get<1>(*it),std::get<0>(*it));
+                    auto col=this->cols[i1];
+                    for(auto it=col.begin();it!=col.end();it++){
+                        this->ser->putBytes(static_cast<uint8_t *>(it->bytes.base),it->bytes.length);
                     }
                 }
                 break;
                 case 's':{
-                    auto col=reinterpret_cast<std::vector<std::string>*>(this->cols[i1]);
-                    for(auto it=col->begin();it!=col->end();it++){
-                        this->ser->putString(*it);
+                    auto col=this->cols[i1];
+                    for(auto it=col.begin();it!=col.end();it++){
+                        this->ser->putString(it->str);
                     }
                 }
                 break;
                 case 'c':{
-                    auto col=reinterpret_cast<std::vector<uint8_t>*>(this->cols[i1]);
-                    for(auto it=col->begin();it!=col->end();it++){
-                        this->ser->putVarint(*it);
+                    auto col=this->cols[i1];
+                    for(auto it=col.begin();it!=col.end();it++){
+                        this->ser->putVarint(it->bool2?1:0);
                     }
                 }
                 break;
@@ -174,56 +206,20 @@ class TableSerializer{
         return this->ser;
     }
     
-    int32_t *getInt32Column(int index){
-        return reinterpret_cast<std::vector<int32_t> *>(this->cols[index])->data();
-    }
-    int64_t *getInt64Column(int index){
-        return reinterpret_cast<std::vector<int64_t> *>(this->cols[index])->data();
-    }
-    float *getFloatColumn(int index){
-        return reinterpret_cast<std::vector<float> *>(this->cols[index])->data();
-    }
-    double *getDoubleColumn(int index){
-        return reinterpret_cast<std::vector<double> *>(this->cols[index])->data();
-    }
-    std::string *getStringColumn(int index){
-        return reinterpret_cast<std::vector<std::string> *>(this->cols[index])->data();
-    }
-    std::tuple<int,uint8_t> *getBytesColumn(int index){
-        return reinterpret_cast<std::vector<std::tuple<int,uint8_t>> *>(this->cols[index])->data();
-    }
-    uint8_t *getBoolColumn(int index){
-        return reinterpret_cast<std::vector<uint8_t> *>(this->cols[index])->data();
-    }
-    TableSerializer *addRow(void **row){
+    TableSerializer *addRow(std::vector<TableCellValue>&& row){
         auto size=this->columnsType.size();
         for(int i1=0;i1<size;i1++){
-            switch(this->columnsType.at(i1)){
-                case 'i':
-                reinterpret_cast<std::vector<int32_t> *>(this->cols[i1])->push_back(*reinterpret_cast<int32_t *>(row[i1]));
-                break;
-                case 'l':
-                reinterpret_cast<std::vector<int64_t> *>(this->cols[i1])->push_back(*reinterpret_cast<int64_t *>(row[i1]));
-                break;
-                case 'f':
-                reinterpret_cast<std::vector<float> *>(this->cols[i1])->push_back(*reinterpret_cast<float *>(row[i1]));
-                break;
-                case 'd':
-                reinterpret_cast<std::vector<double> *>(this->cols[i1])->push_back(*reinterpret_cast<double *>(row[i1]));
-                break;
-                case 'b':
-                reinterpret_cast<std::vector<std::tuple<int,uint8_t *>> *>(this->cols[i1])->push_back(*reinterpret_cast<std::tuple<int,uint8_t *> *>(row[i1]));
-                break;
-                case 's':
-                reinterpret_cast<std::vector<std::string> *>(this->cols[i1])->push_back(*reinterpret_cast<std::string *>(row[i1]));
-                break;
-                case 'c':
-                reinterpret_cast<std::vector<uint8_t> *>(this->cols[i1])->push_back(*reinterpret_cast<uint8_t *>(row[i1]));
-                break;
-            }
+            this->cols[i1].push_back(row[i1]);
         }
         this->rowCnt+=1;
         return this;
+    }
+    std::vector<TableCellValue> getRow(int32_t rowIndex){
+        std::vector<TableCellValue> row;
+        for(auto it=cols.begin();it!=cols.end();it++){
+            row.push_back((*it)[rowIndex]);
+        }
+        return row;
     }
     int currentAddValuePosX=-1;
     protected:
@@ -238,68 +234,47 @@ class TableSerializer{
     }
     public:
     //Add value to next cell, from left to right, from top to bottom.
+    
     TableSerializer* addValue(int32_t v){
         moveToNextValuePosX();
-        reinterpret_cast<std::vector<int32_t> *>(this->cols[currentAddValuePosX])->push_back(v);
+        this->cols[currentAddValuePosX].push_back({v});
         return this;
     }
     TableSerializer* addValue(int64_t v){
         moveToNextValuePosX();
-        reinterpret_cast<std::vector<int64_t> *>(this->cols[currentAddValuePosX])->push_back(v);
+        this->cols[currentAddValuePosX].push_back({v});
         return this;
     }
     TableSerializer* addValue(float v){
         moveToNextValuePosX();
-        reinterpret_cast<std::vector<float> *>(this->cols[currentAddValuePosX])->push_back(v);
+        this->cols[currentAddValuePosX].push_back({v});
         return this;
     }
     TableSerializer* addValue(double v){
         moveToNextValuePosX();
-        reinterpret_cast<std::vector<int32_t> *>(this->cols[currentAddValuePosX])->push_back(v);
+        this->cols[currentAddValuePosX].push_back({v});
         return this;
     }
     TableSerializer* addValue(std::tuple<int,uint8_t *> v){
         moveToNextValuePosX();
-        reinterpret_cast<std::vector<std::tuple<int,uint8_t *>> *>(this->cols[currentAddValuePosX])->push_back(v);
+        this->cols[currentAddValuePosX].push_back({std::get<1>(v),std::get<0>(v)});
         return this;
     }
     TableSerializer* addValue(std::string v){
         moveToNextValuePosX();
-        reinterpret_cast<std::vector<std::string> *>(this->cols[currentAddValuePosX])->push_back(v);
+        this->cols[currentAddValuePosX].push_back({v});
         return this;
     }
-    TableSerializer* addValue(uint8_t v){
+    TableSerializer* addValue(bool v){
         moveToNextValuePosX();
-        reinterpret_cast<std::vector<uint8_t> *>(this->cols[currentAddValuePosX])->push_back(v?1:0);
+        this->cols[currentAddValuePosX].push_back({v});
         return this;
     }
     TableSerializer *setColumnsInfo(std::string columnsType,std::vector<std::string> columnsName){
         this->columnsType=columnsType;
         this->columnsName=columnsName;
-        for(int i1=0;i1<columnsType.size();i1++){
-            switch(columnsType.at(i1)){
-                case 'i':
-                this->cols.push_back(new std::vector<int32_t>());
-                break;
-                case 'l':
-                this->cols.push_back(new std::vector<int64_t>());
-                break;
-                case 'f':
-                this->cols.push_back(new std::vector<float>());
-                break;
-                case 'd':
-                this->cols.push_back(new std::vector<double>());
-                break;
-                case 'b':
-                this->cols.push_back(new std::vector<std::tuple<int,uint8_t *>>());
-                break;
-                case 's':
-                this->cols.push_back(new std::vector<std::string>());
-                break;
-                case 'c':
-                this->cols.push_back(new std::vector<uint8_t>());
-                break;
-            }
+        for(int i1=cols.size();i1<columnsType.size();i1++){
+            cols.push_back({});
         }
         return this;
     }
@@ -315,37 +290,19 @@ class TableSerializer{
     int getRowCount(){
         return this->rowCnt;
     }
-    ~TableSerializer(){
-        for(int i1=0;i1<this->cols.size()&&i1<this->columnsType.size();i1++){
-            auto col=this->cols[i1];
-            if(col!=nullptr){
-                switch(this->columnsType.at(i1)){
-                    case 'i':
-                    delete reinterpret_cast<std::vector<int32_t> *>(col);
-                    break;
-                    case 'l':
-                    delete reinterpret_cast<std::vector<int64_t> *>(col);
-                    break;
-                    case 'f':
-                    delete reinterpret_cast<std::vector<float> *>(col);
-                    break;
-                    case 'd':
-                    delete reinterpret_cast<std::vector<double> *>(col);
-                    break;
-                    case 'b':
-                    delete reinterpret_cast<std::vector<std::tuple<int,uint8_t *>> *>(col);
-                    break;
-                    case 's':
-                    delete reinterpret_cast<std::vector<std::string> *>(col);
-                    break;
-                    case 'c':
-                    delete reinterpret_cast<std::vector<uint8_t> *>(col);
-                    break;
-                }
-                this->cols[i1]=nullptr;
+    std::vector<std::unordered_map<std::string, TableCellValue>> toMapArray(){
+        std::vector<std::unordered_map<std::string, TableCellValue>> r;
+        for(auto rownum=0;rownum<getRowCount();rownum++){
+            std::unordered_map<std::string, TableCellValue> maprow;
+            for(auto cellnum=0;cellnum<cols.size();cellnum++){
+                maprow.emplace(columnsName[cellnum],cols[cellnum][rownum]);
             }
+            r.push_back(std::move(maprow));
         }
-        
+        return r;
+    }
+    //lack type info for fromMapArray, How to implement it?
+    ~TableSerializer(){
     }
 };
 

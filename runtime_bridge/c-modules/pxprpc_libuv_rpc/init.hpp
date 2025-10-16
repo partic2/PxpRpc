@@ -634,7 +634,7 @@ void init() {
               ret->reject(uv_err_name(req->result));
             }else{
               pxprpc::TableSerializer tabser;
-              tabser.setColumnInfo("ss",std::vector<std::string>({"name","type"}));
+              tabser.setColumnsInfo("ss",std::vector<std::string>({"name","type"}));
               uv_dirent_t ent;
               while(uv_fs_scandir_next(req,&ent)!=UV_EOF){
                 tabser.addValue(ent.name);
@@ -671,7 +671,7 @@ void init() {
               ret->reject(uv_err_name(req->result));
             }else{
               pxprpc::TableSerializer tabser;
-              tabser.setColumnInfo("lsli",std::vector<std::string>({"size","type","mtime","mode"}));
+              tabser.setColumnsInfo("lsli",std::vector<std::string>({"size","type","mtime","mode"}));
               tabser.addValue((int64_t)req->statbuf.st_size);
               if(req->statbuf.st_mode & S_IFREG){
                 tabser.addValue("file");
@@ -953,7 +953,7 @@ void init() {
             return;
           }
           pxprpc::TableSerializer table;
-          table.setColumnInfo("sbss",std::vector<std::string>({"name","phys_addr","ip","netmask"}));
+          table.setColumnsInfo("sbss",std::vector<std::string>({"name","phys_addr","ip","netmask"}));
           for(int i1=0;i1<count;i1++){
             table.addValue(addrs[i1].name);
             table.addValue(std::tuple<int32_t,uint8_t *>(6,(uint8_t *)addrs[i1].phys_addr));
@@ -1105,7 +1105,7 @@ void init() {
     (new pxprpc::NamedFunctionPPImpl1())
         ->init("pxprpc_libuv.get_memory_info", [](pxprpc::NamedFunctionPPImpl1::Parameter *para, pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret) -> void {
           auto tabser=new pxprpc::TableSerializer();
-          tabser->setColumnInfo("lll",std::vector<std::string>({"free","total","available"}));
+          tabser->setColumnsInfo("lll",std::vector<std::string>({"free","total","available"}));
           int r=0;
           tabser->addValue((int64_t)uv_get_free_memory());
           tabser->addValue((int64_t)uv_get_total_memory());

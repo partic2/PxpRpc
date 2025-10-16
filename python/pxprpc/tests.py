@@ -284,6 +284,14 @@ async def ctestmain():
         await t1()
     except Exception as ex:
         print(ex)
+
+    t1=await client2.getFunc('testPoll')
+    assert t1!=None
+    print('testPoll:',t1.value)
+    t1.typedecl('->i')
+    print('expect print 1 to 3')
+    await t1.poll(lambda ex,val:print(val,ex))
+    await asyncio.sleep(2)
     
     
 async def cstestmain():
