@@ -32,6 +32,8 @@ static void *simpleffi_call(void *fn,int argc,void **argv){
 namespace pxprpc_rtbridge_base{
     void __wrap_on_connect(struct pxprpc_abstract_io *io1,void *server);
     using namespace pxprpc;
+    using Parameter=pxprpc::NamedFunctionPPImpl1::Parameter;
+    using AsyncReturn=pxprpc::NamedFunctionPPImpl1::AsyncReturn;
     class PxpPipeServer : public PxpObject{
         public:
         std::string s;
@@ -160,14 +162,14 @@ namespace pxprpc_rtbridge_base{
     void init(){
         if(!inited){
             defaultFuncMap.add((new pxprpc::NamedFunctionPPImpl1())->init("pxprpc_pipe_pp.serve",
-            [](auto para,auto ret)->void {
+            [](Parameter* para,AsyncReturn* ret)->void {
                 auto obj=new PxpPipeServer(para->nextString());
                 obj->serve();
                 ret->resolve(obj);
             })).add((new pxprpc::NamedFunctionPPImpl1())->init("pxprpc_pipe_pp.accept",
-            [](auto para,auto ret)->void {
+            [](Parameter* para,AsyncReturn* ret)->void {
                 auto serv=static_cast<PxpPipeServer *>(para->nextObject());
-                serv->accept([ret](auto io)->void {
+                serv->accept([ret](pxprpc_abstract_io* io)->void {
                     if(io==nullptr){
                         ret->reject("Accept aborted");
                     }else{
@@ -175,7 +177,7 @@ namespace pxprpc_rtbridge_base{
                     }
                 });
             })).add((new pxprpc::NamedFunctionPPImpl1())->init("pxprpc_pipe_pp.connect",
-            [](auto para,auto ret)->void {
+            [](Parameter* para,AsyncReturn* ret)->void {
                 auto servName=para->nextString();
                 auto conn=pxprpc_pipe_connect(servName.c_str());
                 if(conn==nullptr){
@@ -184,14 +186,14 @@ namespace pxprpc_rtbridge_base{
                     ret->resolve(new PxpConnection(conn));
                 }
             })).add((new pxprpc::NamedFunctionPPImpl1())->init("pxprpc_pp.io_to_raw_addr",
-            [](auto para,auto ret)->void {
+            [](Parameter* para,AsyncReturn* ret)->void {
                 auto ioaddr=reinterpret_cast<int64_t>(static_cast<PxpConnection *>((para->nextObject()))->io);
                 ret->resolve(ioaddr);
             })).add((new pxprpc::NamedFunctionPPImpl1())->init("pxprpc_pp.io_from_raw_addr",
-            [](auto para,auto ret)->void {
+            [](Parameter* para,AsyncReturn* ret)->void {
                 ret->resolve(new PxpConnection(reinterpret_cast<struct pxprpc_abstract_io *>(para->nextLong())));
             })).add((new pxprpc::NamedFunctionPPImpl1())->init("pxprpc_pp.io_send",
-            [](auto para,auto ret)->void {
+            [](Parameter* para,AsyncReturn* ret)->void {
                 auto ioaddr=static_cast<PxpConnection *>((para->nextObject()))->io;
                 auto buffer1=new pxprpc_buffer_part();
                 auto p2=para->nextBytes();
@@ -209,7 +211,7 @@ namespace pxprpc_rtbridge_base{
                 });
                 ioaddr->send(ioaddr,buffer1,pxprpc::callAndFreeCppFunction,cb);
             })).add((new pxprpc::NamedFunctionPPImpl1())->init("pxprpc_pp.io_receive",
-            [](pxprpc::NamedFunctionPPImpl1::Parameter *para,pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret)->void {
+            [](Parameter *para,AsyncReturn *ret)->void {
                 auto ioaddr=static_cast<PxpConnection *>((para->nextObject()))->io;
                 auto buffer1=new pxprpc_buffer_part();
                 buffer1->next_part=NULL;
@@ -226,33 +228,33 @@ namespace pxprpc_rtbridge_base{
                 });
                 ioaddr->receive(ioaddr,&buffer1->bytes,pxprpc::callAndFreeCppFunction,cb);
             })).add((new pxprpc::NamedFunctionPPImpl1())->init("pxprpc_pp.io_set_auto_close",
-            [](pxprpc::NamedFunctionPPImpl1::Parameter *para,auto ret)->void {
+            [](Parameter *para,AsyncReturn* ret)->void {
                 auto conn=static_cast<PxpConnection *>((para->nextObject()));
                 auto autoClose=para->nextBool();
                 //connection will not be closed when connection is deleted. Take care of connection leak.
                 conn->setAutoClose(autoClose);
             })).add((new pxprpc::NamedFunctionPPImpl1())->init("pxprpc_rtbridge_host.new_tcp_rpc_server",
-            [](auto para,auto ret)->void {
+            [](Parameter* para,AsyncReturn* ret)->void {
                 auto ser=para->asSerializer();
                 auto host=ser->getString();
                 auto port=ser->getInt();
                 auto tcp=new pxprpc_rtbridge_host::TcpPxpRpcServer(host,port);
                 ret->resolve(tcp);
             })).add((new pxprpc::NamedFunctionPPImpl1())->init("pxprpc_rtbridge.memory_alloc",
-            [](pxprpc::NamedFunctionPPImpl1::Parameter *para, pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret)->void {
+            [](pxprpc::NamedFunctionPPImpl1::Parameter *para, AsyncReturn *ret)->void {
                 auto size=para->nextInt();
                 auto chunk=new MemoryChunk();
                 chunk->alloc(size);
                 ret->resolve(chunk);
             })).add((new pxprpc::NamedFunctionPPImpl1())->init("pxprpc_rtbridge.memory_access",
-            [](pxprpc::NamedFunctionPPImpl1::Parameter *para, pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret)->void {
+            [](Parameter* para, AsyncReturn *ret)->void {
                 auto addr=para->nextLong();
                 auto size=para->nextInt();
                 auto chunk=new MemoryChunk();
                 chunk->access(reinterpret_cast<void *>(addr),size);
                 ret->resolve(chunk);
             })).add((new pxprpc::NamedFunctionPPImpl1())->init("pxprpc_rtbridge.memory_read",
-            [](pxprpc::NamedFunctionPPImpl1::Parameter *para, pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret)->void {
+            [](Parameter *para, AsyncReturn *ret)->void {
                 auto chunk=static_cast<MemoryChunk *>(para->nextObject());
                 auto offset=para->nextInt();
                 auto size=para->nextInt();
@@ -261,14 +263,14 @@ namespace pxprpc_rtbridge_base{
                 }
                 ret->resolve((char *)chunk->base+offset,size);
             })).add((new pxprpc::NamedFunctionPPImpl1())->init("pxprpc_rtbridge.memory_write",
-            [](pxprpc::NamedFunctionPPImpl1::Parameter *para, pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret)->void {
+            [](Parameter *para, AsyncReturn *ret)->void {
                 auto chunk=static_cast<MemoryChunk *>(para->nextObject());
                 auto offset=para->nextInt();
                 auto data=para->nextBytes();
                 memmove((char *)chunk->base+offset,std::get<1>(data),std::get<0>(data));
                 ret->resolve();
             })).add((new pxprpc::NamedFunctionPPImpl1())->init("pxprpc_rtbridge.memory_info",
-            [](pxprpc::NamedFunctionPPImpl1::Parameter *para, pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret)->void {
+            [](Parameter *para, AsyncReturn *ret)->void {
                 auto chunk=static_cast<MemoryChunk *>(para->nextObject());
                 auto ser=new pxprpc::Serializer();
                 ser->prepareSerializing(16);
@@ -276,7 +278,7 @@ namespace pxprpc_rtbridge_base{
                 ser->putInt(chunk->size);
                 ret->resolve(ser);
             })).add((new pxprpc::NamedFunctionPPImpl1())->init("pxprpc_rtbridge.memory_mapfile",
-            [](pxprpc::NamedFunctionPPImpl1::Parameter *para, pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret)->void {
+            [](Parameter *para, AsyncReturn *ret)->void {
                 auto path=para->nextString();
                 auto mode=para->nextString();
                 auto size=para->nextInt();
@@ -289,13 +291,13 @@ namespace pxprpc_rtbridge_base{
                     ret->resolve(fm);
                 }
             })).add((new pxprpc::NamedFunctionPPImpl1())->init("pxprpc_rtbridge.simpleffi_call",
-            [](pxprpc::NamedFunctionPPImpl1::Parameter *para, pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret)->void {
+            [](Parameter *para, AsyncReturn *ret)->void {
                 auto fn=para->nextLong();
                 auto argv=static_cast<MemoryChunk *>(para->nextObject());
                 auto r=simpleffi_call(reinterpret_cast<void *>(fn),argv->size/((int32_t)sizeof(void *)),reinterpret_cast<void **>(argv->base));
                 ret->resolve(reinterpret_cast<int64_t>(r));
             })).add((new pxprpc::NamedFunctionPPImpl1())->init("pxprpc_rtbridge.sizeof_pointer",
-            [](pxprpc::NamedFunctionPPImpl1::Parameter *para, pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret)->void {
+            [](Parameter *para, AsyncReturn *ret)->void {
                 ret->resolve((int32_t)sizeof(void *));
             }));
             inited=true;

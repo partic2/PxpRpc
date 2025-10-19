@@ -49,6 +49,7 @@ public class RuntimeBridgeUtils {
                     throw new IOException("server name already used.");
                 }
                 serv=new PipeServer(RuntimeBridgePipeServerId);
+                serv.serve();
                 serv.accept(new OneArgRunnable<AbstractIo>() {
                     @Override
                     public void run(final AbstractIo conn) {
