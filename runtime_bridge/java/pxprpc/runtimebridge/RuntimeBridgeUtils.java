@@ -10,6 +10,7 @@ import xplatj.javaplat.partic2.util.OneArgRunnable;
 
 import java.io.IOException;
 import java.util.HashSet;
+import java.util.concurrent.TimeoutException;
 
 public class RuntimeBridgeUtils {
     public static RpcExtendClient1 rtb;
@@ -23,7 +24,19 @@ public class RuntimeBridgeUtils {
     public static RpcExtendClientCallable fIo2RawAddr;
     public synchronized static void ensureInit(){
         if(client==null){
-            Io io = Pipe.connect("/pxprpc/runtime_bridge/0");
+            Io io = null;
+            for(int i1=0;i1<10;i1++){
+                io=Pipe.connect("/pxprpc/runtime_bridge/0");
+                if(io!=null){
+                    break;
+                }
+                try {
+                    Thread.sleep(100);
+                } catch (InterruptedException e) {}
+            }
+            if(io==null){
+                throw new RuntimeException("Failed to connect /pxprpc/runtime_bridge/0");
+            }
             ClientContext client1 = new ClientContext();
             client1.backend1(io);
             client=new RpcExtendClient1(client1);
