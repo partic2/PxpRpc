@@ -12,15 +12,19 @@ export class RpcExtendClientObject {
     public async free() {
         if (this.value != undefined) {
             let sid=this.client.allocSid();
+            let v=this.value;
+            this.value=undefined;
             try{
-                await this.client.baseClient.freeRef([this.value],sid)
+                await this.client.baseClient.freeRef([v],sid)
             }finally{
-                await this.client.freeSid(this.value);
+                this.client.freeSid(sid);
             }
         }
     }
     public async asCallable():Promise<RpcExtendClientCallable>{
-        return new RpcExtendClientCallable(this.client,this.value)
+        let value=this.value;
+        this.value=undefined
+        return new RpcExtendClientCallable(this.client,value)
     }
 }
 
@@ -143,7 +147,7 @@ export class RpcExtendClient1 {
     
     public allocSid() {
         let reachEnd = false;
-        while (this.__usedSid[this.__nextSid]) {
+        while (this.__usedSid[this.__nextSid]===true) {
             this.__nextSid += 1
             if (this.__nextSid >= this.__sidEnd) {
                 if (reachEnd) {
@@ -190,6 +194,8 @@ export class RpcExtendClient1 {
 
 
 //Server side
+
+//auto '.close' on free
 export function allocRefFor(serv:Server,obj:any){
     let ref=serv.allocRef();
     ref.object=obj;
