@@ -312,10 +312,10 @@ class NamedFunctionPPImpl1:public NamedFunctionPP{
     class AsyncReturn{
         public:
         PxpRequestWrap *req;
-        std::function<void()> onReqFinished=[]()->void {};
+        std::vector<std::function<void()>> onReqFinished;
         void resolve(struct pxprpc_buffer_part &buf,std::function<void()> onReqFinished){
             req->result()=buf;
-            onReqFinished=this->onReqFinished;
+            this->onReqFinished.push_back(onReqFinished);
             req->nextStep();
         }
         //"buf" will be copied
@@ -325,18 +325,18 @@ class NamedFunctionPPImpl1:public NamedFunctionPP{
             req->result().bytes.length=size;
             req->result().next_part=nullptr;
             memmove(req->result().bytes.base,buf,size);
-            this->onReqFinished=[rawbuf]()->void {
+            this->onReqFinished.push_back([rawbuf]()->void {
                 delete[] rawbuf;
-            };
+            });
             req->nextStep();
         }
         //"ser" will be deleted by callee.
         void resolve(Serializer *ser){
             ser->buildPxpBytes(&req->result().bytes);
-            this->onReqFinished=[ser,this]()->void {
+            this->onReqFinished.push_back([ser,this]()->void {
                 ser->freeBuiltBuffer(req->result().bytes.base);
                 delete ser;
-            };
+            });
             req->nextStep();
         }
         void resolve(){
@@ -373,7 +373,15 @@ class NamedFunctionPPImpl1:public NamedFunctionPP{
             if(obj==nullptr){
                 resolve((int32_t)-1);
             }else{
-                int32_t refid=this->req->context().allocRef(obj);
+                int32_t refid=this->req->allocRef(obj);
+                resolve(refid);
+            }
+        }
+        void resolve(NamedFunctionPP *obj){
+            if(obj==nullptr){
+                resolve((int32_t)-1);
+            }else{
+                int32_t refid=this->req->allocRef(obj);
                 resolve(refid);
             }
         }
@@ -419,7 +427,7 @@ class NamedFunctionPPImpl1:public NamedFunctionPP{
             return this->asSerializer()->getDouble();
         }
         PxpObject *nextObject(){
-            return req->context().dereference(this->nextInt());
+            return req->dereference(this->nextInt());
         }
         bool nextBool(){
             return this->asSerializer()->getVarint()!=0;
@@ -437,6 +445,7 @@ class NamedFunctionPPImpl1:public NamedFunctionPP{
         }
     };
     std::function<void(Parameter *para,AsyncReturn *ret)> handler=[](auto a,auto b)->void {};
+    std::function<void(NamedFunctionPPImpl1 *)> ondelete=[](NamedFunctionPPImpl1 *self)->void {};
     virtual NamedFunctionPPImpl1 *init(std::string name,std::function<void(Parameter *para,AsyncReturn *ret)> handler){
         this->handler=handler;
         this->setName(name);
@@ -448,13 +457,41 @@ class NamedFunctionPPImpl1:public NamedFunctionPP{
         auto ret=new AsyncReturn();
         ret->req=r;
         r->onFinishPP=[para,ret](auto req)->void {
-            ret->onReqFinished();
+            for(auto it:ret->onReqFinished){
+                it();
+            }
             delete para;
             delete ret;
         };
         this->handler(para,ret);
     }
-    virtual ~NamedFunctionPPImpl1(){}
+    virtual ~NamedFunctionPPImpl1(){
+        ondelete(this);
+    }
+};
+
+class EventDispatcher:public NamedFunctionPPImpl1{ 
+    public:
+    AsyncReturn *pendingReturn=nullptr;
+    EventDispatcher(){
+        init("<anonymous>", [this](Parameter *para,AsyncReturn *ret)->void {
+            if(pendingReturn!=nullptr){
+                pendingReturn->reject("EventDispatcher:Overlap call");
+                ret->reject("EventDispatcher:Overlap call");
+                pendingReturn=nullptr;
+                return;
+            }
+            pendingReturn=ret;
+            pendingReturn->onReqFinished.push_back([this]()-> void {
+                this->pendingReturn=nullptr;
+            });
+        });
+    }
+    virtual ~EventDispatcher(){
+        if(pendingReturn!=nullptr){
+            pendingReturn->reject("EventDispatcher closed");
+        }
+    }
 };
 
 }

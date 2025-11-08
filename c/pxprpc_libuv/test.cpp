@@ -25,19 +25,35 @@ static void testNopCallback(void *p){};
 using namespace pxprpc;
 
 
-
-template<typename E>
-int vectorIndexOf(std::vector<E> vec,E elem){
-    auto found=std::find(vec.begin(),vec.end(),elem);
-    if(found==vec.end())return -1;
-    return std::distance(vec.begin(),found);
-}
 #include <pxprpc_ext.hpp>
 
 int testPollCount=0;
 
 using Parameter=NamedFunctionPPImpl1::Parameter;
 using AsyncReturn=NamedFunctionPPImpl1::AsyncReturn;
+
+void __TickEventDispatcherTimerCb(uv_timer_t *handle);
+class TickEventDispatcher:public EventDispatcher{
+    public:
+    uv_timer_t timer;
+    TickEventDispatcher(){
+        uv_timer_init(uv_default_loop(),&timer);
+        timer.data=static_cast<void *>(this);
+        uv_timer_start(&timer,__TickEventDispatcherTimerCb,0,1000);
+    }
+    void tick(){
+        if(pendingReturn!=nullptr){
+            pendingReturn->resolve("tick");
+        }
+    }
+    ~TickEventDispatcher(){
+        uv_timer_stop(&timer);
+    }
+};
+void __TickEventDispatcherTimerCb(uv_timer_t *handle){
+    auto dispatcher=static_cast<TickEventDispatcher *>(handle->data);
+    dispatcher->tick();
+}
 
 void defFunc(){
     defaultFuncMap.add((new NamedFunctionPPImpl1())->init("printString",
@@ -93,6 +109,13 @@ void defFunc(){
             ret->reject("poll stop error");
         }
         std::cout<<"exit function testPoll"<<std::endl;
+    }));
+    
+    defaultFuncMap.add((new NamedFunctionPPImpl1())->init("testEvent",
+    [](Parameter* para,AsyncReturn* ret)->void {
+        std::cout<<"enter function testEvent"<<std::endl;
+        ret->resolve(new TickEventDispatcher());
+        std::cout<<"exit function testEvent"<<std::endl;
     }));
 
 }

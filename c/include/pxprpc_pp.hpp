@@ -182,88 +182,15 @@ void init(){
 }
 
 class PxpServContext;
+class PxpRequestWrap;
 
 class PxpObject{
     public:
     virtual ~PxpObject(){}
 };
 
-
-static void __wrap_ref_on_free(pxprpc_ref *ref){
-    PxpObject *obj=static_cast<PxpObject *>(ref->object);
-    delete obj;
-}
-
-class PxpServContextWrap{
-    public:
-    pxprpc_server_context ctx;
-    static PxpServContextWrap wrap(pxprpc_server_context ctx){
-        PxpServContextWrap r;
-        r.ctx=ctx;
-        return r;
-    }
-    uint32_t allocRef(PxpObject *obj){
-        uint32_t index;
-        auto cref=pxprpc_server_alloc_ref(this->ctx,&index);
-        cref->object=obj;
-        cref->on_free=__wrap_ref_on_free;
-        return index;
-    }
-    void freeRef(uint32_t index){
-        pxprpc_server_free_ref(this->ctx,pxprpc_server_get_ref(this->ctx,index));
-    }
-    PxpObject *dereference(uint32_t index){
-        return static_cast<PxpObject *>(pxprpc_server_get_ref(this->ctx,index)->object);
-    }
-};
-
-class PxpRequestWrap;
-
-void __wrap_requestOnFinish(pxprpc_request *r);
-
-class PxpRequestWrap{
-    public:
-    pxprpc_request *req=NULL;
-    void *callableDataPP=NULL;
-    std::function<void(PxpRequestWrap *)> onFinishPP=[](PxpRequestWrap *)->void{};
-    static PxpRequestWrap *wrap(pxprpc_request *req){
-        if(req->callable_data!=NULL){
-            return static_cast<PxpRequestWrap *>(req->callable_data);
-        }else{
-            auto r=new PxpRequestWrap();
-            r->req=req;
-            req->callable_data=r;
-            req->on_finish=__wrap_requestOnFinish;
-            return r;
-        }
-    }
-    PxpServContextWrap context(){
-        return PxpServContextWrap::wrap(req->server_context);
-    }
-    void nextStep(){
-        req->next_step(req);
-    }
-    struct pxprpc_bytes *parameter(){
-        return &req->parameter;
-    }
-    struct pxprpc_buffer_part &result(){
-        return req->result;
-    }
-    void setRejected(bool rejected){
-        req->rejected=rejected?1:0;
-    }
-    void onWrapFree(){
-        this->onFinishPP(this);
-        delete this;
-    }
-};
-
-void __wrap_requestOnFinish(pxprpc_request *r){
-    auto wrap=static_cast<PxpRequestWrap *>(r->callable_data);
-    wrap->onWrapFree();
-}
-
-class NamedFunctionPP{
+//Also can used as anonymous function.
+class NamedFunctionPP:public PxpObject{
     public:
     pxprpc_callable callable;
     std::string name;
@@ -282,6 +209,86 @@ class NamedFunctionPP{
     virtual ~NamedFunctionPP(){}
 };
 
+static void __wrap_ref_on_free(pxprpc_ref *ref){
+    PxpObject *obj=static_cast<PxpObject *>(ref->object);
+    delete obj;
+}
+
+static void __wrap_callable_on_free(pxprpc_ref *ref){
+    auto callable=static_cast<pxprpc_callable *>(ref->object);
+    delete static_cast<NamedFunctionPP *>(callable->user_data);
+}
+
+void __wrap_requestOnFinish(pxprpc_request *r);
+
+class PxpRequestWrap{
+    public:
+    pxprpc_request *req=nullptr;
+    void *callableDataPP=nullptr;
+    std::function<void(PxpRequestWrap *)> onFinishPP=[](PxpRequestWrap *)->void{};
+    static PxpRequestWrap *wrap(pxprpc_request *req){
+        if(req->callable_data!=NULL){
+            return static_cast<PxpRequestWrap *>(req->callable_data);
+        }else{
+            auto r=new PxpRequestWrap();
+            r->req=req;
+            req->callable_data=r;
+            req->on_finish=__wrap_requestOnFinish;
+            return r;
+        }
+    }
+    void nextStep(){
+        req->next_step(req);
+    }
+    struct pxprpc_bytes *parameter(){
+        return &req->parameter;
+    }
+    struct pxprpc_buffer_part &result(){
+        return req->result;
+    }
+    void setRejected(bool rejected){
+        req->rejected=rejected?1:0;
+    }
+    uint32_t allocRef(PxpObject *obj){
+        uint32_t index;
+        auto cref=pxprpc_server_alloc_ref(this->req->server_context,&index);
+        cref->object=obj;
+        cref->on_free=__wrap_ref_on_free;
+        return index;
+    }
+    uint32_t allocRef(NamedFunctionPP *obj){
+        uint32_t index;
+        auto cref=pxprpc_server_alloc_ref(this->req->server_context,&index);
+        cref->object=&obj->callable;
+        cref->on_free=__wrap_callable_on_free;
+        return index;
+    }
+    void freeRef(uint32_t index){
+        pxprpc_server_free_ref(this->req->server_context,pxprpc_server_get_ref(this->req->server_context,index));
+    }
+    PxpObject *dereference(uint32_t index){
+        auto ref=pxprpc_server_get_ref(this->req->server_context,index);
+        if(ref->on_free==__wrap_callable_on_free){
+            return static_cast<PxpObject *>(ref->object);
+        }else if(ref->on_free==__wrap_callable_on_free){
+            auto callable=static_cast<pxprpc_callable *>(ref->object);
+            return static_cast<NamedFunctionPP *>(callable->user_data);
+        }else{
+            return nullptr;
+        }
+    }
+
+    void onWrapFree(){
+        this->onFinishPP(this);
+        delete this;
+    }
+};
+
+void __wrap_requestOnFinish(pxprpc_request *r){
+    auto wrap=static_cast<PxpRequestWrap *>(r->callable_data);
+    wrap->onWrapFree();
+}
+
 
 
 static pxprpc_callable *__wrap_funcmap_get(pxprpc_funcmap *self,char *funcname,int namelen);
@@ -291,11 +298,11 @@ class FunctionMap{
     std::unordered_map<std::string,pxprpc_callable *> map;
     pxprpc_funcmap cfm;
     FunctionMap& add(std::string name,pxprpc_callable *fn){
-        this->map[name]=fn;
+        this->map.insert({name,fn});
         return *this;
     }
     FunctionMap& add(NamedFunctionPP *func){
-        this->map[func->name]=&func->callable;
+        return add(func->name,&func->callable);
         return *this;
     }
     pxprpc_funcmap *cFuncmap(){

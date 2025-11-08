@@ -292,6 +292,19 @@ async def ctestmain():
     print('expect print 1 to 3')
     await t1.poll(lambda ex,val:print(val,ex))
     await asyncio.sleep(2)
+
+    t1=await client2.getFunc('testEvent')
+    assert t1!=None
+    print('testEvent:',t1.value)
+    t1.typedecl('->o')
+    t2=await (await t1()).asCallable()
+    print('eventDispatcher',t2.value)
+    t2.typedecl('->s');
+    print('expect tick for each second')
+    await t2.poll(lambda ex,val:print(val,ex))
+    await asyncio.sleep(3)
+    await t2.free()
+    await asyncio.sleep(3)
     
     
 async def cstestmain():

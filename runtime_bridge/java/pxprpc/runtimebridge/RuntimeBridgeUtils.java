@@ -6,11 +6,11 @@ import pxprpc.base.ServerContext;
 import pxprpc.extend.DefaultFuncMap;
 import pxprpc.extend.RpcExtendClient1;
 import pxprpc.extend.RpcExtendClientCallable;
+import pxprpc.extend.RpcExtendClientObject;
 import xplatj.javaplat.partic2.util.OneArgRunnable;
 
 import java.io.IOException;
 import java.util.HashSet;
-import java.util.concurrent.TimeoutException;
 
 public class RuntimeBridgeUtils {
     public static RpcExtendClient1 rtb;
@@ -22,6 +22,9 @@ public class RuntimeBridgeUtils {
     public static RpcExtendClientCallable fServe;
     public static RpcExtendClientCallable fAccept;
     public static RpcExtendClientCallable fIo2RawAddr;
+    public static RpcExtendClientCallable fVarGet;
+    public static RpcExtendClientCallable fVarSet;
+    public static RpcExtendClientCallable fVarOnChange;
     public synchronized static void ensureInit(){
         if(client==null){
             Io io = null;
@@ -45,6 +48,9 @@ public class RuntimeBridgeUtils {
                 fServe = client.getFunc("pxprpc_pipe_pp.serve").typedecl("s->o");
                 fAccept = client.getFunc("pxprpc_pipe_pp.accept").typedecl("o->o");
                 fIo2RawAddr=client.getFunc("pxprpc_pp.io_to_raw_addr").typedecl("o->l");
+                fVarGet=client.getFunc("pxprpc_rtbridge.variable_get").typedecl("s->s");
+                fVarSet=client.getFunc("pxprpc_rtbridge.variable_set").typedecl("ss->");
+                fVarOnChange=client.getFunc("pxprpc_rtbridge.variable_on_change").typedecl("->o");
             } catch (IOException e) {
                 throw new RuntimeException(e);
             } catch (InterruptedException e) {
@@ -52,6 +58,22 @@ public class RuntimeBridgeUtils {
             }
         }
     }
+    public static String varGet(String name) throws IOException, InterruptedException {
+        ensureInit();
+        return (String)fVarGet.callBlock(name)[0];
+    }
+    public static void varSet(String name,String value) throws IOException, InterruptedException {
+        ensureInit();
+        fVarSet.callBlock(name,value);
+    }
+    public static RpcExtendClientCallable varOnChange() throws IOException, InterruptedException {
+        ensureInit();
+        RpcExtendClientObject ed = (RpcExtendClientObject)fVarOnChange.callBlock()[0];
+        RpcExtendClientCallable ed2 = ed.asCallable();
+        ed2.typedecl("->s");
+        return ed2;
+    }
+
     public static void registerJavaPipeServer() throws IOException {
         synchronized (javaPipeServeMutex){
             if(serv==null){

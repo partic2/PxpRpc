@@ -6,6 +6,9 @@
 #include <queue>
 #include <functional>
 #include <pxprpc_rtbridge_host.hpp>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
 
 extern "C" {
     #include <pxprpc_pipe.h>
@@ -158,6 +161,20 @@ namespace pxprpc_rtbridge_base{
         virtual ~MemoryChunkOutputStream(){
         }
     };
+    std::unordered_map<std::string, std::string> rtbvars;
+    std::unordered_set<pxprpc::EventDispatcher *> rtbvarsOnChange;
+    void rtbvarsSet(std::string name,std::string value){
+        if(value.size()==0){
+            rtbvars.erase(name);
+        }else{
+            rtbvars.insert({name,value});
+        }
+        for(auto it:rtbvarsOnChange){
+            if(it->pendingReturn!=nullptr){
+                it->pendingReturn->resolve(name);
+            }
+        }
+    }
     bool inited=false;
     void init(){
         if(!inited){
@@ -299,6 +316,29 @@ namespace pxprpc_rtbridge_base{
             })).add((new pxprpc::NamedFunctionPPImpl1())->init("pxprpc_rtbridge.sizeof_pointer",
             [](Parameter *para, AsyncReturn *ret)->void {
                 ret->resolve((int32_t)sizeof(void *));
+            })).add((new pxprpc::NamedFunctionPPImpl1())->init("pxprpc_rtbridge.variable_get",
+            [](Parameter *para, AsyncReturn *ret)->void {
+                auto name=para->nextString();
+                auto found=rtbvars.find(name);
+                if(found!=rtbvars.end()){
+                    ret->resolve(found->second);
+                }else{
+                    ret->resolve("");                    
+                }
+            })).add((new pxprpc::NamedFunctionPPImpl1())->init("pxprpc_rtbridge.variable_set",
+            [](Parameter *para, AsyncReturn *ret)->void {
+                auto name=para->nextString();
+                auto value=para->nextString();
+                rtbvarsSet(name,value);
+                ret->resolve();
+            })).add((new pxprpc::NamedFunctionPPImpl1())->init("pxprpc_rtbridge.variable_on_change",
+            [](Parameter *para, AsyncReturn *ret)->void {
+                auto ed=new pxprpc::EventDispatcher();
+                ed->ondelete=[](pxprpc::NamedFunctionPP *self)->void {
+                    rtbvarsOnChange.erase(static_cast<pxprpc::EventDispatcher *>(self));
+                };
+                rtbvarsOnChange.insert(ed);
+                ret->resolve(ed);
             }));
             inited=true;
         }
