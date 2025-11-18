@@ -17,7 +17,7 @@ public class RuntimeBridgeUtils {
     public static String RuntimeBridgePipeServerId="/pxprpc/runtime_bridge/java/0";
     static Object javaPipeServeMutex=new Object();
     public static PipeServer serv=null;
-    public static HashSet<AbstractIo> acceptedConnection;
+    public static HashSet<AbstractIo> acceptedConnection=new HashSet<AbstractIo>();
     public static RpcExtendClient1 client;
     public static RpcExtendClientCallable fServe;
     public static RpcExtendClientCallable fAccept;

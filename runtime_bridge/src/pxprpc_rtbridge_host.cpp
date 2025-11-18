@@ -43,10 +43,16 @@ const char *TcpPxpRpcServer::start(){
     if(tcp!=nullptr){
         return "started";
     }
-    struct sockaddr_in saddr;
-    int r=uv_ip4_addr(host.c_str(),port,&saddr);
+    union{
+        struct sockaddr_in ipv4;
+        struct sockaddr_in6 ipv6;
+    } saddr;
+    int r=uv_ip4_addr(host.c_str(),port,&saddr.ipv4);
     if(r){
-        return "uv_ip4_addr failed.";
+        r=uv_ip6_addr(host.c_str(),port,&saddr.ipv6);
+        if(r){
+            return "parse host failed.";
+        }
     }
     tcp=new uv_tcp_t();
     uv_tcp_init(uvloop,tcp);
@@ -92,7 +98,7 @@ const char *ensureInited(){
             #ifdef PXPRPC_RTBRIDGE_ENABLE_TEST_TCPSERVER
             //let it leak?
             auto testtcp=new TcpPxpRpcServer("127.0.0.1",2048);
-            testtcp->start(); ;
+            testtcp->start();
             #endif
 
             inited=3;
