@@ -10,6 +10,10 @@
 
 #include <pxprpc_rtbridge.h>
 
+#ifdef __linux__
+#include <signal.h>
+#endif
+
 static uv_loop_t *rtbloop=NULL;
 
 
@@ -188,6 +192,9 @@ const char *pxprpc_rtbridge_init_and_run(void **uvloop){
     if (rtbloop != NULL) {
         return "inited";
     }
+    #ifdef __linux__
+    signal(SIGPIPE, SIG_IGN);
+    #endif
     _lastRtbErr=NULL;
     uv_sem_t asyncInitDone;
     uv_sem_init(&asyncInitDone,0);
