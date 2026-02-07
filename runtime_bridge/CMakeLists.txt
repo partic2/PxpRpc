@@ -75,14 +75,14 @@ endforeach()
 
 
 
-file(WRITE "src/__gen-mod-entry.txt" "")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/extrainc/__gen_pxprpc_rtbridge_mod_entry_list2026.hpp" "")
 foreach(entry ${PXPRPC_RTBRIDGE_MODULES_ENTRY})
-  file(APPEND "src/__gen-mod-entry.txt" "&${entry},\n")
+  file(APPEND "${CMAKE_CURRENT_BINARY_DIR}/extrainc/__gen_pxprpc_rtbridge_mod_entry_list2026.hpp" "&${entry},\n")
 endforeach(entry)
 
-file(WRITE "src/__gen-mod-include.txt" "")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/extrainc/__gen_pxprpc_rtbridge_mod_include_list2026.hpp" "")
 foreach(source ${PXPRPC_RTBRIDGE_MODULES_SOURCE})
-  file(APPEND "src/__gen-mod-include.txt" "#include \"${source}\"\n")
+  file(APPEND "${CMAKE_CURRENT_BINARY_DIR}/extrainc/__gen_pxprpc_rtbridge_mod_include_list2026.hpp" "#include \"${source}\"\n")
 endforeach(source)
 
 list(APPEND pxprpc_rtbridge_sources src/pxprpc_rtbridge.c src/pxprpc_rtbridge_host.cpp)
@@ -95,6 +95,7 @@ list(REMOVE_DUPLICATES pxprpc_rtbridge_compile_definitions)
 
 add_library(pxprpc_rtbridge SHARED ${pxprpc_rtbridge_sources})
 target_include_directories(pxprpc_rtbridge PUBLIC include)
+target_include_directories(pxprpc_rtbridge PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/extrainc")
 target_link_libraries(pxprpc_rtbridge PUBLIC ${pxprpc_rtbridge_link_libraries})
 target_compile_definitions(pxprpc_rtbridge PUBLIC ${pxprpc_rtbridge_compile_definitions})
 foreach(mod_dir ${PXPRPC_RTBIRDGE_MODULES_DIRS})

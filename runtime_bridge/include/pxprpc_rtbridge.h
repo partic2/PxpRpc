@@ -19,6 +19,9 @@ const char *pxprpc_rtbridge_bsend(struct pxprpc_abstract_io *io,struct pxprpc_bu
 /* thread safe pipe connect */
 struct pxprpc_abstract_io *pxprpc_rtbridge_pipe_connect(const char *servname);
 
+/* thread safe runtime bridge pipe/stream close */
+void pxprpc_rtbridge_io_close(struct pxprpc_abstract_io *io);
+
 
 
 /* 

@@ -209,7 +209,7 @@ class NamedFunctionPP:public PxpObject{
     virtual ~NamedFunctionPP(){}
 };
 
-static void __wrap_ref_on_free(pxprpc_ref *ref){
+static void __wrap_object_on_free(pxprpc_ref *ref){
     PxpObject *obj=static_cast<PxpObject *>(ref->object);
     delete obj;
 }
@@ -253,7 +253,7 @@ class PxpRequestWrap{
         uint32_t index;
         auto cref=pxprpc_server_alloc_ref(this->req->server_context,&index);
         cref->object=obj;
-        cref->on_free=__wrap_ref_on_free;
+        cref->on_free=__wrap_object_on_free;
         return index;
     }
     uint32_t allocRef(NamedFunctionPP *obj){
@@ -268,7 +268,7 @@ class PxpRequestWrap{
     }
     PxpObject *dereference(uint32_t index){
         auto ref=pxprpc_server_get_ref(this->req->server_context,index);
-        if(ref->on_free==__wrap_callable_on_free){
+        if(ref->on_free==__wrap_object_on_free){
             return static_cast<PxpObject *>(ref->object);
         }else if(ref->on_free==__wrap_callable_on_free){
             auto callable=static_cast<pxprpc_callable *>(ref->object);

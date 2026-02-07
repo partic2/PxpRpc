@@ -56,7 +56,7 @@ static void pxprpc_rtbridge_async_exec(void (*fn)(void *),void *p){
 
 struct _rtbioreq{
     struct pxprpc_abstract_io *io;
-    /* receive 1, send 2, connect 3, listen 4(Not implemented), accept 5(Not implemented), stop loop 6*/
+    /* receive 1, send 2, connect 3, close 4, stop loop 6*/
     char rs;
     union{
        struct pxprpc_buffer_part *send;
@@ -88,6 +88,10 @@ static void _rtbiohandle(struct _rtbioreq *req){
         break;
         case 3:
         req->io=pxprpc_pipe_connect(req->servname);
+        _rtbiocb(req);
+        break;
+        case 4:
+        req->io->close(req->io);
         _rtbiocb(req);
         break;
         case 6:
@@ -129,6 +133,14 @@ struct pxprpc_abstract_io *pxprpc_rtbridge_pipe_connect(const char *servname){
     req.rs=3;
     _rtbioreqdispatch(&req);
     return req.io;
+}
+
+void pxprpc_rtbridge_io_close(struct pxprpc_abstract_io *io){
+    struct _rtbioreq req;
+    req.io=io;
+    req.rs=4;
+    _rtbioreqdispatch(&req);
+    return;
 }
 
 
