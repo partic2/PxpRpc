@@ -236,12 +236,13 @@ namespace pxprpc_rtbridge_base{
                     auto err=ioaddr->receive_error;
                     if(err!=nullptr){
                         ret->reject(err);
+                        delete buffer1;
                     }else{
                         ret->resolve(*buffer1,[ioaddr,buffer1]()->void {
                             ioaddr->buf_free(buffer1->bytes.base);
+                            delete buffer1;
                         });
                     }
-                    delete buffer1;
                 });
                 ioaddr->receive(ioaddr,&buffer1->bytes,pxprpc::callAndFreeCppFunction,cb);
             })).add((new pxprpc::NamedFunctionPPImpl1())->init("pxprpc_pp.io_set_auto_close",
