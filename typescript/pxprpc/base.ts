@@ -82,6 +82,7 @@ export class Serializer{
             this.dv!.setUint8(this.pos,val);
             this.pos++;
         }
+        return this;
     }
     public ensureBuffer(remainSize:number){
         if(this.pos+remainSize>this.dv!.buffer.byteLength){
