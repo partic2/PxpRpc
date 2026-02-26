@@ -79,6 +79,10 @@ static void __sockUvReadCb(uv_stream_t* stream,ssize_t nread,const uv_buf_t* buf
     }else if(nread<0){
         self->io1.receive_error=uv_strerror(nread);
         uv_read_stop((uv_stream_t *)&self->stream);
+        if(self->recvBuf->base!=NULL){
+            pxprpc__free(self->recvBuf->base);
+            self->recvBuf->base=NULL;
+        }
         self->nextBuf.base=NULL;
         self->recvBuf=NULL;
         if(self->readCb!=NULL){
