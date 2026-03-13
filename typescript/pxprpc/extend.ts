@@ -105,7 +105,6 @@ s  string(bytes will be decode to string)
             this.client.freeSid(sid);
         }
     }
-
     public async poll(onResult:(err:Error|null,result?:any)=>void,...args:any[]){
         let buf=this.serArgs(args);
         let sid=this.client.allocSid();
@@ -118,6 +117,11 @@ s  string(bytes will be decode to string)
                 onResult(null,this.unserRet(result!))
             }
         },sid);
+    }
+    public signal(...args:any[]){
+        let buf=this.serArgs(args);
+        this.client.throwIfNotRunning();
+        this.client.baseClient.signal(this.value!,buf);
     }
 }
 

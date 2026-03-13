@@ -130,13 +130,14 @@ class ClientContext(object):
                 pack=await self.io1.receive()
                 sid=struct.unpack('<I',pack[:4])[0]
                 log1.debug('client get sid:%s',sid)
-                fut=self.__waitingSession[sid&0x7fffffff]
-                del self.__waitingSession[sid&0x7fffffff]
-                if isinstance(fut,asyncio.Future):
-                    if not fut.done():
-                        fut.set_result((sid,pack[4:]))
-                else:
-                    fut(sid,pack[4:])
+                if sid!=0xffffffff:
+                    fut=self.__waitingSession[sid&0x7fffffff]
+                    del self.__waitingSession[sid&0x7fffffff]
+                    if isinstance(fut,asyncio.Future):
+                        if not fut.done():
+                            fut.set_result((sid,pack[4:]))
+                    else:
+                        fut(sid,pack[4:])
         except Exception as exc:
             for waiting in self.__waitingSession.values():
                 waiting.set_exception(exc)
@@ -147,13 +148,18 @@ class ClientContext(object):
 
     async def call(self,callableIndex:int,parameter:bytes,sid:int=0x100)->bytes:
         respFut=asyncio.Future()
-        self.__waitingSession[sid]=respFut
+        if sid!=0xffffffff:
+            self.__waitingSession[sid]=respFut
+        log1.debug('client call request for %s with sid %s',callableIndex,sid)
         await self.io1.send(struct.pack('Ii',sid,callableIndex)+parameter)
-        sid2,result=await respFut
-        if sid==sid2:
-            return result
+        if sid!=0xffffffff:
+            sid2,result=await respFut
+            if sid==sid2:
+                return result
+            else:
+                raise RpcRemoteError(result.decode('utf-8'))
         else:
-            raise RpcRemoteError(result.decode('utf-8'))
+            return b''
 
     async def getFunc(self,fnName:str,sid:int=0x100)->int:
         result=await self.call(-1,fnName.encode('utf-8'),sid)
@@ -181,7 +187,8 @@ class ClientContext(object):
         self.__waitingSession[sid]=respCb
         await self.io1.send(struct.pack('Iii',sid,-5,callableIndex)+parameter)
             
-    
+    def signal(self,callableIndex:int,parameter:bytes):
+        asyncio.create_task(self.call(callableIndex,parameter,0xffffffff))
 
 
 
@@ -287,7 +294,7 @@ class ServerContext(object):
 
     async def getInfo(self,req:PxpRequest):
         req.result=('server name:pxprpc for python3\n'+
-                                'version:2.0\n').encode('utf-8')
+                                'version:2.1\n').encode('utf-8')
 
 
     async def freeRefHandler(self,req:PxpRequest):
@@ -306,12 +313,16 @@ class ServerContext(object):
                 await handler[-r2.callableIndex](r2)
             if r2.callableIndex==-3:
                 return
+            if r2.session==0xffffffff:
+                return
             if req.rejected!=None:
                 await self.io1.send((req.session^0x80000000).to_bytes(4,'little')+str(req.rejected).encode('utf-8'))
             else:
                 await self.io1.send(req.session.to_bytes(4,'little')+req.result)
             r2=None
         except Exception:
+            import traceback
+            traceback.print_exc()
             self.close()
         
 
@@ -324,7 +335,7 @@ class ServerContext(object):
                 req=PxpRequest(self)
                 buf=await self.io1.receive()
                 req.session,req.callableIndex=struct.unpack('<Ii',buf[:8])
-                log1.debug('get session:%s',hex(req.session))
+                log1.debug('get session:%s',req.session)
                 req.parameter=buf[8:]
                 asyncio.create_task(self.processRequest(req))
         finally:

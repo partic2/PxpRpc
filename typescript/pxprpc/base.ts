@@ -135,8 +135,10 @@ export class Client{
                 let buf=await this.io1.receive();
                 let packet=new DataView(buf.buffer,buf.byteOffset,buf.byteLength);
                 let sid=packet.getUint32(0,true);
-                let cb=this.waitingSessionCb[sid&0x7fffffff];
-                cb(null,[sid,new Uint8Array(buf.buffer,buf.byteOffset+4,buf.byteLength-4)]);
+                if(sid!==0xffffffff){
+                    let cb=this.waitingSessionCb[sid&0x7fffffff];
+                    cb(null,[sid,new Uint8Array(buf.buffer,buf.byteOffset+4,buf.byteLength-4)]);
+                }
             }
         }catch(e){
             for(let k in this.waitingSessionCb){
@@ -155,18 +157,28 @@ export class Client{
         let hdr2=new DataView(hdr.buffer);
         hdr2.setUint32(0,sid,true);
         hdr2.setInt32(4,callableIndex,true)
-        let respFut=new Promise<[number,Uint8Array]>((resolve,reject)=>{
-            this.waitingSessionCb[sid]=(err,resp)=>{
-                if(err===null){resolve(resp!);}else{reject(err)};
-            }
-        });
-        await this.io1.send([hdr,...parameter])
-        let [sid2,result]=await respFut;
-        delete this.waitingSessionCb[sid&0x7fffffff];
-        if(sid!=sid2){
-            throw new PxprpcRemoteError(new TextDecoder().decode(result));
+        let respFut:Promise<[number,Uint8Array]>|null=null;
+        if(sid!==0xffffffff){
+            respFut=new Promise((resolve,reject)=>{
+                this.waitingSessionCb[sid]=(err,resp)=>{
+                    if(err===null){resolve(resp!);}else{reject(err)};
+                }
+            });
         }
-        return result;
+        await this.io1.send([hdr,...parameter]);
+        if(respFut!==null){
+            let [sid2,result]=await respFut;
+            delete this.waitingSessionCb[sid&0x7fffffff];
+            if(sid!=sid2){
+                throw new PxprpcRemoteError(new TextDecoder().decode(result));
+            }
+            return result;
+        }else{
+            return new Uint8Array(0);
+        }
+    }
+    public signal(callableIndex:number,parameter:Uint8Array[]){
+        this.call(callableIndex,parameter,0xffffffff)
     }
     public async getFunc(funcName:string,sid:number=0x100){
         let result=await this.call(-1,[new TextEncoder().encode(funcName)],sid)
@@ -292,6 +304,8 @@ export class Server{
             }
             //-3 close, don't response.Also -5 poll will set the callableIndex to -3 to avoid response.
             if(r.callableIndex===-3)return;
+            //signal call, don't response.
+            if(r.session===0xffffffff)return;
             let sid=new DataView(new ArrayBuffer(4));
             if(r.rejected===null){
                 sid.setUint32(0,r.session,true);
@@ -339,7 +353,7 @@ export class Server{
 	public async getInfo(r:PxpRequest){
         r.result=[new TextEncoder().encode(
             "server name:pxprpc for typescript\n"+
-        "version:2.0\n")]
+        "version:2.1\n")]
 	}
     public async poll(r:PxpRequest){
         let view=new DataView(r.parameter!.buffer,r.parameter!.byteOffset,r.parameter!.byteLength);

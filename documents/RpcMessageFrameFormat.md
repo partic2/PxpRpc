@@ -104,5 +104,13 @@ struct pxprpc_request_response{
     uint32_t session_id;
 }
 
+/* Since version 2.1 */
+
+/* signal: Call callable and ignore the result */
+struct pxprpc_requst_format{
+    uint32_t session_id=0xffffffff;
+    int32_t callable_index;
+    char parameter[remain];
+}
 
 ```

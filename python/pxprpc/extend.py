@@ -322,6 +322,12 @@ available type typedecl characters:
             else:
                 onResult(None,self.unserRet(result)) # type: ignore
         await self.client.conn.poll(self.value,packed,fn,sid)
+    
+    def signal(self,*args)->Any:
+        assert self.value is not None
+        self.client.throwIfNotRunning()
+        packed=self.serArgs(args)
+        self.client.conn.signal(self.value,packed)
 
 
 class RpcExtendError(Exception):
