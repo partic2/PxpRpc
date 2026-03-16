@@ -80,6 +80,19 @@ public class RpcExtendClientCallable extends RpcExtendClientObject {
             this.client.freeSid(sid);
         }
     }
+    public void signal(Object... parameters)throws IOException, InterruptedException {
+        ByteBuffer buf;
+        if(tParam.length==1 && tParam[0]=='b'){
+            buf=(ByteBuffer)parameters[0];
+        }else{
+            Serializer2 ser = new Serializer2().prepareSerializing(32);
+            new TableSerializer().bindSerializer(ser)
+                    .bindContext(null,this.client).setColumnsInfo2(tParam,null)
+                    .putRowsData(Arrays.asList(new Object[][]{parameters}));
+            buf = ser.build();
+        }
+        this.client.baseClient.signal(this.value,buf);
+    }
     public void poll(final Ret result,Object ...parameters) throws IOException {
         ByteBuffer buf;
         if(tParam.length==1 && tParam[0]=='b'){

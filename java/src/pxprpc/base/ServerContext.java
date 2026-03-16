@@ -138,7 +138,7 @@ public class ServerContext implements Closeable {
     public void getInfo(final PxpRequest r) throws IOException {
         byte[] b = (
                 "server name:pxprpc for java\n" +
-                        "version:2.0\n"
+                        "version:2.1\n"
         ).getBytes(charset);
         r.result=new ByteBuffer[]{ByteBuffer.wrap(b)};
         r.done();

@@ -118,6 +118,17 @@ async def testClient(rpcconn:pxprpc.extend.ClientContext,name:str='default'):
     else:
         print('testPollCall not found,skipped')
 
+    await asyncio.sleep(1)
+
+    print('testSignal start')
+    testSignalCall=await client2.getFunc('test1.testSignal')
+    if testSignalCall!=None:
+        testSignalCall.typedecl('s->')
+        testSignalCall.signal('signal')
+
+    await asyncio.sleep(1)
+    print('testSignal end')
+
     t1=await client2.getFunc('test1.autoCloseable')
     assert t1!=None
     t1.typedecl('->o')
@@ -173,6 +184,9 @@ async def amain():
                     raise Exception('Stopped')
                 return s+str(count)
             return PyCallableWrap(fn).typedecl('s->s')
+        
+        async def testSignal(self,msg:str)->typing.Any:
+            print(msg)
         
 
     pxprpc.extend.RegisteredFuncMap['test1']=test1()

@@ -16,7 +16,7 @@
 
 
 static const char *ServerInfo="server name:pxprpc for c\n"
-"version:2.0\n";
+"version:2.1\n";
 
 static struct pxprpc_server_context_exports *pxprpc_server_context_exports(pxprpc_server_context context);
 
@@ -162,8 +162,12 @@ static void _pxprpc__writeResult(pxprpc_request *r){
 
 //Call Handler
 static void _pxprpc__stepCall2(pxprpc_request *r){
-    r->next_step=_pxprpc__finishRequest;
-    _pxprpc__writeResult(r);
+    if(r->session!=0xffffffff){
+        r->next_step=_pxprpc__finishRequest;
+        _pxprpc__writeResult(r);
+    }else{
+        _pxprpc__finishRequest(r);
+    }
 }
 static void _pxprpc__stepCall1(pxprpc_request *r){
     struct _pxprpc__ServCo * ctx=(struct _pxprpc__ServCo *)r->server_context;

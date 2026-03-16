@@ -56,6 +56,11 @@ export async function testAsClient(client2?:RpcExtendClient1){
     }else{
         console.info('test1.testPollCall not found, skipped.');
     }
+    let testSignal=await client2.getFunc('test1.testSignal');
+    if(testSignal!=null){
+        testSignal.typedecl('s->')
+        testSignal.signal('signal');
+    }
     let autoCloseable=(await client2.getFunc('test1.autoCloseable'))!.typedecl('->o');
     await autoCloseable.call();
     await client2.close()
@@ -105,6 +110,9 @@ export async function testAsServer(server2?:RpcExtendServer1){
             }).typedecl('s->s');
         }
     ).typedecl('->o')
+    defaultFuncMap['test1.testSignal']=new RpcExtendServerCallable(
+        async (msg)=>console.info(msg)
+    ).typedecl('s->')
     await server2.serve();
     }catch(e){
         console.error(e)

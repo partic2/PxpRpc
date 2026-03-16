@@ -35,21 +35,23 @@ public class ClientContext {
                         ByteBuffer allBuf = that.io.receive();
                         allBuf.order(ByteOrder.LITTLE_ENDIAN);
                         int sid = allBuf.getInt();
-                        msgBody[0]=allBuf;
-                        boolean isErr=(sid&0x80000000)!=0;
-                        Ret r = that.waitingSession.get(sid&0x7fffffff);
-                        if(r==null)
-                            continue;
-                        if(isErr){
-                            byte[] errMsg=new byte[msgBody[0].remaining()];
-                            msgBody[0].get(errMsg);
-                            that.waitingSession.remove(sid);
-                            r.cb(null,new RemoteError(new String(errMsg,ServerContext.charset)));
-                        }else{
-                            if(!r.pollCall){
+                        if(sid!=0xffffffff){
+                            msgBody[0]=allBuf;
+                            boolean isErr=(sid&0x80000000)!=0;
+                            Ret r = that.waitingSession.get(sid&0x7fffffff);
+                            if(r==null)
+                                continue;
+                            if(isErr){
+                                byte[] errMsg=new byte[msgBody[0].remaining()];
+                                msgBody[0].get(errMsg);
                                 that.waitingSession.remove(sid);
+                                r.cb(null,new RemoteError(new String(errMsg,ServerContext.charset)));
+                            }else{
+                                if(!r.pollCall){
+                                    that.waitingSession.remove(sid);
+                                }
+                                r.cb(msgBody[0],null);
                             }
-                            r.cb(msgBody[0],null);
                         }
                     }
                 } catch (IOException e) {
@@ -65,13 +67,16 @@ public class ClientContext {
         header.order(ByteOrder.LITTLE_ENDIAN);
         header.putInt(sid).putInt(callableIndex);
         Utils.flip(header);
-        this.waitingSession.put(sid,asyncResult);
+        if(sid!=0xffffffff){
+            this.waitingSession.put(sid,asyncResult);
+        }
         this.io.send(new ByteBuffer[]{header,parameter});
     }
     public ByteBuffer callBlock(int callableIndex,ByteBuffer parameter,int sid) throws IOException, InterruptedException {
         final Object lock=new Object();
         final ByteBuffer[] result=new ByteBuffer[1];
         final RemoteError[] exc=new RemoteError[1];
+
         Ret ar = new Ret() {
             @Override
             public void cb(ByteBuffer r, RemoteError e) {
@@ -82,17 +87,20 @@ public class ClientContext {
                 }
             }
         };
-        this.waitingSession.put(sid,ar);
         this.call(callableIndex,parameter,sid,ar);
-        synchronized (lock){
-            if(result[0]==null&&exc[0]==null){
-                lock.wait();
+        if(sid!=0xffffffff){
+            synchronized (lock){
+                if(result[0]==null&&exc[0]==null){
+                    lock.wait();
+                }
             }
+            if(exc[0]!=null){
+                throw exc[0];
+            }
+            return result[0];
+        }else{
+            return ByteBuffer.allocate(0);
         }
-        if(exc[0]!=null){
-            throw exc[0];
-        }
-        return result[0];
     }
     //async version is not implemented because they are rarely used in Java. Maybe implemented with name like getFuncAsync?
     public int getFunc(String fnName,int sid) throws IOException, InterruptedException {
@@ -129,5 +137,7 @@ public class ClientContext {
         this.waitingSession.put(sid,asyncResult);
         this.io.send(new ByteBuffer[]{header,parameter});
     }
-
+    public void signal(int callableIndex,ByteBuffer parameter) throws IOException, InterruptedException {
+        this.callBlock(callableIndex,parameter,0xffffffff);
+    }
 }

@@ -75,6 +75,16 @@ public class PxpRpc {
 		public void raiseError1() throws IOException {
 			throw new IOException("dummy exception");
 		}
+		public int testSignal(final AsyncReturn<Integer> aret,String s){
+			System.out.println("test signal:"+s);
+			tm.schedule(new TimerTask() {
+				@Override
+				public void run() {
+					aret.resolve(0);
+				}
+			},3000);
+			return 0;
+		}
 		public Closeable autoCloseable(){
 			return new Closeable(){
 				@Override
@@ -198,14 +208,17 @@ public class PxpRpc {
 			});
 			Thread.sleep(3500);
 			onTick.free();
-			Thread.sleep(3000);
-
+			Thread.sleep(1000);
+			RpcExtendClientCallable testSignal=client1.getFunc("test1.testSignal");
+			testSignal.typedecl("s->");
+			testSignal.signal("signal");
 			try{
 				RpcExtendClientCallable raiseError1 = client1.getFunc("test1.raiseError1").typedecl("->");
 				raiseError1.callBlock(new Object[]{});
 			}catch(RemoteError e){
 				e.printStackTrace();
 			}
+
 		} catch (IOException e) {
 			e.printStackTrace();
 		} catch (InterruptedException e) {
