@@ -313,7 +313,7 @@ class NamedFunctionPPImpl1:public NamedFunctionPP{
         public:
         PxpRequestWrap *req;
         std::vector<std::function<void()>> onReqFinished;
-        void resolve(struct pxprpc_buffer_part &buf,std::function<void()> onReqFinished){
+        void resolve(const struct pxprpc_buffer_part &buf,std::function<void()> onReqFinished){
             req->result()=buf;
             this->onReqFinished.push_back(onReqFinished);
             req->nextStep();
