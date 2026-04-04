@@ -125,6 +125,8 @@ import { CreateWorkerThread } from 'partic2/jsutils1/webutils';
 import {WebMessage} from './backend'
 var __name__='pxprpc/tests'
 
+export async function nop(){};
+
 ;(async ()=>{
     if(globalThis.window!=undefined){
         let workerThread=CreateWorkerThread();
@@ -135,7 +137,7 @@ var __name__='pxprpc/tests'
             await testAsServer(server2);
         });
         serv.listen('pxprpc test 1');
-        await workerThread.runScript(`require(['${__name__}'])`)
+        await workerThread.call(__name__,'nop',[])
     }else{
         console.log('worker')
         WebMessage.bind(globalThis);
