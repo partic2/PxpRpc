@@ -167,7 +167,7 @@ namespace pxprpc_rtbridge_base{
         if(value.size()==0){
             rtbvars.erase(name);
         }else{
-            rtbvars.insert({name,value});
+            rtbvars.insert_or_assign(name,value);
         }
         for(auto it:rtbvarsOnChange){
             if(it->pendingReturn!=nullptr){

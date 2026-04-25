@@ -298,7 +298,7 @@ class FunctionMap{
     std::unordered_map<std::string,pxprpc_callable *> map;
     pxprpc_funcmap cfm;
     FunctionMap& add(std::string name,pxprpc_callable *fn){
-        this->map.insert({name,fn});
+        this->map.insert_or_assign(name,fn);
         return *this;
     }
     FunctionMap& add(NamedFunctionPP *func){
