@@ -16,6 +16,13 @@ const char *pxprpc_rtbridge_brecv(struct pxprpc_abstract_io *io,struct pxprpc_by
 /* thread safe block send wrap for pxprpc_abstract_io. for some block api. */
 const char *pxprpc_rtbridge_bsend(struct pxprpc_abstract_io *io,struct pxprpc_buffer_part *buf);
 
+/*
+    Wrap a pxprpc_abstract_io to make it's method thread-safe.
+    param post_executable: post a executable to the thread which to handle the send/receive callback.
+    .close will also close the wrapped pxprpc_abstract_io, So don't close again.
+*/
+struct pxprpc_abstract_io *pxprpc_rtbridge_wrap_thread(struct pxprpc_abstract_io *io,void (*post_executable)(void *p,void (*executable)(void *p2),void *p2),void *p);
+
 /* thread safe pipe connect */
 struct pxprpc_abstract_io *pxprpc_rtbridge_pipe_connect(const char *servname);
 
@@ -23,38 +30,25 @@ struct pxprpc_abstract_io *pxprpc_rtbridge_pipe_connect(const char *servname);
 void pxprpc_rtbridge_io_close(struct pxprpc_abstract_io *io);
 
 
+void pxprpc_rtbridge_post_executable(void *uvthread,void (*fn)(void *),void *p);
 
-/* 
-  Initialize rtbridge with libuv.
-  Return error string if error occured, or NULL.
-  The "uvloop" will be used as "main loop" for rtbridge and can be only set once. 
-  The second and later pxprpc_rtbrige_init_uv call before pxprpc_rtbridge_deinit will take no effect and return "inited".
-  This function will modify pxprpc_pipe_executor if pxprpc_pipe_executor is NULL.
-  BTW rtbridge will register an async_handle so uv_run(uvloop,UV_RUN_DEFAULT) will never return before pxprpc_rtbridge_deinit is called.
-*/
-const char *pxprpc_rtbridge_init_uv(void *uvloop);
 
-/*
-  Initialize rtbridge with a new uv loop and run this loop in new thread.
-  return NULL if no error.
-  return "inited" if rtbridge has been inited by other loop.
-  return error meesage for other error.
-  If "uvloop" is not NULL, will be set to the internally created uvloop;
-*/
+const char *pxprpc_rtbridge_new_uvthread(void **uvthread_output);
+
+const char *pxprpc_rtbridge_stop_uvthread(void **uvthread_inout);
+
+/* init and start the main uv thread, output the uv loop. */
 const char *pxprpc_rtbridge_init_and_run(void **uvloop);
-
-/*
-  Deinitialize rtbridge. Return error string if error occured, or NULL.
-*/
-const char *pxprpc_rtbridge_deinit();
-
+const char *pxprpc_rtbridge_deinit(void);
 
 struct pxprpc_rtbridge_state{
-  /* the uv loop inited by pxprpc_rtbridge_init_uv, or created by pxprpc_rtbridge_init_and_run */
   void *uv_loop;
   void *uv_tid;
-  int run_state;
+  void *uvthread;
 };
+void pxprpc_rtbridge_get_uvthread_state(void *uvthread,struct pxprpc_rtbridge_state *out);
+/* the main uv thread */
 void pxprpc_rtbridge_get_current_state(struct pxprpc_rtbridge_state *out);
+
 
 #endif
