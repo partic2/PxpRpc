@@ -335,6 +335,35 @@ class UvPipeWrap:public UvStreamWrap{
   }
 };
 
+std::tuple<std::string,int32_t> _sockaddrToString(sockaddr_storage *addr){
+  auto namestr=new char[256];
+  int port=0;
+  if(addr->ss_family==AF_INET){
+    uv_ip4_name(reinterpret_cast<sockaddr_in *>(addr),namestr,256);
+    port=ntohs(reinterpret_cast<sockaddr_in *>(addr)->sin_port);
+  }else if(addr->ss_family==AF_INET6){
+    uv_ip6_name(reinterpret_cast<sockaddr_in6 *>(addr),namestr,256);
+    port=ntohs(reinterpret_cast<sockaddr_in6 *>(addr)->sin6_port);
+  }else{
+    delete[] namestr;
+    return std::tuple<std::string,int32_t>("ERR:Unknown SS_FAMILY",-1);
+  }
+  auto r=std::tuple<std::string,int32_t>(namestr,port);
+  delete[] namestr;
+  return r;
+}
+
+const char *_sockaddrFromString(std::string& host,int32_t port,sockaddr_storage *result){
+  int err=uv_ip4_addr(host.c_str(),port,reinterpret_cast<sockaddr_in *>(result));
+  if(err<0){
+    err=uv_ip6_addr(host.c_str(),port,reinterpret_cast<sockaddr_in6 *>(result));
+    if(err<0){
+      return uv_err_name(err);
+    }
+  }
+  return nullptr;
+}
+
 class UvTcpWrap:public UvStreamWrap{
   public:
   uv_tcp_t* tcp(){
@@ -362,23 +391,22 @@ class UvTcpWrap:public UvStreamWrap{
     }
     return uv_tcp_bind(tcp(),reinterpret_cast<const sockaddr *>(&addrin),0);
   }
-  union{
-      sockaddr_in v4;
-      sockaddr_in6 v6;
-    } addrin={};
-  int connect(const char* ip,int32_t port,std::function<void(int)> cb){
-    int err=uv_ip4_addr(ip,port,&addrin.v4);
-    if(err<0){
-      err=uv_ip6_addr(ip,port,&addrin.v6);
-      if(err<0){
-        return err;
-      }
+  sockaddr_storage addrin={};
+  const char *connect(std::string& ip,int32_t port,std::function<void(int)> cb){
+    const char *err=_sockaddrFromString(ip,port,&addrin);
+    if(err!=nullptr){
+      return err;
     }
     auto connReq=new uv_connect_t();
     connReq->data=new decltype(cb)(cb);
-    return uv_tcp_connect(connReq,tcp(),reinterpret_cast<const sockaddr *>(&addrin),_uvcb_callDataAsFunctionWithStatFreeReq);
+    int r=uv_tcp_connect(connReq,tcp(),reinterpret_cast<const sockaddr *>(&addrin),_uvcb_callDataAsFunctionWithStatFreeReq);
+    if(r<0){
+      return uv_err_name(r);
+    }
+    return nullptr;
   }
 };
+
 
 void _UvUdpWrapRead(uv_udp_t* handle, ssize_t nread, const uv_buf_t* buf, const struct sockaddr* addr, unsigned flags);
 
@@ -396,9 +424,19 @@ class UvUdpWrap:public pxprpc::PxpObject{
     this->errcode=errcode;
     processing();
   }
-  int bind(const struct sockaddr* addr){
-    uv_udp_init(pxprpc_rtbridge_host::uvloop,udp);
-    return uv_udp_bind(udp,addr,0);
+  const char *bind(std::string &addr,int32_t port){
+    sockaddr_storage sockaddr;
+    const char *err=_sockaddrFromString(addr, port, &sockaddr);
+    if(err!=nullptr)return err;
+    int errno2=uv_udp_init(pxprpc_rtbridge_host::uvloop,udp);
+    if(errno2<0){
+      return uv_err_name(errno2);
+    }
+    errno2=uv_udp_bind(udp,reinterpret_cast<struct sockaddr *>(&sockaddr),0);
+    if(errno2<0){
+      return uv_err_name(errno2);
+    }
+    return nullptr;
   }
   void pushData(char *buf,int len,const struct sockaddr* addr){
     if(len==0)return;
@@ -410,12 +448,12 @@ class UvUdpWrap:public pxprpc::PxpObject{
       //Too large buffer. discard.
       return;
     }
-    readBuf->putBytes((uint8_t *)addr,sizeof(sockaddr_storage));
+    readBuf->putBytes((uint8_t *)addr,addr->sa_family==AF_INET?sizeof(struct sockaddr_in):sizeof(struct sockaddr_in6));
     readBuf->putBytes((uint8_t *)buf,len);
     processing();
   }
   void processing(){
-    if(readWaiting.size()>0 && readBuf->wrapped.pos>0){
+    if(readWaiting.size()>0 && readBuf!=nullptr && readBuf->wrapped.pos>0){
       //Zero length means END
       readBuf->putBytes(nullptr,0);
       readWaiting.front()->resolve(readBuf);
@@ -458,7 +496,12 @@ class UvUdpWrap:public pxprpc::PxpObject{
         ret->resolve(stat);
       }
     });
-    uv_udp_send(writeReq,udp,bufs,1,reinterpret_cast<const sockaddr *>(addr2),_uvcb_callDataAsFunctionWithStatFreeReq);
+    int err=uv_udp_send(writeReq,udp,bufs,1,reinterpret_cast<const sockaddr *>(addr2),_uvcb_callDataAsFunctionWithStatFreeReq);
+    if(err<0){
+      delete[] bufs;
+      delete addr2;
+      ret->reject(uv_err_name(err));
+    }
   }
   
   virtual ~UvUdpWrap(){
@@ -481,23 +524,6 @@ void _UvUdpWrapRead(uv_udp_t* handle, ssize_t nread, const uv_buf_t* buf, const 
 };
 
 
-std::tuple<std::string,int32_t> _addrinToString(sockaddr_storage *addr){
-  auto namestr=new char[256];
-  int port=0;
-  if(addr->ss_family==AF_INET){
-    uv_ip4_name(reinterpret_cast<sockaddr_in *>(addr),namestr,256);
-    port=reinterpret_cast<sockaddr_in *>(addr)->sin_port;
-  }else if(addr->ss_family==AF_INET6){
-    uv_ip6_name(reinterpret_cast<sockaddr_in6 *>(addr),namestr,256);
-    port=reinterpret_cast<sockaddr_in6 *>(addr)->sin6_port;
-  }else{
-    delete[] namestr;
-    return std::tuple<std::string,int32_t>("ERR:Unknown SS_FAMILY",-1);
-  }
-  auto r=std::tuple<std::string,int32_t>(namestr,port);
-  delete[] namestr;
-  return r;
-}
 
 
 
@@ -880,11 +906,11 @@ void init() {
   pxprpc::defaultFuncMap.add(
     (new pxprpc::NamedFunctionPPImpl1())
         ->init("pxprpc_libuv.tcp_connect", [](pxprpc::NamedFunctionPPImpl1::Parameter *para, pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret) -> void {
-          auto ip=std::make_shared<std::string>(para->nextString());
+          auto ip=para->nextString();
           auto port=para->nextInt();
           auto tcp=new UvTcpWrap();
           tcp->init();
-          tcp->connect(ip->c_str(),port,[ip,ret,tcp](int stat)->void {
+          auto err=tcp->connect(ip,port,[ip,ret,tcp](int stat)->void {
             if(stat<0){
               ret->reject(uv_err_name(stat));
               delete tcp;
@@ -893,6 +919,10 @@ void init() {
               ret->resolve(tcp);
             }
           });
+          if(err!=nullptr){
+            ret->reject(err);
+            delete tcp;
+          }
         })
   );
 
@@ -907,7 +937,7 @@ void init() {
             ret->reject(uv_err_name(err));
             return;
           }
-          auto r=_addrinToString(&addr);
+          auto r=_sockaddrToString(&addr);
           auto ser=new pxprpc::Serializer();
           ser->putString(std::get<0>(r))->putInt(std::get<1>(r));
           ret->resolve(ser);
@@ -957,8 +987,8 @@ void init() {
           for(int i1=0;i1<count;i1++){
             table.addValue(addrs[i1].name);
             table.addValue(std::tuple<int32_t,uint8_t *>(6,(uint8_t *)addrs[i1].phys_addr));
-            table.addValue(std::get<0>(_addrinToString((sockaddr_storage *)&addrs[i1].address)));
-            table.addValue(std::get<0>(_addrinToString((sockaddr_storage *)&addrs[i1].netmask)));
+            table.addValue(std::get<0>(_sockaddrToString((sockaddr_storage *)&addrs[i1].address)));
+            table.addValue(std::get<0>(_sockaddrToString((sockaddr_storage *)&addrs[i1].netmask)));
           }
           ret->resolve(table.buildSer());
           uv_free_interface_addresses(addrs,count);
@@ -1133,14 +1163,21 @@ void init() {
   pxprpc::defaultFuncMap.add(
     (new pxprpc::NamedFunctionPPImpl1())
         ->init("pxprpc_libuv.udp_bind", [](pxprpc::NamedFunctionPPImpl1::Parameter *para, pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret) -> void {
-          auto addr=para->asRaw();
+          auto host=para->nextString();
+          auto port=para->nextInt();
           auto udp=new UvUdpWrap();
-          int r=udp->bind((const struct sockaddr *)addr);
-          if(r<0){
-            ret->reject(uv_err_name(r));
+          const char *err=udp->bind(host,port);
+          if(err!=nullptr){
+            ret->reject(err);
             delete udp;
           }else{
-            ret->resolve(udp);
+            int errno2=udp->startReading();
+            if(errno2<0){
+              ret->reject(uv_err_name(errno2));
+              delete udp;
+            }else{
+              ret->resolve(udp);
+            }
           }
         })
   );
@@ -1158,6 +1195,75 @@ void init() {
         ->init("pxprpc_libuv.udp_recv", [](pxprpc::NamedFunctionPPImpl1::Parameter *para, pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret) -> void {
           auto udp=static_cast<UvUdpWrap *>(para->nextObject());
           udp->pullData(ret);
+        })
+  );
+  pxprpc::defaultFuncMap.add(
+    (new pxprpc::NamedFunctionPPImpl1())
+        ->init("pxprpc_libuv.udp_set_membership", [](pxprpc::NamedFunctionPPImpl1::Parameter *para, pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret) -> void {
+          auto udp=static_cast<UvUdpWrap *>(para->nextObject());
+          auto multicastAddr=para->nextString();
+          auto interfaceAddr=para->nextString();
+          auto join=para->nextBool();
+          uv_membership membership=join?UV_JOIN_GROUP:UV_LEAVE_GROUP;
+          auto r=uv_udp_set_membership(udp->udp, multicastAddr.c_str(), interfaceAddr.c_str(), membership);
+          if(r<0){
+            ret->reject(uv_err_name(r));
+          }else{
+            ret->resolve();
+          }
+        })
+  );
+  pxprpc::defaultFuncMap.add(
+    (new pxprpc::NamedFunctionPPImpl1())
+        ->init("pxprpc_libuv.udp_option", [](pxprpc::NamedFunctionPPImpl1::Parameter *para, pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret) -> void {
+          auto udp=static_cast<UvUdpWrap *>(para->nextObject());
+          auto name=para->nextString();
+          int r=0;
+          if(name=="ttl"){
+            r=uv_udp_set_ttl(udp->udp, para->nextInt());
+          }else if(name=="broadcast"){
+            r=uv_udp_set_broadcast(udp->udp,para->nextBool());
+          }else if(name=="multicast_ttl"){
+            r=uv_udp_set_multicast_ttl(udp->udp,para->nextInt());
+          }else if(name=="multicast_loop"){
+            r=uv_udp_set_multicast_loop(udp->udp,para->nextBool());
+          }else{
+            ret->reject("No such property");
+            return;
+          }
+          if(r<0){
+            ret->reject(uv_err_name(r));
+          }else{
+            ret->resolve();
+          }
+        })
+  );
+  pxprpc::defaultFuncMap.add(
+    (new pxprpc::NamedFunctionPPImpl1())
+        ->init("pxprpc_libuv.sockaddr_to_string", [](pxprpc::NamedFunctionPPImpl1::Parameter *para, pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret) -> void {
+          auto sockaddr=para->asRaw();
+          sockaddr_storage sockaddrAligned;
+          memmove(&sockaddrAligned,sockaddr->base,sockaddr->length);
+          auto r=_sockaddrToString((sockaddr_storage*)sockaddr->base);
+          pxprpc::Serializer *ser=new pxprpc::Serializer();
+          ser->prepareSerializing(32);
+          ser->putString(std::get<0>(r));
+          ser->putInt(std::get<1>(r));
+          ret->resolve(ser);
+        })
+  );
+  pxprpc::defaultFuncMap.add(
+    (new pxprpc::NamedFunctionPPImpl1())
+        ->init("pxprpc_libuv.sockaddr_from_string", [](pxprpc::NamedFunctionPPImpl1::Parameter *para, pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret) -> void {
+          auto addr=para->nextString();
+          auto port=para->nextInt();
+          sockaddr_storage result;
+          auto err=_sockaddrFromString(addr,port,&result);
+          if(err!=nullptr){
+            ret->reject(err);
+            return;
+          }
+          ret->resolve(&result,result.ss_family==AF_INET?sizeof(struct sockaddr_in):sizeof(struct sockaddr_in6));
         })
   );
 }
