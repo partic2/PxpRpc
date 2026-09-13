@@ -338,7 +338,7 @@ class RpcExtendClient1:
         self.conn=conn
         self.__usedSid:Set[int]=set()
         self.__sidStart=1
-        self.__sidEnd=0xffff
+        self.__sidEnd=0x7fffffff
         self.__nextSid=self.__sidStart
         self.builtIn=None
         self.serverName=None

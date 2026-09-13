@@ -9,7 +9,7 @@ public class RpcExtendClient1 {
     protected ConcurrentHashMap<Integer,Object> __usedSid=new ConcurrentHashMap<>();
 
     protected int __sidStart = 1;
-    protected int __sidEnd = 0xffff;
+    protected int __sidEnd = 0x7fffffff;
     protected int __nextSid=__sidStart;
     public ClientContext baseClient;
 

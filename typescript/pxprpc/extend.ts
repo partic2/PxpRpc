@@ -130,7 +130,7 @@ export class RpcExtendClient1 {
     private __nextSid: number;
 
     private __sidStart: number = 1;
-    private __sidEnd: number = 0xffff;
+    private __sidEnd: number = 0x7fffffff;
 
     public constructor(public baseClient: Client) {
         this.__nextSid = this.__sidStart;
