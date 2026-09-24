@@ -20,7 +20,6 @@ static const char *ServerInfo="server name:pxprpc for c\n"
 
 static struct pxprpc_server_context_exports *pxprpc_server_context_exports(pxprpc_server_context context);
 
-
 struct _pxprpc__ServCo{
     struct pxprpc_server_context_exports exp;
     struct pxprpc_bytes recvBuf;
@@ -157,6 +156,8 @@ static void _pxprpc__writeResult(pxprpc_request *r){
     }
     if(!ctx->exp.closed){
         ctx->exp.io->send(ctx->exp.io,&r->sendBuf,(void (*)(void *))r->next_step,r);
+    }else{
+        r->next_step(r);
     }
 }
 
@@ -187,7 +188,6 @@ static void _pxprpc__stepFreeRef1(pxprpc_request *r){
 static void _pxprpc__stepGetFunc1(pxprpc_request *r){
     struct _pxprpc__ServCo *self=(struct _pxprpc__ServCo *)r->server_context;
     r->getFuncRes=-1;
-    int lenOut=-1;
     if(self->exp.funcmap!=NULL){
         pxprpc_callable *func=self->exp.funcmap->get(self->exp.funcmap,(char *)r->parameter.base,r->parameter.length);
         if(func!=NULL){
@@ -202,6 +202,7 @@ static void _pxprpc__stepGetFunc1(pxprpc_request *r){
 
 
 static void _pxprpc__stepClose1(pxprpc_request *r){
+    _pxprpc__finishRequest(r);
     pxprpc_server_close(r->server_context);
 }
 
@@ -280,7 +281,7 @@ static void _pxprpc__prepareRequest(pxprpc_request *req){
             req->next_step=_pxprpc__stepPoll1;
             break;
             default:
-            /* XXX: should close? */
+            pxprpc_server_close(req->server_context);
             break;
         }
     }
