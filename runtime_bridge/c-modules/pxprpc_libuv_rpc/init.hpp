@@ -1,8 +1,10 @@
 
 #pragma once
 
+#include <functional>
 #include <pxprpc_pp.hpp>
 #include <pxprpc_rtbridge_host.hpp>
+#include <set>
 extern "C" {
   #include <uv.h>
 }
@@ -64,10 +66,10 @@ class FileHandler:public pxprpc::PxpObject{
   uv_file fd=-1;
   virtual ~FileHandler(){
     auto req=new uv_fs_t();
+    req->data=nullptr;
     if(fd>=0){
-      uv_fs_close(pxprpc_rtbridge_host::uvloop,req,fd,nullptr);
+      uv_fs_close(pxprpc_rtbridge_host::uvloop,req,fd,_uvcb_callDataAsFunctionFreeReq);
     }
-    delete req;
   }
 };
 
@@ -76,11 +78,10 @@ void _UvStreamWrapRead(uv_stream_t* stream,ssize_t nread,const uv_buf_t* buf);
 void _UvStreamWrapConnection(uv_stream_t* server, int status);
 class UvStreamWrap:public pxprpc::PxpObject{
   public:
-  uv_stream_t *stream;
+  uv_stream_t *stream=nullptr;
   std::vector<char> readBuf={};
   std::deque<pxprpc::NamedFunctionPPImpl1::AsyncReturn *> readWaiting={};
   std::deque<pxprpc::NamedFunctionPPImpl1::AsyncReturn *> acceptWaiting={};
-  int8_t closeOnDestruct=0;
   int8_t listening=0;
 
   int32_t errcode=0;
@@ -130,11 +131,14 @@ class UvStreamWrap:public pxprpc::PxpObject{
     //Implemented in subclass;
     return nullptr;
   }
-  virtual void pushConn(UvStreamWrap *stream){
+  virtual const char *pushConn(UvStreamWrap *stream){
     //No connection queue yet, maybe add in future?
     if(acceptWaiting.size()>0){
       acceptWaiting.front()->resolve(stream);
       acceptWaiting.pop_front();
+      return nullptr;
+    }else{
+      return "accept queue is empty";
     }
   }
   virtual void pullData(pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret){
@@ -146,7 +150,10 @@ class UvStreamWrap:public pxprpc::PxpObject{
     processing();
   }
   virtual void writeData(uint8_t *buf,int32_t size,pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret){
-    if(errcode<0)ret->reject(uv_err_name(errcode));
+    if(errcode<0){
+      ret->reject(uv_err_name(errcode));
+      return;
+    }
     auto bufs=new uv_buf_t[1];
     bufs[0].base=(char *)buf;
     bufs->len=size;
@@ -160,14 +167,31 @@ class UvStreamWrap:public pxprpc::PxpObject{
         ret->resolve(stat);
       }
     });
-    uv_write(writeReq,stream,bufs,1,_uvcb_callDataAsFunctionWithStatFreeReq);
+    int err=uv_write(writeReq,stream,bufs,1,_uvcb_callDataAsFunctionWithStatFreeReq);
+    if(err<0){
+      _uvcb_callDataAsFunctionWithStatFreeReq(writeReq,err);
+    }
   }
-  
-  virtual ~UvStreamWrap(){
-    if(closeOnDestruct){
-      uv_read_stop(stream);
+  std::function<void(void)> onDestruct=[this]() -> void {
+    if(this->stream!=nullptr){
+      uv_read_stop(this->stream);
       this->stream->data=nullptr;
       uv_close((uv_handle_t *)this->stream,_uvcb_callDataAsFunctionFreeReq);
+    }
+  };
+  virtual ~UvStreamWrap(){
+    onDestruct();
+    if(readWaiting.size()>0){
+      while(readWaiting.size()>0){
+        readWaiting.front()->reject("stream closed");
+        readWaiting.pop_front();
+      }
+    }
+    if(acceptWaiting.size()>0){
+      while(acceptWaiting.size()>0){
+        acceptWaiting.front()->reject("stream closed");
+        acceptWaiting.pop_front();
+      }
     }
   }
 };
@@ -178,9 +202,16 @@ void _UvStreamWrapAlloc(uv_handle_t* handle,size_t suggested_size,uv_buf_t* buf)
 };
 void _UvStreamWrapRead(uv_stream_t* stream,ssize_t nread,const uv_buf_t* buf){
   auto wrap=(UvStreamWrap *)(stream->data);
-  if(wrap==nullptr)return;
-  wrap->pushData(buf->base,nread);
-  delete[] buf->base;
+  if(wrap!=nullptr){
+    if(nread<0){
+      wrap->pushError(nread);
+    }else{
+      wrap->pushData(buf->base,nread);
+    }
+  }
+  if(buf->base!=nullptr){
+    delete[] buf->base;
+  }
 };
 void _UvStreamWrapConnection(uv_stream_t* server, int status){
   auto wrap=(UvStreamWrap *)(server->data);
@@ -189,9 +220,10 @@ void _UvStreamWrapConnection(uv_stream_t* server, int status){
     auto newConn=wrap->createStream();
     newConn->init();
     uv_accept(server,newConn->stream);
-    newConn->closeOnDestruct=1;
     newConn->startReading();
-    wrap->pushConn(newConn);
+    if(wrap->pushConn(newConn)!=nullptr){
+      delete newConn;
+    }
   }else{
     wrap->pushError(status);
   }
@@ -236,8 +268,19 @@ class UvProcessWrap:public pxprpc::PxpObject{
     }
   }
   virtual ~UvProcessWrap(){
+    for(auto it=stdioWraps.begin();it!=stdioWraps.end();it++){
+      (*it)->pushError(UV_EOF);
+      (*it)->stream=nullptr;
+      (*it)->onDestruct=[]()-> void {};
+    }
+    stdioWraps.clear();
+    for(auto it=onProcExit.begin();it!=onProcExit.end();it++){
+      (*it)->reject("Process handler closed");
+    }
+    onProcExit.clear();
     if(proc!=nullptr){
       proc->data=nullptr;
+      uv_close((uv_handle_t*)proc, _uvcb_callDataAsFunctionFreeReq);
     }
     for(int i1=0;i1<3;i1++){
       if(stdio[i1].data.stream!=nullptr){
@@ -247,7 +290,6 @@ class UvProcessWrap:public pxprpc::PxpObject{
         stdio[i1].data.stream=nullptr;
       }
     }
-    
   }
 
   int spawn(std::string& fileName,std::vector<std::string>& args,std::string& cwd,std::vector<std::string>& envs){
@@ -256,8 +298,10 @@ class UvProcessWrap:public pxprpc::PxpObject{
     
     if(fileName!=""){
       opt.file=fileName.c_str();
-    }else{
+    }else if(args.size()>0){
       opt.file=args[0].c_str();
+    }else{
+      return UV_EINVAL;
     }
     if(cwd!=""){
       opt.cwd=cwd.c_str();
@@ -288,12 +332,28 @@ class UvProcessWrap:public pxprpc::PxpObject{
     int r=uv_spawn(pxprpc_rtbridge_host::uvloop,proc,&opt);
     delete[] args2;
     delete[] envs2;
+    if (r < 0) {
+      proc->data = nullptr;
+      uv_close((uv_handle_t *)proc, _uvcb_callDataAsFunctionFreeReq);
+      proc = nullptr;
+      for (int i1 = 0; i1 < 3; i1++) {
+        if (stdio[i1].data.stream != nullptr) {
+          delete (uv_pipe_t *)stdio[i1].data.stream;
+          stdio[i1].data.stream = nullptr;
+        }
+      }
+    }
     return r;
   }
+  std::set<UvStreamWrap *> stdioWraps;
   UvStreamWrap *getStdio(int index){
     auto sw=new UvStreamWrap();
     sw->stream=stdio[index].data.stream;
     sw->startReading();
+    sw->onDestruct=[this,sw]()-> void {
+      this->stdioWraps.erase(sw);
+    };
+    stdioWraps.insert(sw);
     return sw;
   }
 };
@@ -306,6 +366,13 @@ void _uvProcessExit(uv_process_t* proc, int64_t exit_status, int term_signal){
     handle->termSignal=term_signal;
     handle->processEvent();
     handle->proc=nullptr;
+    for(auto it=handle->stdioWraps.begin();it!=handle->stdioWraps.end();it++){
+      (*it)->pushError(UV_EOF);
+      (*it)->processing();
+      (*it)->stream=nullptr;
+      (*it)->onDestruct=[]()-> void {};
+    }
+    handle->stdioWraps.clear();
   }
   proc->data=nullptr;
   uv_close((uv_handle_t *)proc,_uvcb_callDataAsFunctionFreeReq);
@@ -320,13 +387,13 @@ class UvPipeWrap:public UvStreamWrap{
   virtual void init() override{
     stream=(uv_stream_t *)new uv_pipe_t();
     uv_pipe_init(pxprpc_rtbridge_host::uvloop,pipe(),0);
-    closeOnDestruct=1;
   }
   virtual UvStreamWrap *createStream() override{
     return new UvPipeWrap();
   }
   int bind(std::string path){
-    return uv_pipe_bind(pipe(),path.c_str());
+    int r=uv_pipe_bind(pipe(),path.c_str());
+    return r;
   }
   void connect(const char* pipeName,std::function<void(int)> cb){
     auto connReq=new uv_connect_t();
@@ -372,7 +439,6 @@ class UvTcpWrap:public UvStreamWrap{
   virtual void init() override{
     stream=(uv_stream_t *)new uv_tcp_t();
     uv_tcp_init(pxprpc_rtbridge_host::uvloop,tcp());
-    closeOnDestruct=1;
   }
   virtual UvStreamWrap *createStream() override{
     return new UvTcpWrap();
@@ -401,7 +467,7 @@ class UvTcpWrap:public UvStreamWrap{
     connReq->data=new decltype(cb)(cb);
     int r=uv_tcp_connect(connReq,tcp(),reinterpret_cast<const sockaddr *>(&addrin),_uvcb_callDataAsFunctionWithStatFreeReq);
     if(r<0){
-      return uv_err_name(r);
+      _uvcb_callDataAsFunctionWithStatFreeReq(connReq,r);
     }
     return nullptr;
   }
@@ -412,10 +478,9 @@ void _UvUdpWrapRead(uv_udp_t* handle, ssize_t nread, const uv_buf_t* buf, const 
 
 class UvUdpWrap:public pxprpc::PxpObject{
   public:
-  uv_udp_t *udp=new uv_udp_t();
+  uv_udp_t *udp=nullptr;
   pxprpc::Serializer *readBuf=nullptr;
   std::deque<pxprpc::NamedFunctionPPImpl1::AsyncReturn *> readWaiting={};
-  int8_t closeOnDestruct=0;
   int8_t listening=0;
 
   int32_t errcode=0;
@@ -428,11 +493,14 @@ class UvUdpWrap:public pxprpc::PxpObject{
     sockaddr_storage sockaddr;
     const char *err=_sockaddrFromString(addr, port, &sockaddr);
     if(err!=nullptr)return err;
-    int errno2=uv_udp_init(pxprpc_rtbridge_host::uvloop,udp);
+    this->udp=new uv_udp_t();
+    int errno2=uv_udp_init(pxprpc_rtbridge_host::uvloop,this->udp);
     if(errno2<0){
+      delete this->udp;
+      this->udp=nullptr;
       return uv_err_name(errno2);
     }
-    errno2=uv_udp_bind(udp,reinterpret_cast<struct sockaddr *>(&sockaddr),0);
+    errno2=uv_udp_bind(this->udp,reinterpret_cast<struct sockaddr *>(&sockaddr),0);
     if(errno2<0){
       return uv_err_name(errno2);
     }
@@ -478,8 +546,11 @@ class UvUdpWrap:public pxprpc::PxpObject{
     readWaiting.push_back(ret);
     processing();
   }
-  void writeData(uint8_t *buf,int32_t size,std::tuple<int32_t,uint8_t *> addr,pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret){
-    if(errcode<0)ret->reject(uv_err_name(errcode));
+  virtual void writeData(uint8_t *buf,int32_t size,std::tuple<int32_t,uint8_t *> addr,pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret){
+    if(errcode<0){
+      ret->reject(uv_err_name(errcode));
+      return;
+    }
     auto bufs=new uv_buf_t[1];
     bufs[0].base=(char *)buf;
     bufs->len=size;
@@ -503,12 +574,20 @@ class UvUdpWrap:public pxprpc::PxpObject{
       ret->reject(uv_err_name(err));
     }
   }
-  
-  virtual ~UvUdpWrap(){
-    if(closeOnDestruct){
-      uv_udp_recv_stop(udp);
+  std::function<void(void)> onDestruct=[this]() -> void {
+    if(this->udp!=nullptr){
+      uv_udp_recv_stop(this->udp);
       this->udp->data=nullptr;
       uv_close((uv_handle_t *)this->udp,_uvcb_callDataAsFunctionFreeReq);
+    }
+  };
+  ~UvUdpWrap(){
+    onDestruct();
+    if(readWaiting.size()>0){
+      while(readWaiting.size()>0){
+        readWaiting.front()->reject("udp closed");
+        readWaiting.pop_front();
+      }
     }
     if(readBuf!=nullptr){
       delete readBuf;
@@ -518,9 +597,16 @@ class UvUdpWrap:public pxprpc::PxpObject{
 
 void _UvUdpWrapRead(uv_udp_t* handle, ssize_t nread, const uv_buf_t* buf, const struct sockaddr* addr, unsigned flags){
   auto wrap=(UvUdpWrap *)(handle->data);
-  if(wrap==nullptr)return;
-  wrap->pushData(buf->base,nread,addr);
-  delete[] buf->base;
+  if(wrap!=nullptr){
+    if(nread<0){
+      wrap->pushError(nread);
+    }else{
+      wrap->pushData(buf->base,nread,addr);
+    }
+  }
+  if(buf->base!=nullptr){
+    delete[] buf->base;
+  }
 };
 
 
@@ -550,7 +636,6 @@ void init() {
               }else{
                 ret->reject(uv_err_name(req->result));
               }
-              uv_fs_req_cleanup(req);
             });
             uv_fs_open(pxprpc_rtbridge_host::uvloop,req,path->c_str(),nflag,0666,&_uvcb_callDataAsFunctionFreeReq);
           })
@@ -689,9 +774,7 @@ void init() {
     (new pxprpc::NamedFunctionPPImpl1())
         ->init("pxprpc_libuv.fs_stat", [](pxprpc::NamedFunctionPPImpl1::Parameter *para, pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret) -> void {
           auto path=std::make_shared<std::string>(para->nextString());
-          
           auto req=new uv_fs_t();
-
           req->data=new std::function<void()>([req,ret,path]()->void {
             if(req->result<0){
               ret->reject(uv_err_name(req->result));
@@ -756,9 +839,7 @@ void init() {
     (new pxprpc::NamedFunctionPPImpl1())
         ->init("pxprpc_libuv.fs_readlink", [](pxprpc::NamedFunctionPPImpl1::Parameter *para, pxprpc::NamedFunctionPPImpl1::AsyncReturn *ret) -> void {
           auto path=std::make_shared<std::string>(para->nextString());
-          
           auto req=new uv_fs_t();
-
           req->data=new std::function<void()>([req,ret,path]()->void {
             if(req->result<0){
               ret->reject(uv_err_name(req->result));
@@ -1156,7 +1237,7 @@ void init() {
           if(r<0){
             ret->reject(uv_err_name(r));
           }else{
-            ret->resolve(tim.tv_sec*1000+tim.tv_sec/1000000);
+            ret->resolve(tim.tv_sec * 1000 + tim.tv_usec / 1000);
           }
         })
   );
@@ -1166,6 +1247,7 @@ void init() {
           auto host=para->nextString();
           auto port=para->nextInt();
           auto udp=new UvUdpWrap();
+          udp->init();
           const char *err=udp->bind(host,port);
           if(err!=nullptr){
             ret->reject(err);
@@ -1244,7 +1326,7 @@ void init() {
           auto sockaddr=para->asRaw();
           sockaddr_storage sockaddrAligned;
           memmove(&sockaddrAligned,sockaddr->base,sockaddr->length);
-          auto r=_sockaddrToString((sockaddr_storage*)sockaddr->base);
+          auto r=_sockaddrToString(&sockaddrAligned);
           pxprpc::Serializer *ser=new pxprpc::Serializer();
           ser->prepareSerializing(32);
           ser->putString(std::get<0>(r));
