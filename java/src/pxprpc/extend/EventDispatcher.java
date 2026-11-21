@@ -44,6 +44,7 @@ public class EventDispatcher extends CommonCallable implements Closeable {
 
 	@Override
 	public void close() throws IOException {
+		this.closed=true;
 		Queue<PxpRequest> saved = receivers;
 		receivers=new LinkedList<PxpRequest>();
 		PxpRequest r;

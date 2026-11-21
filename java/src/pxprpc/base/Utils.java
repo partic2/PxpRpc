@@ -122,6 +122,9 @@ public class Utils {
 			sb.append(e);
 			sb.append(delim);
 		}
+		if(sb.length()==0){
+			return "";
+		}
 		return sb.substring(0,sb.length()-delim.length());
 	}
 }
